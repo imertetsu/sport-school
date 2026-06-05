@@ -49,9 +49,11 @@ services:
       start_period: 5s
 
   api:
+    # Build context = RAÍZ del repo: la imagen es AUTOCONTENIDA (incluye backend/,
+    # alembic.ini y migrations/). No requiere montar el repo. Ver Dockerfile.api.
     build:
-      context: ../backend
-      dockerfile: ../infra/Dockerfile.api
+      context: ..
+      dockerfile: infra/Dockerfile.api
     image: cantera-api
     # Solo este servicio aplica migraciones (migrador único, evita carreras).
     environment:
@@ -60,12 +62,6 @@ services:
       - ../.env
     ports:
       - "${API_PORT:-8000}:8000"
-    volumes:
-      # alembic.ini y migrations/ viven en la RAÍZ del repo (de db-dev), FUERA
-      # del build context (backend/). En dev se montan como read-only para que
-      # el entrypoint corra `alembic -c /app/alembic.ini upgrade head`.
-      - ../alembic.ini:/app/alembic.ini:ro
-      - ../migrations:/app/migrations:ro
     depends_on:
       db:
         condition: service_healthy
@@ -74,8 +70,8 @@ services:
   worker:
     # Reutiliza la imagen construida por `api` (mismo paquete `app`).
     build:
-      context: ../backend
-      dockerfile: ../infra/Dockerfile.api
+      context: ..
+      dockerfile: infra/Dockerfile.api
     image: cantera-api
     environment:
       RUN_MIGRATIONS: "0"
@@ -92,8 +88,8 @@ services:
 
   beat:
     build:
-      context: ../backend
-      dockerfile: ../infra/Dockerfile.api
+      context: ..
+      dockerfile: infra/Dockerfile.api
     image: cantera-api
     environment:
       RUN_MIGRATIONS: "0"

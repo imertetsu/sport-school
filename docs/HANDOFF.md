@@ -88,6 +88,15 @@ epic, `product-owner` crea `docs/specs/<epic>.md`.
 
 ## Recent decisions
 
+- **2026-06-06 Hardening de deploy.** Validado `docker compose up --build` de punta a punta
+  (db+redis+api+worker+beat+web) en proyecto/puertos aislados (`-p cantera_verify`): la imagen
+  api aplica las 6 migraciones sobre BD vacía y arranca como `cantera_app`; web sirve la SPA.
+  **Imagen api/worker AUTOCONTENIDA**: build context = raíz, copia `backend/`+`alembic.ini`+
+  `migrations/` DENTRO (antes dependía de montar volúmenes → no desplegable fuera del repo);
+  `.dockerignore` (raíz) mantiene el contexto liviano. **Guard de prod** en `config.py`
+  (`APP_ENV=production` ⇒ FALLA al arrancar con JWT_SECRET débil/<32, credenciales `devpass`,
+  o `OPENBCB_SANDBOX=true`); `.env.example` tiene checklist de producción. CI ya estaba correcto.
+  El proxy TLS corporativo NO afecta builds dentro de Docker (solo npm/pip en el host).
 - **2026-06-06 Epic Muro de avisos** (cierra el MVP). Tabla `aviso` + migración 0006 (RLS NULLIF).
   Feed scoped por rol; CRUD ADMIN con **soft-delete** (`activo=false`, sin borrado físico) e
   invariante alcance↔id validada en backend (422). Item "Avisos" visible a ambos roles (el feed

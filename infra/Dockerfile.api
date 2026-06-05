@@ -1,23 +1,14 @@
 # syntax=docker/dockerfile:1
 #
 # Imagen del backend de CanteraSport (FastAPI + Celery).
-# Build context = ../backend (ver docker-compose.yml: services.api.build.context).
+# Build context = RAIZ del repo (docker-compose.yml: services.api.build.context: ..).
 #
-# DECISION sobre alembic.ini + migrations/ (coordinacion con db-dev):
-#   - `alembic.ini` (de db-dev) vive en la RAIZ del repo, y `migrations/` tambien.
-#     Ambos quedan FUERA del build context (que es backend/), por lo que NO se
-#     pueden `COPY` aqui (Docker prohibe rutas fuera del contexto de build).
-#   - En DESARROLLO se montan como volumenes read-only en docker-compose.yml:
-#       ../alembic.ini  -> /app/alembic.ini
-#       ../migrations   -> /app/migrations
-#     El entrypoint invoca `alembic -c /app/alembic.ini upgrade head` desde /app.
-#   - El paquete `app` se instala con `pip install -e .`, asi que es importable
-#     globalmente; `prepend_sys_path = backend` de alembic.ini es inocuo (apunta
-#     a una carpeta inexistente dentro de la imagen y Alembic simplemente la
-#     ignora). Por eso env.py resuelve `from app.models import Base` igual.
-#   - Para una imagen 100% autocontenida (CI/prod) basta extender el build
-#     context a la raiz y descomentar los COPY marcados; en dev preferimos
-#     volumenes para iteracion rapida sin rebuild.
+# Imagen AUTOCONTENIDA: lleva backend/ (paquete `app`), `alembic.ini` y `migrations/`
+# DENTRO de la imagen, para desplegar a cualquier host/registry SIN montar el repo.
+# El `.dockerignore` (raiz) mantiene el contexto liviano (excluye frontend, .git, venvs,
+# node_modules, etc.). El entrypoint corre `alembic -c /app/alembic.ini upgrade head`
+# (migrador unico = servicio api). `prepend_sys_path = backend` de alembic.ini es inocuo:
+# el paquete `app` se instala editable y queda importable globalmente.
 
 FROM python:3.11-slim
 
@@ -36,23 +27,18 @@ RUN apt-get update \
 
 WORKDIR /app
 
-# El build context es backend/. Copiamos primero pyproject.toml para cachear
-# la capa de dependencias; luego el resto del codigo.
-COPY pyproject.toml ./
-# Copiar el codigo del paquete antes del install editable (necesita los fuentes).
-COPY app ./app
+# Context = raiz. Copiamos primero pyproject.toml para cachear la capa de deps.
+COPY backend/pyproject.toml ./
+# Codigo del paquete antes del install editable (necesita los fuentes).
+COPY backend/app ./app
 
 # Instalacion editable del backend. `app.main:app`, `app.workers.celery_app`,
-# `app.seed` quedan disponibles. (handoff backend-dev: que estos existan).
+# `app.seed` quedan disponibles.
 RUN pip install -e .
 
-# --- Imagen autocontenida (opcional, CI/prod) -----------------------------
-# Para incluir migrations + alembic.ini en la imagen, cambia el build context a
-# la raiz del repo en docker-compose.yml y descomenta:
-#   COPY alembic.ini /app/alembic.ini
-#   COPY migrations  /app/migrations
-# En dev estos llegan via volumenes (ver docker-compose.yml).
-# --------------------------------------------------------------------------
+# Imagen autocontenida: alembic.ini + migrations DENTRO de la imagen (no volumenes).
+COPY alembic.ini ./alembic.ini
+COPY migrations ./migrations
 
 # Entrypoint: corre migraciones (como OWNER via MIGRATION_DATABASE_URL) y luego
 # arranca el servidor. El comando por defecto puede sobreescribirse (worker/beat).

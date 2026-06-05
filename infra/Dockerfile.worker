@@ -7,6 +7,7 @@
 # paralelo, docker-compose.yml hace que `worker` y `beat` reutilicen la imagen
 # construida por el servicio `api` (build con Dockerfile.api). Este archivo
 # existe como alias explicito / fallback si se quisiera una imagen aparte.
+# Build context = RAIZ del repo (igual que Dockerfile.api), imagen autocontenida.
 #
 # El entrypoint NO corre migraciones aqui (RUN_MIGRATIONS por defecto = 0):
 # el migrador unico es el servicio `api`. Ver Dockerfile.api.
@@ -26,10 +27,13 @@ RUN apt-get update \
 
 WORKDIR /app
 
-COPY pyproject.toml ./
-COPY app ./app
+COPY backend/pyproject.toml ./
+COPY backend/app ./app
 
 RUN pip install -e .
+
+COPY alembic.ini ./alembic.ini
+COPY migrations ./migrations
 
 COPY --chmod=0755 <<'EOF' /usr/local/bin/api-entrypoint.sh
 #!/usr/bin/env bash

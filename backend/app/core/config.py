@@ -10,8 +10,11 @@ import json
 from functools import lru_cache
 from typing import Annotated
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+
+# Secretos de DESARROLLO que jamás deben llegar a producción (ver _guard_prod).
+_WEAK_SECRETS = {"", "dev-change-me", "ci-secret", "change-me", "secret"}
 
 
 class Settings(BaseSettings):
@@ -23,6 +26,9 @@ class Settings(BaseSettings):
         extra="ignore",
         case_sensitive=False,
     )
+
+    # Entorno: "dev" | "production". En production se exige config segura (ver abajo).
+    app_env: str = "dev"
 
     # Branding (C0)
     app_name: str = "CanteraSport"
@@ -63,6 +69,26 @@ class Settings(BaseSettings):
                 return json.loads(stripped)  # JSON array explícito
             return [origin.strip() for origin in stripped.split(",") if origin.strip()]
         return value
+
+    @model_validator(mode="after")
+    def _guard_prod(self) -> "Settings":
+        """En producción, falla rápido si la config es insegura (no arranca con
+        secretos de dev). Evita desplegar con `JWT_SECRET` débil o credenciales
+        `devpass`. En dev/CI no aplica."""
+        if self.app_env.lower() in {"prod", "production"}:
+            problemas: list[str] = []
+            if self.jwt_secret in _WEAK_SECRETS or len(self.jwt_secret) < 32:
+                problemas.append("JWT_SECRET debe ser aleatorio y >= 32 caracteres")
+            if "devpass" in self.database_url or "postgres:postgres@" in self.database_url:
+                problemas.append("DATABASE_URL usa credenciales de desarrollo")
+            if self.openbcb_sandbox:
+                problemas.append("OPENBCB_SANDBOX debe ser false en producción")
+            if problemas:
+                raise ValueError(
+                    "Configuración insegura para APP_ENV=production: "
+                    + "; ".join(problemas)
+                )
+        return self
 
 
 @lru_cache
