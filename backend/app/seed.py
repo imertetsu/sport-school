@@ -32,6 +32,7 @@ from app.core.db import SessionLocal
 from app.core.security import hash_password
 from app.models.alumno import Alumno
 from app.models.alumno_tutor import AlumnoTutor
+from app.models.asistencia import Asistencia
 from app.models.categoria import Categoria
 from app.models.consentimiento import Consentimiento
 from app.models.cuota import Cuota
@@ -40,6 +41,7 @@ from app.models.inscripcion import Inscripcion
 from app.models.organizacion import Organizacion
 from app.models.pago import Pago
 from app.models.pago_cuota import PagoCuota
+from app.models.sesion import Sesion
 from app.models.sucursal import Sucursal
 from app.models.tutor import Tutor
 from app.models.usuario import Usuario
@@ -233,6 +235,81 @@ def _seed_cobranza(db: Session, org_id: uuid.UUID) -> dict[str, int]:
     return {"creadas": creadas, "vencidas": vencidas, "pagadas": pagadas}
 
 
+def _seed_asistencia(db: Session, org_id: uuid.UUID) -> dict[str, int]:
+    """Crea 1 sesión de ejemplo con asistencias para que el historial tenga datos.
+
+    Idempotente: toma la primera categoría (con alumnos) de la org, busca/crea la
+    sesión por (categoria, fecha, hora=NULL) y hace upsert de una marca por
+    alumno (PRESENTE, con un AUSENTE para variedad). `registrado_por` = ADMIN.
+    """
+    # Categoría con al menos un alumno (orden estable por nombre).
+    cat_row = db.execute(
+        select(Categoria, Alumno.id)
+        .join(Alumno, Alumno.categoria_id == Categoria.id)
+        .order_by(Categoria.nombre)
+    ).first()
+    if cat_row is None:
+        return {"sesiones": 0, "marcas": 0}
+    categoria = cat_row[0]
+
+    alumnos = (
+        db.execute(
+            select(Alumno)
+            .where(Alumno.categoria_id == categoria.id)
+            .order_by(Alumno.ap_paterno, Alumno.nombres)
+        )
+        .scalars()
+        .all()
+    )
+    if not alumnos:
+        return {"sesiones": 0, "marcas": 0}
+
+    fecha = date.today()
+    admin = db.execute(select(Usuario).where(Usuario.email == ADMIN_EMAIL)).scalar_one_or_none()
+    registrado_por = admin.id if admin else None
+
+    # get-or-create sesión (idempotente por UNIQUE(categoria_id, fecha, hora)).
+    sesion = db.execute(
+        select(Sesion).where(
+            Sesion.categoria_id == categoria.id,
+            Sesion.fecha == fecha,
+            Sesion.hora.is_(None),
+        )
+    ).scalar_one_or_none()
+    sesiones_creadas = 0
+    if sesion is None:
+        sesion = Sesion(org_id=org_id, categoria_id=categoria.id, fecha=fecha, hora=None)
+        db.add(sesion)
+        db.flush()
+        sesiones_creadas = 1
+
+    existentes = {
+        a.alumno_id
+        for a in db.execute(
+            select(Asistencia).where(Asistencia.sesion_id == sesion.id)
+        )
+        .scalars()
+        .all()
+    }
+    marcas = 0
+    for i, alumno in enumerate(alumnos):
+        if alumno.id in existentes:
+            continue
+        estado = "AUSENTE" if i % 4 == 0 else "PRESENTE"  # mayoría presentes
+        db.add(
+            Asistencia(
+                org_id=org_id,
+                sesion_id=sesion.id,
+                alumno_id=alumno.id,
+                estado=estado,
+                registrado_por=registrado_por,
+            )
+        )
+        marcas += 1
+    db.flush()
+    return {"sesiones": sesiones_creadas, "marcas": marcas}
+
+
 def seed() -> None:
     """Ejecuta el seed idempotente. Imprime un resumen."""
     db = SessionLocal()
@@ -371,13 +448,17 @@ def seed() -> None:
         db.flush()
         cob = _seed_cobranza(db, org_id)
 
+        # 8) Asistencia: 1 sesión de ejemplo con marcas (historial con datos).
+        asis = _seed_asistencia(db, org_id)
+
         db.commit()
         print(
             f"Seed OK: org='{ORG_NOMBRE}' ({org_id}), admin={ADMIN_EMAIL}/{ADMIN_PASS}, "
             f"entrenador={COACH_EMAIL}/{COACH_PASS}, sucursales=2, "
             f"alumnos nuevos={created} (de {len(_ALUMNOS)}). "
             f"Cobranza: cuotas_creadas={cob['creadas']}, vencidas={cob['vencidas']}, "
-            f"pagadas={cob['pagadas']}."
+            f"pagadas={cob['pagadas']}. "
+            f"Asistencia: sesiones_creadas={asis['sesiones']}, marcas={asis['marcas']}."
         )
     except Exception:
         db.rollback()

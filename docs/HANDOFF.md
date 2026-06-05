@@ -4,7 +4,7 @@
 > cada epic**. Máx ~150 líneas; poda lo viejo. Esto NO es un changelog — es un snapshot
 > de "cómo está el mundo hoy".
 
-_Última actualización: 2026-06-05 — epic **Cobranza** construido y verificado E2E (sobre scaffolding+Alumnos)._
+_Última actualización: 2026-06-05 — epic **Asistencia** construido y verificado E2E (3er epic)._
 
 ## Stack snapshot
 
@@ -16,17 +16,19 @@ _Última actualización: 2026-06-05 — epic **Cobranza** construido y verificad
 - **Infra:** Docker / docker-compose / CI → `infra/`
 - **Integraciones:** OpenBCB (QR), WhatsApp, PDF, SIN (fase 2) — detrás de puertos/adaptadores.
 
-**Estado actual:** dos epics entregados y verificados E2E:
+**Estado actual:** tres epics entregados y verificados E2E:
 1. **scaffolding + Alumnos**: login, lista, perfil (tabs + ficha médica por rol), RLS activa.
 2. **Cobranza**: motor de cuotas (FIJO/ANIVERSARIO), pago **efectivo** y **QR** (sandbox
    OpenBCB) con **webhook idempotente** + cola `conciliacion_pendiente`, **comprobante PDF**,
-   cron diario (Celery beat), y **Panel de cobranza** (KPIs + morosidad) + modal Registrar pago
-   (QR en vivo). Probado en navegador: generar QR → "Esperando pago…" → simular → "Pago
-   confirmado" → PDF; KPIs se actualizan en vivo.
+   cron diario (Celery beat), **Panel de cobranza** (KPIs + morosidad) + Registrar pago (QR vivo).
+3. **Asistencia**: tablas `sesion`/`asistencia`, API (categorías por rol, roster get-or-create,
+   guardar **idempotente** por `(sesion_id,alumno_id)`, historial), y pantalla **Tomar asistencia**
+   (toggles Presente/Ausente, contadores en vivo, Guardar, mobile-first). Entrenador ve solo sus
+   sucursales. Probado en navegador + API: marcar → guardar → recargar refleja.
 
-Próximos epics candidatos (SRS): **Asistencia** (entrenador), **Muro de avisos**, **Egresos**,
-**Reportes**, y fase 2 (chatbot WhatsApp, portal tutor passwordless, facturación SIN,
-**OpenBCB real** cuando haya onboarding BCB).
+Próximos epics candidatos (SRS): **Muro de avisos** (RF-COM-01), **Egresos** (RF-FIN-07),
+**Reportes** (ingresos/asistencia, RF-COM-02/03), y fase 2 (chatbot WhatsApp, portal tutor
+passwordless, facturación SIN, **OpenBCB real** cuando haya onboarding BCB).
 
 ## Active flags / config
 
@@ -64,9 +66,10 @@ coach1234` (ENTRENADOR). Org: `Academia Andina` (BO/BOB), 2 sucursales, 8 alumno
 
 ## In-flight work
 
-**none** — epic Cobranza cerrado (commit que borra `docs/specs/cobranza.md` + push a GitHub).
-Repo git en `main`, remoto `imertetsu/sport-school` (push vía `http.sslBackend=schannel` por
-el proxy TLS corporativo). Al abrir el próximo epic, `product-owner` crea `docs/specs/<epic>.md`.
+**none** — epic Asistencia cerrado (commit que borra `docs/specs/asistencia.md` + push). Repo git
+en `main`, remoto `imertetsu/sport-school` (push vía `http.sslBackend=schannel` por el proxy TLS
+corporativo). Migraciones aplicadas: 0001→0004. Al abrir el próximo epic, `product-owner` crea
+`docs/specs/<epic>.md`.
 
 ## Recent decisions
 
@@ -97,6 +100,12 @@ el proxy TLS corporativo). Al abrir el próximo epic, `product-owner` crea `docs
     en `RegistrarPago.tsx` (crasheaba la app al "Generar QR").
 - Decisión (agente): OpenBCB en **sandbox** (genera QR + endpoint `simular-confirmacion`);
   integración real pendiente de onboarding BCB (SRS §10.3). `prorratea_primer_periodo` del seed = true.
+- **2026-06-05 Epic Asistencia** (3 agentes: db/backend/frontend; sin infra). Migración 0004
+  (`sesion`/`asistencia`, RLS con patrón NULLIF). Scoping ENTRENADOR por **sucursal** (categoría
+  fina = futuro). Default UI = **todos Presente al abrir** (móvil: solo tocas ausentes); backend
+  devuelve `estado=null` para no marcados y deja la UX al frontend.
+  **Fix (main):** un test de asistencia accedía `sesion.id` fuera de la `Session` (DetachedInstanceError
+  por `expire_on_commit`) → capturar el id antes del commit + reforzado con re-chequeo de no-duplicación.
 - Multi-tenancy = **RLS por `org_id`** (no negociable, SRS §4.1 / RNF-01).
 - Cobranza/factura/notificación = **puertos + adaptadores** (SRS §4.2/§4.3); el núcleo no importa lo concreto.
 - Idempotencia de webhooks por `transaccion_id` único (no negociable, RNF-05).

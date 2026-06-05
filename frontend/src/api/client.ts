@@ -10,15 +10,19 @@ import type {
   AlumnoDetail,
   AlumnosListResponse,
   Categoria,
+  CategoriaAsistencia,
   CuotasListResponse,
   EstadoCuota,
   GenerarCuotasResponse,
+  GuardarBody,
   LoginRequest,
   PagoOut,
   PanelCobranza,
   QrResponse,
   RegistrarPagoEfectivoBody,
   RegistrarPagoQrBody,
+  RosterOut,
+  SesionesListResponse,
   Sucursal,
   TokenOut,
   UserOut,
@@ -252,6 +256,38 @@ export const api = {
   simularConfirmacionQr(id: string, signal?: AbortSignal): Promise<PagoOut> {
     return request<PagoOut>(`/cobranza/pagos/qr/${id}/simular-confirmacion`, {
       method: 'POST',
+      signal,
+    });
+  },
+
+  // ---- Asistencia (C2) ----
+  // GET /asistencia/categorias -> categorías visibles por rol.
+  asistenciaCategorias(signal?: AbortSignal): Promise<CategoriaAsistencia[]> {
+    return request<CategoriaAsistencia[]>('/asistencia/categorias', { signal });
+  },
+  // GET /asistencia/roster?categoria_id=&fecha= -> roster (get-or-create lógico).
+  asistenciaRoster(
+    categoriaId: string,
+    fecha: string,
+    signal?: AbortSignal,
+  ): Promise<RosterOut> {
+    return request<RosterOut>('/asistencia/roster', {
+      query: { categoria_id: categoriaId, fecha },
+      signal,
+    });
+  },
+  // POST /asistencia/guardar -> idempotente; devuelve el roster guardado.
+  asistenciaGuardar(body: GuardarBody, signal?: AbortSignal): Promise<RosterOut> {
+    return request<RosterOut>('/asistencia/guardar', { method: 'POST', body, signal });
+  },
+  // GET /asistencia/sesiones?categoria_id=&page=&page_size= -> historial.
+  asistenciaSesiones(
+    categoriaId: string,
+    params: { page?: number; page_size?: number } = {},
+    signal?: AbortSignal,
+  ): Promise<SesionesListResponse> {
+    return request<SesionesListResponse>('/asistencia/sesiones', {
+      query: { categoria_id: categoriaId, ...params },
       signal,
     });
   },

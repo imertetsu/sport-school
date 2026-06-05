@@ -8,6 +8,7 @@ import { AlumnoPerfil } from '@/features/alumnos/AlumnoPerfil';
 import { NuevoAlumno } from '@/features/alumnos/NuevoAlumno';
 import { PanelCobranza } from '@/features/cobranza/PanelCobranza';
 import { PagosHistorial } from '@/features/cobranza/PagosHistorial';
+import { TomarAsistencia } from '@/features/asistencia/TomarAsistencia';
 
 export default function App() {
   return (
@@ -28,6 +29,7 @@ export default function App() {
             <Route path="/alumnos" element={<AlumnosList />} />
             <Route path="/alumnos/nuevo" element={<NuevoAlumno />} />
             <Route path="/alumnos/:id" element={<AlumnoPerfil />} />
+            <Route path="/asistencia" element={<TomarAsistencia />} />
           </Route>
           <Route path="*" element={<Navigate to="/panel" replace />} />
         </Routes>

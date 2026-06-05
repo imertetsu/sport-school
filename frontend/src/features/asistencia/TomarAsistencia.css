@@ -1,0 +1,210 @@
+/* Tomar asistencia — pantalla mobile-first (design-system §4 "Asistencia").
+   Toggles Presente/Ausente, contadores en vivo y Guardar. Reusa tokens. */
+
+.asistencia {
+  display: flex;
+  flex-direction: column;
+  /* margen inferior para que la barra fija de Guardar no tape la última fila */
+  padding-bottom: var(--space-12);
+}
+
+/* --- Cabecera de página (page-head/page-error son globales) --- */
+
+/* --- Selectores categoría + fecha --- */
+.asistencia__filtros {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+@media (max-width: 560px) {
+  .asistencia__filtros {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* --- Barra de contadores en vivo --- */
+.asistencia__resumen {
+  display: flex;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.contador {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-2);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  text-align: center;
+}
+
+.contador__valor {
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-2xl);
+  font-weight: 700;
+  line-height: 1;
+}
+
+.contador__label {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-text-muted);
+}
+
+.contador--presentes .contador__valor {
+  color: var(--state-paid-text);
+}
+
+.contador--ausentes .contador__valor {
+  color: var(--state-overdue-text);
+}
+
+/* --- Lista de alumnos --- */
+.roster {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.roster__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.roster__row:last-child {
+  border-bottom: none;
+}
+
+.roster__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.roster__name {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.roster__meta {
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* --- Toggle Presente/Ausente (verde/rojo, estilo badge) --- */
+.toggle-asistencia {
+  display: inline-flex;
+  flex-shrink: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-2);
+  padding: 2px;
+  gap: 2px;
+}
+
+.toggle-asistencia__btn {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--color-text-muted);
+  border-radius: var(--radius-pill);
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.toggle-asistencia__btn:hover:not([aria-pressed='true']) {
+  color: var(--color-text);
+}
+
+.toggle-asistencia__btn--presente[aria-pressed='true'] {
+  background: var(--state-paid-bg);
+  border-color: var(--state-paid-border);
+  color: var(--state-paid-text);
+}
+
+.toggle-asistencia__btn--ausente[aria-pressed='true'] {
+  background: var(--state-overdue-bg);
+  border-color: var(--state-overdue-border);
+  color: var(--state-overdue-text);
+}
+
+.roster__empty,
+.roster__loading {
+  margin: 0;
+  padding: var(--space-6) var(--space-4);
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: var(--fs-sm);
+}
+
+/* --- Barra de acción fija (Guardar) --- */
+.asistencia__bar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+
+.asistencia__bar-info {
+  font-size: var(--fs-sm);
+  color: var(--color-text-muted);
+}
+
+.asistencia__feedback {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.asistencia__feedback--ok {
+  color: var(--state-paid-text);
+}
+
+.asistencia__feedback--error {
+  color: var(--color-danger);
+}
+
+.asistencia__bar .btn {
+  flex-shrink: 0;
+}
+
+@media (max-width: 480px) {
+  .asistencia__bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .asistencia__bar .btn {
+    width: 100%;
+  }
+}

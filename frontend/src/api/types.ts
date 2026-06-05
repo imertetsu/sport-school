@@ -288,3 +288,76 @@ export interface QrResponse {
 export interface GenerarCuotasResponse {
   creadas: number;
 }
+
+// ============================================================
+// C2: Asistencia (espejo EXACTO de los contratos del epic Asistencia)
+// No inventar campos. Si falta algo, es hand-off a backend-dev.
+// ============================================================
+
+export type EstadoAsistencia = 'PRESENTE' | 'AUSENTE';
+
+// --- GET /asistencia/categorias -> categorías visibles por rol ---
+// [{id, nombre, nivel, sucursal:{id,nombre}, total_alumnos}]
+export interface CategoriaAsistencia {
+  id: string;
+  nombre: string;
+  nivel: Nivel;
+  sucursal: SucursalRef;
+  total_alumnos: number;
+}
+
+// --- GET /asistencia/roster?categoria_id=&fecha=YYYY-MM-DD ---
+// item por alumno; estado=null si aún no hay sesión guardada.
+export interface RosterItem {
+  alumno_id: string;
+  nombre_completo: string;
+  estado: EstadoAsistencia | null;
+}
+
+export interface RosterCategoriaRef {
+  id: string;
+  nombre: string;
+}
+
+export interface RosterResumen {
+  presentes: number;
+  ausentes: number;
+  total: number;
+}
+
+// {sesion_id|null, categoria:{id,nombre}, fecha, items:[...], resumen:{...}}
+export interface RosterOut {
+  sesion_id: string | null;
+  categoria: RosterCategoriaRef;
+  fecha: string; // date YYYY-MM-DD
+  items: RosterItem[];
+  resumen: RosterResumen;
+}
+
+// --- POST /asistencia/guardar (body) ---
+// {categoria_id, fecha, hora?, marcas:[{alumno_id, estado}]} -> idempotente.
+// Devuelve el roster guardado (RosterOut).
+export interface MarcaAsistencia {
+  alumno_id: string;
+  estado: EstadoAsistencia;
+}
+
+export interface GuardarBody {
+  categoria_id: string;
+  fecha: string; // date YYYY-MM-DD
+  hora?: string | null; // time HH:MM, opcional
+  marcas: MarcaAsistencia[];
+}
+
+// --- GET /asistencia/sesiones?categoria_id=&page=&page_size= -> historial ---
+// {items:[{id, fecha, hora, presentes, ausentes, total}], total, page, page_size}
+export interface SesionHistorialItem {
+  id: string;
+  fecha: string; // date
+  hora: string | null; // time HH:MM o null
+  presentes: number;
+  ausentes: number;
+  total: number;
+}
+
+export type SesionesListResponse = Paginated<SesionHistorialItem>;

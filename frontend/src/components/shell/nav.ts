@@ -21,7 +21,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { id: 'panel', label: 'Panel', icon: '◧', to: '/panel', enabled: true }, // Panel de cobranza
       { id: 'alumnos', label: 'Alumnos', icon: '◉', to: '/alumnos', enabled: true },
       { id: 'pagos', label: 'Pagos', icon: '＄', to: '/pagos', enabled: true },
-      { id: 'asistencia', label: 'Asistencia', icon: '✓', enabled: false },
+      { id: 'asistencia', label: 'Asistencia', icon: '✓', to: '/asistencia', enabled: true },
     ],
   },
   {
