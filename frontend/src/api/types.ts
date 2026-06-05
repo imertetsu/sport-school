@@ -467,3 +467,52 @@ export interface AsistenciaReporte {
   global: AsistenciaGlobal;
   por_categoria: AsistenciaPorCategoria[];
 }
+
+// ============================================================
+// C2: Muro de avisos (espejo EXACTO del contrato C2 del epic Muro).
+// Feed scoped por rol en el backend (ADMIN ve todo; ENTRENADOR solo lo que
+// le aplica y no vencido). Escritura solo ADMIN (POST/PUT/DELETE soft). No
+// inventar campos: si falta algo, es hand-off a backend-dev.
+// ============================================================
+
+// Alcance del aviso. Invariante (la valida el backend, 422):
+//  SUCURSAL ⇒ sucursal_id no nulo; CATEGORIA ⇒ categoria_id no nulo;
+//  ORG ⇒ ambos nulos.
+export type AlcanceAviso = 'ORG' | 'SUCURSAL' | 'CATEGORIA';
+
+// --- GET /avisos -> item del feed ---
+// {id, titulo, cuerpo, alcance, sucursal:{id,nombre}|null,
+//  categoria:{id,nombre}|null, publicado_en, vigente_hasta,
+//  creado_por_nombre|null, expirado:bool}
+export interface AvisoOut {
+  id: string;
+  titulo: string;
+  cuerpo: string;
+  alcance: AlcanceAviso;
+  sucursal: SucursalRef | null; // {id, nombre} si alcance=SUCURSAL
+  categoria: CategoriaRef | null; // {id, nombre, nivel} si alcance=CATEGORIA
+  publicado_en: string; // timestamptz
+  vigente_hasta: string | null; // date; null = sin caducidad
+  creado_por_nombre: string | null;
+  expirado: boolean;
+}
+
+// Alias semántico para el item del muro (mismo shape que AvisoOut).
+export type Aviso = AvisoOut;
+
+// GET /avisos -> {items, total, page, page_size}. Orden: publicado_en desc.
+export type AvisosPage = Paginated<AvisoOut>;
+
+// --- POST/PUT /avisos (body) ---
+// creado_por lo fija el backend desde el token (auditoría RNF-03).
+export interface AvisoCreate {
+  titulo: string;
+  cuerpo: string;
+  alcance: AlcanceAviso;
+  sucursal_id?: string | null; // requerido si alcance=SUCURSAL (422 si falta)
+  categoria_id?: string | null; // requerido si alcance=CATEGORIA (422 si falta)
+  vigente_hasta?: string | null; // YYYY-MM-DD opcional; null = sin caducidad
+}
+
+// POST/PUT /avisos devuelven el aviso (mismo shape que un item del feed).
+export type AvisoCreated = AvisoOut;

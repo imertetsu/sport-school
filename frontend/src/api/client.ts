@@ -10,6 +10,9 @@ import type {
   AlumnoDetail,
   AlumnosListResponse,
   AsistenciaReporte,
+  AvisoCreate,
+  AvisoCreated,
+  AvisosPage,
   Categoria,
   CategoriaAsistencia,
   CuotasListResponse,
@@ -324,6 +327,36 @@ export const api = {
       signal,
     });
   },
+  // ---- Muro de avisos (C2) ----
+  // GET /avisos?incluir_expirados=&page=&page_size= -> feed scoped por rol.
+  // ADMIN ve todos los activos (los vencidos solo si incluir_expirados=true);
+  // ENTRENADOR ve los activos no vencidos que le aplican. Orden publicado_en desc.
+  avisos(
+    params: { incluirExpirados?: boolean; page?: number; page_size?: number } = {},
+    signal?: AbortSignal,
+  ): Promise<AvisosPage> {
+    return request<AvisosPage>('/avisos', {
+      query: {
+        incluir_expirados: params.incluirExpirados ? 'true' : undefined,
+        page: params.page,
+        page_size: params.page_size,
+      },
+      signal,
+    });
+  },
+  // POST /avisos (ADMIN) -> crea el aviso (creado_por lo fija el token) y lo devuelve.
+  crearAviso(body: AvisoCreate, signal?: AbortSignal): Promise<AvisoCreated> {
+    return request<AvisoCreated>('/avisos', { method: 'POST', body, signal });
+  },
+  // PUT /avisos/{id} (ADMIN) -> edita el aviso (misma validación de invariante).
+  actualizarAviso(id: string, body: AvisoCreate, signal?: AbortSignal): Promise<AvisoCreated> {
+    return request<AvisoCreated>(`/avisos/${id}`, { method: 'PUT', body, signal });
+  },
+  // DELETE /avisos/{id} (ADMIN) -> soft-delete (activo=false), responde 204.
+  eliminarAviso(id: string, signal?: AbortSignal): Promise<void> {
+    return request<void>(`/avisos/${id}`, { method: 'DELETE', signal });
+  },
+
   // GET /reportes/asistencia?desde=&hasta=&sucursal_id=&categoria_id=
   // -> % global + desglose por categoría.
   reportesAsistencia(

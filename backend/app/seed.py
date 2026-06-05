@@ -22,7 +22,7 @@ con `MIGRATION_DATABASE_URL` (rol owner) exportado como `DATABASE_URL`.
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 from sqlalchemy import select, text
@@ -33,6 +33,7 @@ from app.core.security import hash_password
 from app.models.alumno import Alumno
 from app.models.alumno_tutor import AlumnoTutor
 from app.models.asistencia import Asistencia
+from app.models.aviso import Aviso
 from app.models.categoria import Categoria
 from app.models.consentimiento import Consentimiento
 from app.models.cuota import Cuota
@@ -359,6 +360,66 @@ def _seed_egresos(db: Session, org_id: uuid.UUID) -> dict[str, int]:
     return {"egresos": creados}
 
 
+def _seed_avisos(db: Session, org_id: uuid.UUID) -> dict[str, int]:
+    """Crea 1-2 avisos de ejemplo para el muro (uno ORG, uno SUCURSAL Centro).
+
+    Idempotente por clave natural (org + titulo). `creado_por` = ADMIN. El de
+    alcance ORG no caduca; el de SUCURSAL caduca en 30 días (vigencia de ejemplo).
+    """
+    admin = db.execute(select(Usuario).where(Usuario.email == ADMIN_EMAIL)).scalar_one_or_none()
+    creado_por = admin.id if admin else None
+    centro = db.execute(
+        select(Sucursal).where(Sucursal.org_id == org_id, Sucursal.nombre == "Centro")
+    ).scalar_one_or_none()
+
+    # (titulo, cuerpo, alcance, sucursal_id, vigente_hasta)
+    ejemplos: list[tuple[str, str, str, uuid.UUID | None, date | None]] = [
+        (
+            "Bienvenidos a la temporada",
+            "¡Arrancamos una nueva temporada! Revisen sus horarios y mantengan al día "
+            "sus cuotas. Cualquier cambio de clima o cancelación se publicará aquí.",
+            "ORG",
+            None,
+            None,
+        )
+    ]
+    if centro is not None:
+        ejemplos.append(
+            (
+                "Mantenimiento de cancha - Centro",
+                "La cancha de la sucursal Centro estará en mantenimiento este fin de "
+                "semana. Los entrenamientos se reprograman; consulten con su entrenador.",
+                "SUCURSAL",
+                centro.id,
+                date.today() + timedelta(days=30),
+            )
+        )
+
+    creados = 0
+    for titulo, cuerpo, alcance, sucursal_id, vigente_hasta in ejemplos:
+        existente = db.execute(
+            select(Aviso.id).where(Aviso.org_id == org_id, Aviso.titulo == titulo)
+        ).first()
+        if existente is not None:
+            continue
+        db.add(
+            Aviso(
+                org_id=org_id,
+                titulo=titulo,
+                cuerpo=cuerpo,
+                alcance=alcance,
+                sucursal_id=sucursal_id,
+                categoria_id=None,
+                vigente_hasta=vigente_hasta,
+                creado_por=creado_por,
+                activo=True,
+            )
+        )
+        creados += 1
+    db.flush()
+    return {"avisos": creados}
+
+
 def seed() -> None:
     """Ejecuta el seed idempotente. Imprime un resumen."""
     db = SessionLocal()
@@ -503,6 +564,9 @@ def seed() -> None:
         # 9) Egresos: 2-3 gastos de ejemplo (panel financiero con salidas).
         egr = _seed_egresos(db, org_id)
 
+        # 10) Avisos: 1-2 avisos de ejemplo para el muro (ORG + SUCURSAL).
+        avs = _seed_avisos(db, org_id)
+
         db.commit()
         print(
             f"Seed OK: org='{ORG_NOMBRE}' ({org_id}), admin={ADMIN_EMAIL}/{ADMIN_PASS}, "
@@ -511,7 +575,8 @@ def seed() -> None:
             f"Cobranza: cuotas_creadas={cob['creadas']}, vencidas={cob['vencidas']}, "
             f"pagadas={cob['pagadas']}. "
             f"Asistencia: sesiones_creadas={asis['sesiones']}, marcas={asis['marcas']}. "
-            f"Egresos: creados={egr['egresos']}."
+            f"Egresos: creados={egr['egresos']}. "
+            f"Avisos: creados={avs['avisos']}."
         )
     except Exception:
         db.rollback()

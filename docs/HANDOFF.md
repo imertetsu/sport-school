@@ -4,7 +4,7 @@
 > cada epic**. Máx ~150 líneas; poda lo viejo. Esto NO es un changelog — es un snapshot
 > de "cómo está el mundo hoy".
 
-_Última actualización: 2026-06-06 — epics **Reportes** (4º) y **Egresos** (5º) entregados y verificados E2E; `epic/egresos` mergeado a main._
+_Última actualización: 2026-06-06 — **MVP fase 1 COMPLETO** (6 epics). Cierra con **Muro de avisos** (6º)._
 
 ## Stack snapshot
 
@@ -16,7 +16,7 @@ _Última actualización: 2026-06-06 — epics **Reportes** (4º) y **Egresos** (
 - **Infra:** Docker / docker-compose / CI → `infra/`
 - **Integraciones:** OpenBCB (QR), WhatsApp, PDF, SIN (fase 2) — detrás de puertos/adaptadores.
 
-**Estado actual:** cinco epics entregados y verificados E2E:
+**Estado actual:** **MVP fase 1 COMPLETO** — seis epics entregados y verificados E2E:
 1. **scaffolding + Alumnos**: login, lista, perfil (tabs + ficha médica por rol), RLS activa.
 2. **Cobranza**: motor de cuotas (FIJO/ANIVERSARIO), pago **efectivo** y **QR** (sandbox
    OpenBCB) con **webhook idempotente** + cola `conciliacion_pendiente`, **comprobante PDF**,
@@ -33,9 +33,16 @@ _Última actualización: 2026-06-06 — epics **Reportes** (4º) y **Egresos** (
    `/egresos` **solo ADMIN** (listar con filtros sucursal/categoría/fechas + `total_monto` del
    filtro, alta auditada con `registrado_por`), y pantalla **Egresos** (lista + filtros + total
    Bs + alta, gateada a ADMIN). Verificado API + navegador.
+6. **Muro de avisos** (RF-COM-01): tabla `aviso` (tenant, RLS NULLIF) + migración `0006`; API
+   `/avisos` (feed scoped por rol: ADMIN todo, ENTRENADOR ORG + sus sucursales/categorías, sin
+   vencidos), CRUD **solo ADMIN** con **soft-delete** (`activo=false`) e invariante alcance↔id
+   (422), y pantalla **Avisos** (muro de tarjetas + alta/edición ADMIN, toggle "mostrar vencidos").
+   Verificado API + navegador (UTF-8/emoji OK).
 
-Próximos epics candidatos (SRS): **Muro de avisos** (RF-COM-01) y fase 2 (chatbot WhatsApp, portal tutor
-passwordless, facturación SIN, **OpenBCB real** cuando haya onboarding BCB).
+Próximos candidatos: **endurecer deploy** (docker `up --build`, CI, secretos prod) y **fase 2**
+(auto-registro tutor, portal passwordless OTP/WhatsApp, chatbot cobros, factura SIN, **OpenBCB real**
+con onboarding BCB). Fase 3: rendimiento, voz, analítica. Deuda menor: cosmético categoría duplicada,
+`JUSTIFICADO` en asistencia, gating fino por categoría, podar este HANDOFF.
 
 ## Active flags / config
 
@@ -73,16 +80,18 @@ coach1234` (ENTRENADOR). Org: `Academia Andina` (BO/BOB), 2 sucursales, 8 alumno
 
 ## In-flight work
 
-**none** — epics **Reportes** y **Egresos** cerrados y **mergeados a `main`** (Egresos vía rama
-`epic/egresos`; ambas specs efímeras borradas en sus commits de cierre). La unificación de merge
-adoptó el gateo por rol de Reportes para ambos (`nav.ts` usa `roles?: Role[]` + `navGroupsForRole`;
-las rutas usan `RoleRoute allow={['ADMIN']}`; se eliminó el `EgresosRoute` bespoke). Migraciones en
-`main`: 0001→0005 (Egresos = `0005`; Reportes sin migración). Remoto `imertetsu/sport-school` (push
-vía `http.sslBackend=schannel` por el proxy TLS corporativo). Al abrir el próximo epic, `product-owner`
-crea `docs/specs/<epic>.md`.
+**none — MVP fase 1 completo.** Los 6 epics están en `main`. Migraciones `0001→0006` (Egresos=0005,
+Muro=0006; Reportes sin migración). Patrón de gateo por rol unificado: `nav.ts` usa `roles?: Role[]`
++ `navGroupsForRole`; rutas solo-ADMIN usan `RoleRoute allow={['ADMIN']}`. Remoto
+`imertetsu/sport-school` (push vía `http.sslBackend=schannel` por el proxy TLS). Al abrir el próximo
+epic, `product-owner` crea `docs/specs/<epic>.md`.
 
 ## Recent decisions
 
+- **2026-06-06 Epic Muro de avisos** (cierra el MVP). Tabla `aviso` + migración 0006 (RLS NULLIF).
+  Feed scoped por rol; CRUD ADMIN con **soft-delete** (`activo=false`, sin borrado físico) e
+  invariante alcance↔id validada en backend (422). Item "Avisos" visible a ambos roles (el feed
+  filtra). Verificado E2E (incl. UTF-8/acentos/emoji — el `400` en curl era artefacto del shell Windows).
 - **2026-06-06 Epic Egresos** construido en **paralelo** con Reportes (sesiones separadas).
   Aislamiento: rama `epic/egresos` en un **git worktree** hermano + stack docker propio
   (`-p cantera_egresos`, db 5435 / redis 6380, API 8011 / web 5181). **Lección:** una rama NO

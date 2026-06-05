@@ -10,6 +10,7 @@ from __future__ import annotations
 from app.models.alumno import Alumno
 from app.models.alumno_tutor import AlumnoTutor
 from app.models.asistencia import Asistencia
+from app.models.aviso import Aviso
 from app.models.base import Base
 from app.models.categoria import Categoria
 from app.models.conciliacion_pendiente import ConciliacionPendiente
@@ -45,4 +46,5 @@ __all__ = [
     "Sesion",
     "Asistencia",
     "Egreso",
+    "Aviso",
 ]

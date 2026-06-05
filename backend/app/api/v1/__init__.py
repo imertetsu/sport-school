@@ -8,6 +8,7 @@ from app.api.v1 import (
     alumnos,
     asistencia,
     auth,
+    avisos,
     categorias,
     cobranza,
     egresos,
@@ -25,4 +26,5 @@ api_router.include_router(cobranza.router)
 api_router.include_router(asistencia.router)
 api_router.include_router(egresos.router)
 api_router.include_router(reportes.router)
+api_router.include_router(avisos.router)
 api_router.include_router(openbcb_webhook.router)

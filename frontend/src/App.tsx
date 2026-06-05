@@ -9,6 +9,7 @@ import { NuevoAlumno } from '@/features/alumnos/NuevoAlumno';
 import { PanelCobranza } from '@/features/cobranza/PanelCobranza';
 import { PagosHistorial } from '@/features/cobranza/PagosHistorial';
 import { TomarAsistencia } from '@/features/asistencia/TomarAsistencia';
+import { Muro } from '@/features/avisos/Muro';
 import { Egresos } from '@/features/egresos/Egresos';
 import { Reportes } from '@/features/reportes/Reportes';
 import { NoAutorizado } from '@/features/reportes/NoAutorizado';
@@ -33,6 +34,10 @@ export default function App() {
             <Route path="/alumnos/nuevo" element={<NuevoAlumno />} />
             <Route path="/alumnos/:id" element={<AlumnoPerfil />} />
             <Route path="/asistencia" element={<TomarAsistencia />} />
+            {/* Muro de avisos: visible a ADMIN y ENTRENADOR (sin gate de rol).
+                El feed lo filtra el backend; las acciones de escritura solo
+                las muestra la UI a ADMIN y el backend las exige (require_role). */}
+            <Route path="/avisos" element={<Muro />} />
             {/* Egresos (financiero) y Reportes (gerencial): gate de rol ADMIN. */}
             <Route
               path="/egresos"
