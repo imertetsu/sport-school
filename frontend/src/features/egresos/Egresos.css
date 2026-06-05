@@ -1,0 +1,134 @@
+.egresos {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Barra de filtros */
+.egresos__filtros {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-3);
+  align-items: end;
+  margin-bottom: var(--space-4);
+}
+
+.egresos__filtros-acciones {
+  display: flex;
+  align-items: end;
+}
+
+@media (max-width: 900px) {
+  .egresos__filtros {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 520px) {
+  .egresos__filtros {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Resumen del total (vía total_monto de la respuesta, no recalculado) */
+.egresos__total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.egresos__total-label {
+  font-size: var(--fs-sm);
+  color: var(--color-text-muted);
+}
+
+.egresos__total-monto {
+  font-size: var(--fs-xl);
+  font-weight: 700;
+}
+
+.egresos__total-meta {
+  font-size: var(--fs-xs);
+  color: var(--color-text-subtle);
+}
+
+/* Celda de categoría en la tabla */
+.egreso-cell {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.egreso-cell__cat {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.egreso-cell__desc {
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.egreso-cell__muted {
+  color: var(--color-text-subtle);
+}
+
+/* Paginación */
+.egresos__pager {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  font-size: var(--fs-sm);
+  color: var(--color-text-muted);
+}
+
+/* --- Modal de alta --- */
+.egresos__modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: var(--space-6) var(--space-4);
+  overflow-y: auto;
+  z-index: 50;
+}
+
+.egresos__modal {
+  width: 100%;
+  max-width: 520px;
+  margin-top: var(--space-6);
+}
+
+.egresos__modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.egresos__modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  padding-top: var(--space-2);
+}
+
+.egresos__form-ok {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-soft-border);
+  color: var(--accent-text);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}

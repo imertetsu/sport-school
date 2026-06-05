@@ -361,3 +361,57 @@ export interface SesionHistorialItem {
 }
 
 export type SesionesListResponse = Paginated<SesionHistorialItem>;
+
+// ============================================================
+// Egresos (espejo EXACTO del contrato C2 del epic Egresos).
+// SOLO ADMIN (el backend responde 403 a ENTRENADOR). No inventar
+// campos: si falta algo, es hand-off a backend-dev.
+// ============================================================
+
+// --- GET /egresos -> item de lista ---
+// {id, fecha, categoria_gasto, monto, sucursal:{id,nombre}|null,
+//  descripcion|null, registrado_por_nombre|null}
+export interface EgresoItem {
+  id: string;
+  fecha: string; // date YYYY-MM-DD
+  categoria_gasto: string;
+  monto: string; // numeric(10,2) serializado como string
+  sucursal: SucursalRef | null; // null = gasto a nivel organización
+  descripcion: string | null;
+  registrado_por_nombre: string | null;
+}
+
+// GET /egresos: página + total_monto (suma de TODOS los egresos que
+// matchean el filtro, NO solo la página).
+export interface EgresosPage extends Paginated<EgresoItem> {
+  total_monto: string; // numeric(10,2) serializado como string
+}
+
+// Filtros de GET /egresos (todos opcionales y combinables).
+export interface EgresosFilters {
+  sucursal_id?: string;
+  categoria?: string; // match exacto de categoria_gasto
+  desde?: string; // YYYY-MM-DD
+  hasta?: string; // YYYY-MM-DD
+  page?: number;
+  page_size?: number;
+}
+
+// --- POST /egresos (body) ---
+// registrado_por lo fija el backend desde el token (auditoría RNF-03).
+export interface EgresoCreate {
+  sucursal_id?: string | null; // null/omitido = gasto a nivel org
+  categoria_gasto: string;
+  monto: string; // numeric > 0 (el backend valida; 422 si <= 0)
+  fecha: string; // YYYY-MM-DD
+  descripcion?: string | null;
+}
+
+// POST /egresos devuelve el egreso creado (mismo shape que un item).
+export type EgresoCreated = EgresoItem;
+
+// --- GET /egresos/resumen (opcional) -> agrupado por categoría ---
+export interface EgresoResumenItem {
+  categoria_gasto: string;
+  total: string; // numeric(10,2) serializado como string
+}

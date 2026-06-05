@@ -9,6 +9,7 @@ import { NuevoAlumno } from '@/features/alumnos/NuevoAlumno';
 import { PanelCobranza } from '@/features/cobranza/PanelCobranza';
 import { PagosHistorial } from '@/features/cobranza/PagosHistorial';
 import { TomarAsistencia } from '@/features/asistencia/TomarAsistencia';
+import { EgresosRoute } from '@/features/egresos/EgresosRoute';
 
 export default function App() {
   return (
@@ -30,6 +31,8 @@ export default function App() {
             <Route path="/alumnos/nuevo" element={<NuevoAlumno />} />
             <Route path="/alumnos/:id" element={<AlumnoPerfil />} />
             <Route path="/asistencia" element={<TomarAsistencia />} />
+            {/* Egresos: SOLO ADMIN (EgresosRoute redirige a /panel si no lo es). */}
+            <Route path="/egresos" element={<EgresosRoute />} />
           </Route>
           <Route path="*" element={<Navigate to="/panel" replace />} />
         </Routes>

@@ -36,6 +36,7 @@ from app.models.asistencia import Asistencia
 from app.models.categoria import Categoria
 from app.models.consentimiento import Consentimiento
 from app.models.cuota import Cuota
+from app.models.egreso import Egreso
 from app.models.entrenador import Entrenador
 from app.models.inscripcion import Inscripcion
 from app.models.organizacion import Organizacion
@@ -310,6 +311,54 @@ def _seed_asistencia(db: Session, org_id: uuid.UUID) -> dict[str, int]:
     return {"sesiones": sesiones_creadas, "marcas": marcas}
 
 
+def _seed_egresos(db: Session, org_id: uuid.UUID) -> dict[str, int]:
+    """Crea 2-3 egresos de ejemplo (estilo Bolivia, montos en Bs) para el panel.
+
+    Idempotente por clave natural (org + categoría + fecha + monto). `registrado_por`
+    = ADMIN. Variedad: uno a nivel org (sin sucursal) y otros atados a Centro, para
+    ejercitar el filtro por sucursal y el `sucursal: null`.
+    """
+    admin = db.execute(select(Usuario).where(Usuario.email == ADMIN_EMAIL)).scalar_one_or_none()
+    registrado_por = admin.id if admin else None
+    centro = db.execute(
+        select(Sucursal).where(Sucursal.org_id == org_id, Sucursal.nombre == "Centro")
+    ).scalar_one_or_none()
+    centro_id = centro.id if centro else None
+
+    fecha = date.today().replace(day=1)
+    ejemplos = [
+        ("Alquiler de cancha", Decimal("1500.00"), centro_id, "Cancha sintética (mes en curso)"),
+        ("Material deportivo", Decimal("800.00"), centro_id, "Balones y conos"),
+        ("Servicios (luz/agua)", Decimal("320.00"), None, "Servicios básicos - nivel organización"),
+    ]
+    creados = 0
+    for categoria, monto, suc_id, descripcion in ejemplos:
+        existente = db.execute(
+            select(Egreso.id).where(
+                Egreso.org_id == org_id,
+                Egreso.categoria_gasto == categoria,
+                Egreso.fecha == fecha,
+                Egreso.monto == monto,
+            )
+        ).first()
+        if existente is not None:
+            continue
+        db.add(
+            Egreso(
+                org_id=org_id,
+                sucursal_id=suc_id,
+                categoria_gasto=categoria,
+                monto=monto,
+                fecha=fecha,
+                descripcion=descripcion,
+                registrado_por=registrado_por,
+            )
+        )
+        creados += 1
+    db.flush()
+    return {"egresos": creados}
+
+
 def seed() -> None:
     """Ejecuta el seed idempotente. Imprime un resumen."""
     db = SessionLocal()
@@ -451,6 +500,9 @@ def seed() -> None:
         # 8) Asistencia: 1 sesión de ejemplo con marcas (historial con datos).
         asis = _seed_asistencia(db, org_id)
 
+        # 9) Egresos: 2-3 gastos de ejemplo (panel financiero con salidas).
+        egr = _seed_egresos(db, org_id)
+
         db.commit()
         print(
             f"Seed OK: org='{ORG_NOMBRE}' ({org_id}), admin={ADMIN_EMAIL}/{ADMIN_PASS}, "
@@ -458,7 +510,8 @@ def seed() -> None:
             f"alumnos nuevos={created} (de {len(_ALUMNOS)}). "
             f"Cobranza: cuotas_creadas={cob['creadas']}, vencidas={cob['vencidas']}, "
             f"pagadas={cob['pagadas']}. "
-            f"Asistencia: sesiones_creadas={asis['sesiones']}, marcas={asis['marcas']}."
+            f"Asistencia: sesiones_creadas={asis['sesiones']}, marcas={asis['marcas']}. "
+            f"Egresos: creados={egr['egresos']}."
         )
     except Exception:
         db.rollback()

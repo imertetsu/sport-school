@@ -15,6 +15,7 @@ from app.models.categoria import Categoria
 from app.models.conciliacion_pendiente import ConciliacionPendiente
 from app.models.consentimiento import Consentimiento
 from app.models.cuota import Cuota
+from app.models.egreso import Egreso
 from app.models.entrenador import Entrenador
 from app.models.inscripcion import Inscripcion
 from app.models.organizacion import Organizacion
@@ -43,4 +44,5 @@ __all__ = [
     "ConciliacionPendiente",
     "Sesion",
     "Asistencia",
+    "Egreso",
 ]

@@ -4,7 +4,7 @@
 > cada epic**. Máx ~150 líneas; poda lo viejo. Esto NO es un changelog — es un snapshot
 > de "cómo está el mundo hoy".
 
-_Última actualización: 2026-06-05 — epic **Asistencia** construido y verificado E2E (3er epic)._
+_Última actualización: 2026-06-06 — epic **Egresos** construido y verificado E2E (4º epic), en rama `epic/egresos` (pendiente de merge a main)._
 
 ## Stack snapshot
 
@@ -16,7 +16,7 @@ _Última actualización: 2026-06-05 — epic **Asistencia** construido y verific
 - **Infra:** Docker / docker-compose / CI → `infra/`
 - **Integraciones:** OpenBCB (QR), WhatsApp, PDF, SIN (fase 2) — detrás de puertos/adaptadores.
 
-**Estado actual:** tres epics entregados y verificados E2E:
+**Estado actual:** cuatro epics entregados y verificados E2E:
 1. **scaffolding + Alumnos**: login, lista, perfil (tabs + ficha médica por rol), RLS activa.
 2. **Cobranza**: motor de cuotas (FIJO/ANIVERSARIO), pago **efectivo** y **QR** (sandbox
    OpenBCB) con **webhook idempotente** + cola `conciliacion_pendiente`, **comprobante PDF**,
@@ -25,8 +25,12 @@ _Última actualización: 2026-06-05 — epic **Asistencia** construido y verific
    guardar **idempotente** por `(sesion_id,alumno_id)`, historial), y pantalla **Tomar asistencia**
    (toggles Presente/Ausente, contadores en vivo, Guardar, mobile-first). Entrenador ve solo sus
    sucursales. Probado en navegador + API: marcar → guardar → recargar refleja.
+4. **Egresos** (RF-FIN-07): tabla `egreso` (tenant, RLS NULLIF) + migración `0005`; API
+   `/egresos` **solo ADMIN** (listar con filtros sucursal/categoría/fechas + `total_monto` del
+   filtro, alta auditada con `registrado_por`), y pantalla **Egresos** (lista + filtros + total
+   Bs + alta, gateada a ADMIN). Verificado API + navegador. En rama `epic/egresos` (pendiente merge).
 
-Próximos epics candidatos (SRS): **Muro de avisos** (RF-COM-01), **Egresos** (RF-FIN-07),
+Próximos epics candidatos (SRS): **Muro de avisos** (RF-COM-01),
 **Reportes** (ingresos/asistencia, RF-COM-02/03), y fase 2 (chatbot WhatsApp, portal tutor
 passwordless, facturación SIN, **OpenBCB real** cuando haya onboarding BCB).
 
@@ -66,13 +70,27 @@ coach1234` (ENTRENADOR). Org: `Academia Andina` (BO/BOB), 2 sucursales, 8 alumno
 
 ## In-flight work
 
-**none** — epic Asistencia cerrado (commit que borra `docs/specs/asistencia.md` + push). Repo git
-en `main`, remoto `imertetsu/sport-school` (push vía `http.sslBackend=schannel` por el proxy TLS
-corporativo). Migraciones aplicadas: 0001→0004. Al abrir el próximo epic, `product-owner` crea
-`docs/specs/<epic>.md`.
+**Egresos** entregado en rama `epic/egresos`, **pendiente de merge a main** por la sesión
+principal (su commit de cierre borra `docs/specs/egresos.md`). *(En paralelo se construyó
+**Reportes** en otra sesión/rama — su estado lo reporta esa sesión. Al mergear ambas ramas,
+**reconciliar los archivos compartidos**: `backend/app/api/v1/__init__.py`,
+`backend/app/models/__init__.py`, `backend/app/seed.py`, `frontend/src/App.tsx`,
+`frontend/src/components/shell/nav.ts` y `Sidebar.tsx`, `frontend/src/api/client.ts` y `types.ts`,
+y este HANDOFF — ambos epics hicieron edits append; Alembic: dos hijos de `0004` → posible merge
+de heads.)* Remoto `imertetsu/sport-school` (push vía `http.sslBackend=schannel` por el proxy TLS
+corporativo). Migraciones: 0001→0005 (egresos = `0005`). Al abrir el próximo epic, `product-owner`
+crea `docs/specs/<epic>.md`.
 
 ## Recent decisions
 
+- **2026-06-06 Epic Egresos** construido en **paralelo** con Reportes (sesiones separadas).
+  Aislamiento: rama `epic/egresos` en un **git worktree** hermano + stack docker propio
+  (`-p cantera_egresos`, db 5435 / redis 6380, API 8011 / web 5181). **Lección:** una rama NO
+  aísla el árbol de trabajo — dos sesiones en el mismo working dir se pisan; el worktree sí.
+  **Fix de integración (main, trust-but-verify):** `total_monto` de `/egresos` sumaba con
+  **producto cartesiano** (`SUM(Egreso.monto)` con `FROM subquery` → suma × nº filas); corregido
+  agregando sobre `sub.c.monto`. Lo cazó un test `@pytest.mark.db`. (2 agentes dev se cortaron por
+  socket transitorio → reconciliados; literal de rol ADMIN real = `"ADMIN"`.)
 - **2026-06-05** Stack confirmado: **FastAPI + React (Vite) + PostgreSQL/RLS + Alembic + Celery** (elección del usuario sobre el SRS §11, que lo dejaba abierto).
 - **2026-06-05** Producto **en español** (UI y artefactos).
 - **2026-06-05** Recibido el **diseño UI** (prototipo claude.ai, efímero) → capturado en

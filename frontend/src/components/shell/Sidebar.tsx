@@ -15,15 +15,20 @@ export interface SidebarProps {
 export function Sidebar({ collapsed }: SidebarProps) {
   const { user, viewRole } = useAuth();
   const roleLabel = viewRole ? ROLE_LABEL[viewRole] ?? viewRole : '';
+  const isAdmin = viewRole === 'ADMIN';
 
   return (
     <aside className={`sidebar${collapsed ? ' sidebar--collapsed' : ''}`}>
       <nav className="sidebar__nav" aria-label="Navegación principal">
-        {NAV_GROUPS.map((group) => (
+        {NAV_GROUPS.map((group) => {
+          // Items adminOnly solo se muestran al rol ADMIN (defensa en profundidad).
+          const items = group.items.filter((item) => !item.adminOnly || isAdmin);
+          if (items.length === 0) return null;
+          return (
           <div className="sidebar__group" key={group.title}>
             <p className="sidebar__group-title">{group.title}</p>
             <ul className="sidebar__list">
-              {group.items.map((item) =>
+              {items.map((item) =>
                 item.enabled && item.to ? (
                   <li key={item.id}>
                     <NavLink
@@ -57,7 +62,8 @@ export function Sidebar({ collapsed }: SidebarProps) {
               )}
             </ul>
           </div>
-        ))}
+          );
+        })}
       </nav>
 
       <div className="sidebar__footer" title={collapsed ? user?.nombre : undefined}>

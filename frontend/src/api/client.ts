@@ -12,6 +12,11 @@ import type {
   Categoria,
   CategoriaAsistencia,
   CuotasListResponse,
+  EgresoCreate,
+  EgresoCreated,
+  EgresoResumenItem,
+  EgresosFilters,
+  EgresosPage,
   EstadoCuota,
   GenerarCuotasResponse,
   GuardarBody,
@@ -290,6 +295,24 @@ export const api = {
       query: { categoria_id: categoriaId, ...params },
       signal,
     });
+  },
+
+  // ---- Egresos (SOLO ADMIN; el backend responde 403 a ENTRENADOR) ----
+  // GET /egresos?sucursal_id=&categoria=&desde=&hasta=&page=&page_size=
+  // -> página + total_monto del filtro.
+  listEgresos(filtros: EgresosFilters = {}, signal?: AbortSignal): Promise<EgresosPage> {
+    return request<EgresosPage>('/egresos', { query: { ...filtros }, signal });
+  },
+  // POST /egresos -> crea el egreso (registrado_por lo fija el token) y lo devuelve.
+  createEgreso(body: EgresoCreate, signal?: AbortSignal): Promise<EgresoCreated> {
+    return request<EgresoCreated>('/egresos', { method: 'POST', body, signal });
+  },
+  // GET /egresos/resumen?desde=&hasta= -> totales agrupados por categoría.
+  resumenEgresos(
+    params: { desde?: string; hasta?: string } = {},
+    signal?: AbortSignal,
+  ): Promise<EgresoResumenItem[]> {
+    return request<EgresoResumenItem[]>('/egresos/resumen', { query: params, signal });
   },
 };
 
