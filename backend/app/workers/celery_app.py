@@ -1,13 +1,13 @@
 """App Celery (broker/backend Redis desde el entorno).
 
-Esqueleto para este epic: registra las tasks y deja un beat schedule placeholder
-para el cron diario. La lógica de cuotas/recordatorios llega en un epic posterior
-(SRS §4.4) y debe ser idempotente.
+Registra las tasks de cobranza y agenda el cron diario `cobranza_diaria` (C6),
+que es idempotente (no duplica cuotas ni reenvía recordatorios).
 """
 
 from __future__ import annotations
 
 from celery import Celery
+from celery.schedules import crontab
 
 from app.core.config import settings
 
@@ -25,11 +25,12 @@ celery_app.conf.update(
     enable_utc=True,
 )
 
-# Beat schedule placeholder. La task aún no hace nada (sin lógica de cuotas).
+# Cron diario de cobranza (C6): genera cuotas, marca VENCIDO, recordatorios y
+# alertas de morosidad. Crontab a las 06:00 UTC; idempotente al re-correr.
 celery_app.conf.beat_schedule = {
-    "cron-diario-cuotas": {
-        "task": "app.workers.tasks.cron_diario_cuotas",
-        "schedule": 24 * 60 * 60,  # diario; refinar (crontab) en el epic de cobranza
+    "cobranza-diaria": {
+        "task": "app.workers.tasks.cobranza_diaria",
+        "schedule": crontab(hour=6, minute=0),
     },
 }
 

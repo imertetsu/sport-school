@@ -11,10 +11,14 @@ from app.models.alumno import Alumno
 from app.models.alumno_tutor import AlumnoTutor
 from app.models.base import Base
 from app.models.categoria import Categoria
+from app.models.conciliacion_pendiente import ConciliacionPendiente
 from app.models.consentimiento import Consentimiento
+from app.models.cuota import Cuota
 from app.models.entrenador import Entrenador
 from app.models.inscripcion import Inscripcion
 from app.models.organizacion import Organizacion
+from app.models.pago import Pago
+from app.models.pago_cuota import PagoCuota
 from app.models.sucursal import Sucursal
 from app.models.tutor import Tutor
 from app.models.usuario import Usuario
@@ -31,4 +35,8 @@ __all__ = [
     "AlumnoTutor",
     "Consentimiento",
     "Inscripcion",
+    "Cuota",
+    "Pago",
+    "PagoCuota",
+    "ConciliacionPendiente",
 ]

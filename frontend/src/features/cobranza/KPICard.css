@@ -1,0 +1,47 @@
+.kpi-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4) var(--space-5);
+}
+
+/* Card resaltada en rojo: Cuotas vencidas (design-system §1). */
+.kpi-card--overdue {
+  background: var(--state-overdue-bg);
+  border-color: var(--state-overdue-border);
+}
+
+.kpi-card__label {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.kpi-card--overdue .kpi-card__label {
+  color: var(--state-overdue-text);
+}
+
+.kpi-card__value {
+  font-size: var(--fs-3xl);
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--color-text);
+}
+
+.kpi-card--overdue .kpi-card__value {
+  color: var(--state-overdue-text);
+}
+
+.kpi-card__hint {
+  font-size: var(--fs-sm);
+  color: var(--color-text-muted);
+}
+
+.kpi-card--overdue .kpi-card__hint {
+  color: var(--state-overdue-text);
+}

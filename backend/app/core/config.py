@@ -44,6 +44,13 @@ class Settings(BaseSettings):
     # Celery (workers). Broker/backend Redis desde el entorno.
     redis_url: str = "redis://redis:6379/0"
 
+    # Cobranza / OpenBCB (C8). `openbcb_sandbox` activa el adaptador simulado y el
+    # endpoint `…/simular-confirmacion`. base_url/api_key se usarán con el BCB real.
+    openbcb_sandbox: bool = True
+    openbcb_base_url: str | None = None
+    openbcb_api_key: str | None = None
+    whatsapp_provider: str = "noop"
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def _split_cors(cls, value: object) -> object:

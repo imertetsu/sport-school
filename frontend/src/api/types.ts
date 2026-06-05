@@ -175,3 +175,116 @@ export interface AlumnoCreate {
 
 // AlumnoCreate produce un AlumnoDetail al crear.
 export type AlumnoCreated = AlumnoDetail;
+
+// ============================================================
+// C4: Cobranza (espejo EXACTO de los contratos del epic Cobranza)
+// No inventar campos. Si falta algo, es hand-off a backend-dev.
+// ============================================================
+
+export type EstadoCuota = 'PENDIENTE' | 'PAGADO' | 'VENCIDO';
+export type MetodoPago = 'EFECTIVO' | 'QR';
+// estado del PAGO (distinto del estado de la CUOTA)
+export type EstadoPago = 'PENDIENTE' | 'CONFIRMADO' | 'FALLIDO';
+
+// --- GET /cobranza/cuotas -> item de lista ---
+// {id, alumno:{id,nombre_completo}, sucursal:{nombre}, categoria:{nombre},
+//  periodo_inicio, vence_el, monto, estado, ultimo_metodo|null}
+export interface CuotaAlumnoRef {
+  id: string;
+  nombre_completo: string;
+}
+
+export interface CuotaSucursalRef {
+  nombre: string;
+}
+
+export interface CuotaCategoriaRef {
+  nombre: string;
+}
+
+export interface CuotaListItem {
+  id: string;
+  alumno: CuotaAlumnoRef;
+  sucursal: CuotaSucursalRef;
+  categoria: CuotaCategoriaRef;
+  periodo_inicio: string; // date
+  vence_el: string; // date
+  monto: string; // numeric(10,2) serializado como string
+  estado: EstadoCuota;
+  ultimo_metodo: MetodoPago | null;
+}
+
+export type CuotasListResponse = Paginated<CuotaListItem>;
+
+// --- GET /cobranza/panel ---
+// {ingresos_mes:{monto}, alumnos_activos:{count, sucursales, disciplinas},
+//  cuotas_pendientes:{count, monto}, cuotas_vencidas:{count, monto},
+//  morosidad:[{alumno_id, nombre_completo, categoria, monto, dias_mora}]}
+export interface PanelIngresosMes {
+  monto: string;
+}
+
+export interface PanelAlumnosActivos {
+  count: number;
+  sucursales: number;
+  disciplinas: number;
+}
+
+export interface PanelCuotasAgg {
+  count: number;
+  monto: string;
+}
+
+export interface MorosidadItem {
+  alumno_id: string;
+  nombre_completo: string;
+  categoria: string;
+  monto: string;
+  dias_mora: number;
+}
+
+export interface PanelCobranza {
+  ingresos_mes: PanelIngresosMes;
+  alumnos_activos: PanelAlumnosActivos;
+  cuotas_pendientes: PanelCuotasAgg;
+  cuotas_vencidas: PanelCuotasAgg;
+  morosidad: MorosidadItem[];
+}
+
+// --- POST /cobranza/pagos/efectivo (body) ---
+// crea pago EFECTIVO CONFIRMADO aplicado a cuota_ids (FIFO en backend).
+export interface RegistrarPagoEfectivoBody {
+  cuota_ids: string[];
+}
+
+// --- POST /cobranza/pagos/qr (body) ---
+// crea pago QR PENDIENTE; devuelve el QR para mostrar.
+export interface RegistrarPagoQrBody {
+  cuota_ids: string[];
+}
+
+// --- GET /cobranza/pagos/{id} (polling) ---
+// {id, estado, metodo, monto, comprobante_url}
+export interface PagoOut {
+  id: string;
+  estado: EstadoPago;
+  metodo: MetodoPago;
+  monto: string;
+  comprobante_url: string | null;
+}
+
+// --- POST /cobranza/pagos/qr -> QR a mostrar ---
+// Respuesta PLANA del backend (C3/C4): pago PENDIENTE + datos del QR.
+export interface QrResponse {
+  pago_id: string;
+  estado: EstadoPago;
+  monto: string;
+  qr_ref: string;
+  qr_payload: string;
+  qr_png_data_url: string;
+}
+
+// --- POST /cobranza/generar -> {creadas:n} ---
+export interface GenerarCuotasResponse {
+  creadas: number;
+}

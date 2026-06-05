@@ -1,0 +1,190 @@
+.panel-cobranza {
+  display: flex;
+  flex-direction: column;
+}
+
+/* 4 KPI cards (design-system §1) */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+
+@media (max-width: 1100px) {
+  .kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 560px) {
+  .kpi-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Tabla principal + panel de morosidad a la derecha */
+.panel-cobranza__cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: var(--space-5);
+  align-items: start;
+}
+
+@media (max-width: 980px) {
+  .panel-cobranza__cols {
+    grid-template-columns: 1fr;
+  }
+}
+
+.panel-cobranza__main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.panel-cobranza__count {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--color-text-muted);
+}
+
+/* --- Chips de filtro por estado --- */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.chip {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  border-radius: var(--radius-pill);
+  padding: var(--space-1) var(--space-4);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.chip:hover {
+  background: var(--color-surface-hover);
+}
+
+.chip--active {
+  background: var(--accent-soft);
+  border-color: var(--accent-soft-border);
+  color: var(--accent-text);
+}
+
+/* --- Celda de alumno en la tabla de cuotas --- */
+.cuota-cell {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.cuota-cell__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.cuota-cell__name {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cuota-cell__meta {
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cuota-cell__metodo {
+  font-size: var(--fs-sm);
+  color: var(--color-text);
+}
+
+.cuota-cell__metodo--empty {
+  color: var(--color-text-subtle);
+}
+
+/* --- Panel de morosidad --- */
+.moras {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.moras__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.moras__item:last-child {
+  border-bottom: none;
+}
+
+.moras__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.moras__name {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.moras__meta {
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+}
+
+.moras__right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-1);
+  flex-shrink: 0;
+}
+
+.moras__monto {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.moras__empty {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--fs-sm);
+}
+
+.moras__link {
+  margin-top: var(--space-3);
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent-text);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.moras__link:hover {
+  text-decoration: underline;
+}

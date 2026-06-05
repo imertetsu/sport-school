@@ -10,7 +10,15 @@ import type {
   AlumnoDetail,
   AlumnosListResponse,
   Categoria,
+  CuotasListResponse,
+  EstadoCuota,
+  GenerarCuotasResponse,
   LoginRequest,
+  PagoOut,
+  PanelCobranza,
+  QrResponse,
+  RegistrarPagoEfectivoBody,
+  RegistrarPagoQrBody,
   Sucursal,
   TokenOut,
   UserOut,
@@ -207,4 +215,50 @@ export const api = {
   crearAlumno(data: AlumnoCreate, signal?: AbortSignal): Promise<AlumnoCreated> {
     return request<AlumnoCreated>('/alumnos', { method: 'POST', body: data, signal });
   },
+
+  // ---- Cobranza (C4) ----
+  panelCobranza(signal?: AbortSignal): Promise<PanelCobranza> {
+    return request<PanelCobranza>('/cobranza/panel', { signal });
+  },
+  cuotas(
+    params: {
+      estado?: EstadoCuota;
+      alumno_id?: string;
+      sucursal_id?: string;
+      page?: number;
+      page_size?: number;
+    } = {},
+    signal?: AbortSignal,
+  ): Promise<CuotasListResponse> {
+    return request<CuotasListResponse>('/cobranza/cuotas', { query: params, signal });
+  },
+  generarCuotas(signal?: AbortSignal): Promise<GenerarCuotasResponse> {
+    return request<GenerarCuotasResponse>('/cobranza/generar', { method: 'POST', signal });
+  },
+  pagoEfectivo(body: RegistrarPagoEfectivoBody, signal?: AbortSignal): Promise<PagoOut> {
+    return request<PagoOut>('/cobranza/pagos/efectivo', {
+      method: 'POST',
+      body,
+      signal,
+    });
+  },
+  pagoQr(body: RegistrarPagoQrBody, signal?: AbortSignal): Promise<QrResponse> {
+    return request<QrResponse>('/cobranza/pagos/qr', { method: 'POST', body, signal });
+  },
+  pago(id: string, signal?: AbortSignal): Promise<PagoOut> {
+    return request<PagoOut>(`/cobranza/pagos/${id}`, { signal });
+  },
+  // Sandbox: dispara el flujo del webhook para demostrar el QR en vivo (C3).
+  simularConfirmacionQr(id: string, signal?: AbortSignal): Promise<PagoOut> {
+    return request<PagoOut>(`/cobranza/pagos/qr/${id}/simular-confirmacion`, {
+      method: 'POST',
+      signal,
+    });
+  },
 };
+
+// URL absoluta del comprobante PDF (descarga binaria; no pasa por request<T>()).
+// GET /cobranza/comprobantes/{pago_id}.pdf -> application/pdf.
+export function comprobantePdfUrl(pagoId: string): string {
+  return `${API_BASE_URL}${API_PREFIX}/cobranza/comprobantes/${pagoId}.pdf`;
+}

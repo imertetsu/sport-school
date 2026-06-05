@@ -4,10 +4,13 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.api.v1 import alumnos, auth, categorias, sucursales
+from app.api.v1 import alumnos, auth, categorias, cobranza, sucursales
+from app.api.v1.webhooks import openbcb as openbcb_webhook
 
 api_router = APIRouter()
 api_router.include_router(auth.router)
 api_router.include_router(sucursales.router)
 api_router.include_router(categorias.router)
 api_router.include_router(alumnos.router)
+api_router.include_router(cobranza.router)
+api_router.include_router(openbcb_webhook.router)

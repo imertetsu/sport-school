@@ -6,6 +6,8 @@ import { AppShell } from '@/components/shell/AppShell';
 import { AlumnosList } from '@/features/alumnos/AlumnosList';
 import { AlumnoPerfil } from '@/features/alumnos/AlumnoPerfil';
 import { NuevoAlumno } from '@/features/alumnos/NuevoAlumno';
+import { PanelCobranza } from '@/features/cobranza/PanelCobranza';
+import { PagosHistorial } from '@/features/cobranza/PagosHistorial';
 
 export default function App() {
   return (
@@ -20,12 +22,14 @@ export default function App() {
               </ProtectedRoute>
             }
           >
-            <Route index element={<Navigate to="/alumnos" replace />} />
+            <Route index element={<Navigate to="/panel" replace />} />
+            <Route path="/panel" element={<PanelCobranza />} />
+            <Route path="/pagos" element={<PagosHistorial />} />
             <Route path="/alumnos" element={<AlumnosList />} />
             <Route path="/alumnos/nuevo" element={<NuevoAlumno />} />
             <Route path="/alumnos/:id" element={<AlumnoPerfil />} />
           </Route>
-          <Route path="*" element={<Navigate to="/alumnos" replace />} />
+          <Route path="*" element={<Navigate to="/panel" replace />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

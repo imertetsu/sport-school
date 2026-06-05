@@ -34,12 +34,16 @@ from app.models.alumno import Alumno
 from app.models.alumno_tutor import AlumnoTutor
 from app.models.categoria import Categoria
 from app.models.consentimiento import Consentimiento
+from app.models.cuota import Cuota
 from app.models.entrenador import Entrenador
 from app.models.inscripcion import Inscripcion
 from app.models.organizacion import Organizacion
+from app.models.pago import Pago
+from app.models.pago_cuota import PagoCuota
 from app.models.sucursal import Sucursal
 from app.models.tutor import Tutor
 from app.models.usuario import Usuario
+from app.services.generacion import generar_cuotas_org
 
 ADMIN_EMAIL = "admin@cantera.bo"
 ADMIN_PASS = "admin1234"
@@ -155,6 +159,78 @@ _ALUMNOS = [
     ("Flores", "Nina", "Joaquín", "9123458 LP", date(2010, 12, 5), "Fútbol",
      "B-", None, None),
 ]
+
+
+def _seed_cobranza(db: Session, org_id: uuid.UUID) -> dict[str, int]:
+    """Genera cuotas iniciales y deja estados variados para el Panel (idempotente).
+
+    1. Corre el motor de generación (primera + siguientes vencidas) por inscripción.
+    2. Marca como VENCIDO las cuotas PENDIENTE cuyo `vence_el` ya pasó.
+    3. Deja algunas PAGADO (con su `pago` EFECTIVO CONFIRMADO + puente) para que el
+       KPI de ingresos y la tabla tengan datos. Todo idempotente por claves.
+    """
+    hoy = date.today()
+    creadas = generar_cuotas_org(db, org_id=org_id, hoy=hoy)
+
+    # Marcar VENCIDO las PENDIENTE ya pasadas de fecha (idempotente por estado).
+    cuotas = (
+        db.execute(select(Cuota).order_by(Cuota.vence_el)).scalars().all()
+    )
+    vencidas = 0
+    for c in cuotas:
+        if c.estado == "PENDIENTE" and c.vence_el < hoy:
+            c.estado = "VENCIDO"
+            vencidas += 1
+    db.flush()
+
+    # Dejar algunas PAGADO con su pago EFECTIVO (1 de cada 3 inscripciones).
+    inscripciones = (
+        db.execute(select(Inscripcion).where(Inscripcion.estado == "ACTIVA")).scalars().all()
+    )
+    pagadas = 0
+    for idx, insc in enumerate(inscripciones):
+        if idx % 3 != 0:
+            continue
+        # primera cuota de la inscripción
+        cuota = (
+            db.execute(
+                select(Cuota)
+                .where(Cuota.inscripcion_id == insc.id)
+                .order_by(Cuota.periodo_inicio)
+            )
+            .scalars()
+            .first()
+        )
+        if cuota is None or cuota.estado == "PAGADO":
+            continue
+        # ¿ya tiene un pago aplicado? (idempotencia)
+        ya = db.execute(
+            select(PagoCuota.id).where(PagoCuota.cuota_id == cuota.id)
+        ).first()
+        if ya is not None:
+            continue
+        pago = Pago(
+            org_id=org_id,
+            metodo="EFECTIVO",
+            estado="CONFIRMADO",
+            monto=cuota.monto,
+            pagado_en=datetime.now(UTC),
+        )
+        db.add(pago)
+        db.flush()
+        db.add(
+            PagoCuota(
+                org_id=org_id,
+                pago_id=pago.id,
+                cuota_id=cuota.id,
+                monto_aplicado=cuota.monto,
+            )
+        )
+        cuota.estado = "PAGADO"
+        pago.comprobante_url = f"/api/v1/cobranza/comprobantes/{pago.id}.pdf"
+        pagadas += 1
+    db.flush()
+    return {"creadas": creadas, "vencidas": vencidas, "pagadas": pagadas}
 
 
 def seed() -> None:
@@ -291,11 +367,17 @@ def seed() -> None:
             )
             created += 1
 
+        # 7) Cobranza: cuotas + estados variados para el Panel.
+        db.flush()
+        cob = _seed_cobranza(db, org_id)
+
         db.commit()
         print(
             f"Seed OK: org='{ORG_NOMBRE}' ({org_id}), admin={ADMIN_EMAIL}/{ADMIN_PASS}, "
             f"entrenador={COACH_EMAIL}/{COACH_PASS}, sucursales=2, "
-            f"alumnos nuevos={created} (de {len(_ALUMNOS)})."
+            f"alumnos nuevos={created} (de {len(_ALUMNOS)}). "
+            f"Cobranza: cuotas_creadas={cob['creadas']}, vencidas={cob['vencidas']}, "
+            f"pagadas={cob['pagadas']}."
         )
     except Exception:
         db.rollback()

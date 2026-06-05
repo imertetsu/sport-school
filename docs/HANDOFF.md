@@ -4,7 +4,7 @@
 > cada epic**. Máx ~150 líneas; poda lo viejo. Esto NO es un changelog — es un snapshot
 > de "cómo está el mundo hoy".
 
-_Última actualización: 2026-06-05 — epic **scaffolding + Alumnos** construido y verificado E2E._
+_Última actualización: 2026-06-05 — epic **Cobranza** construido y verificado E2E (sobre scaffolding+Alumnos)._
 
 ## Stack snapshot
 
@@ -16,11 +16,17 @@ _Última actualización: 2026-06-05 — epic **scaffolding + Alumnos** construid
 - **Infra:** Docker / docker-compose / CI → `infra/`
 - **Integraciones:** OpenBCB (QR), WhatsApp, PDF, SIN (fase 2) — detrás de puertos/adaptadores.
 
-**Estado actual:** esqueleto **construido y verificado end-to-end**. Existen `backend/`,
-`frontend/`, `migrations/`, `infra/` reales. Login → lista de alumnos → perfil (tabs +
-ficha médica gateada por rol) funcionan contra la API real con **RLS activa**. Próximo
-epic sugerido: **Cobranza** (cuotas FIJO/ANIVERSARIO + pago efectivo/QR + webhook OpenBCB
-idempotente + Panel de cobranza con KPIs).
+**Estado actual:** dos epics entregados y verificados E2E:
+1. **scaffolding + Alumnos**: login, lista, perfil (tabs + ficha médica por rol), RLS activa.
+2. **Cobranza**: motor de cuotas (FIJO/ANIVERSARIO), pago **efectivo** y **QR** (sandbox
+   OpenBCB) con **webhook idempotente** + cola `conciliacion_pendiente`, **comprobante PDF**,
+   cron diario (Celery beat), y **Panel de cobranza** (KPIs + morosidad) + modal Registrar pago
+   (QR en vivo). Probado en navegador: generar QR → "Esperando pago…" → simular → "Pago
+   confirmado" → PDF; KPIs se actualizan en vivo.
+
+Próximos epics candidatos (SRS): **Asistencia** (entrenador), **Muro de avisos**, **Egresos**,
+**Reportes**, y fase 2 (chatbot WhatsApp, portal tutor passwordless, facturación SIN,
+**OpenBCB real** cuando haya onboarding BCB).
 
 ## Active flags / config
 
@@ -37,9 +43,10 @@ MIGRATION_DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5434/can
 # 3) seed (corre como OWNER, bypassa RLS para sembrar):
 cd backend && DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5434/cantera \
   JWT_SECRET=... CORS_ORIGINS=http://localhost:5180 .venv/Scripts/python -m app.seed
-# 4) API (rol cantera_app → RLS activa) en 8010:
+# 4) API (rol cantera_app → RLS activa) en 8010 (OPENBCB_SANDBOX habilita el "Simular pago"):
 cd backend && DATABASE_URL=postgresql+psycopg://cantera_app:devpass@localhost:5434/cantera \
   JWT_SECRET=<32+ chars> CORS_ORIGINS=http://localhost:5180,http://127.0.0.1:5180 \
+  OPENBCB_SANDBOX=true REDIS_URL=redis://localhost:6379/0 \
   .venv/Scripts/python -m uvicorn app.main:app --port 8010
 # 5) Frontend en 5180:
 cd frontend && VITE_API_URL=http://localhost:8010 npm run dev -- --port 5180 --strictPort
@@ -57,10 +64,9 @@ coach1234` (ENTRENADOR). Org: `Academia Andina` (BO/BOB), 2 sucursales, 8 alumno
 
 ## In-flight work
 
-Epic **scaffolding + Alumnos**: construido y verificado E2E (gates en verde, UX confirmada
-en navegador). Pendiente de **cierre formal**: este repo **no es git todavía** → para cerrar
-el epic según SSS hay que `git init` + primer commit, y en ese commit **borrar
-`docs/specs/scaffolding-alumnos.md`** (spec efímera). Hasta entonces la spec se conserva.
+**none** — epic Cobranza cerrado (commit que borra `docs/specs/cobranza.md` + push a GitHub).
+Repo git en `main`, remoto `imertetsu/sport-school` (push vía `http.sslBackend=schannel` por
+el proxy TLS corporativo). Al abrir el próximo epic, `product-owner` crea `docs/specs/<epic>.md`.
 
 ## Recent decisions
 
@@ -80,6 +86,17 @@ el epic según SSS hay que `git init` + primer commit, y en ese commit **borrar
   - Puertos del host del compose parametrizados (`DB_PORT`…) por colisiones en la máquina.
 - Decisión técnica (agente): acceso a ficha médica gateado a **nivel sucursal** en este slice
   (el diseño pide nivel categoría → refinar en epic posterior).
+- **2026-06-05 Epic Cobranza** construido por 4 agentes (2 se cortaron por error de socket
+  transitorio → relanzados en background con "reconciliar y completar"). **Fixes de
+  integración (main):**
+  - **RLS no era fail-closed con GUC vacío**: un GUC custom tras `SET LOCAL`+commit vuelve a
+    `''` (no NULL) en la conexión del pool → `''::uuid` lanzaba error en vez de 0 filas.
+    Migración **0003** endurece las 12 políticas con `NULLIF(current_setting(...), '')::uuid`.
+  - **Drift de contrato QR**: el frontend asumía `qr.pago.id`/`png_data_url`; el backend
+    devuelve plano `{pago_id, estado, qr_png_data_url, …}` → alineado `QrResponse` + 3 usos
+    en `RegistrarPago.tsx` (crasheaba la app al "Generar QR").
+- Decisión (agente): OpenBCB en **sandbox** (genera QR + endpoint `simular-confirmacion`);
+  integración real pendiente de onboarding BCB (SRS §10.3). `prorratea_primer_periodo` del seed = true.
 - Multi-tenancy = **RLS por `org_id`** (no negociable, SRS §4.1 / RNF-01).
 - Cobranza/factura/notificación = **puertos + adaptadores** (SRS §4.2/§4.3); el núcleo no importa lo concreto.
 - Idempotencia de webhooks por `transaccion_id` único (no negociable, RNF-05).
@@ -91,6 +108,10 @@ el epic según SSS hay que `git init` + primer commit, y en ese commit **borrar
   **fuga datos entre tenants**. Fail-closed si no hay contexto.
 - **El rol de BD de la app debe ser NO-superusuario**: un superusuario **ignora RLS** por
   completo. (decisión infra + db)
+- **RLS fail-closed con GUC vacío:** un GUC custom (`app.current_org`) tras `SET LOCAL`+commit
+  revierte a **`''` (cadena vacía), NO a NULL** en conexiones del pool → la policy debe usar
+  `NULLIF(current_setting('app.current_org', true), '')::uuid` o `''::uuid` lanza error.
+  Ya aplicado (migración 0003). **Cualquier policy nueva debe seguir este patrón.**
 - **Cuotas:** nada de aritmética `+30 días`; usar "mismo día del mes" y *clamp* a 29/30/31 → último día del mes (SRS §7.2).
 - **Pagos:** webhook duplicado ⇒ sin doble pago ni doble comprobante; monto que no cuadra ⇒ **cola de conciliación**, nunca se descarta un pago (RNF-06); multi-cuota ⇒ FIFO sobre vencidas más antiguas.
 - **Menores:** no se guarda alumno sin ≥1 tutor + `CONSENTIMIENTO`; datos médicos cifrados en reposo; auditar pagos manuales / cambios de monto / emisión de comprobantes (RNF-02/03).

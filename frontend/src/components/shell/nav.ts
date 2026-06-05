@@ -18,9 +18,9 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     title: 'Gestión',
     items: [
-      { id: 'panel', label: 'Panel', icon: '◧', enabled: false }, // Panel de cobranza (otro epic)
+      { id: 'panel', label: 'Panel', icon: '◧', to: '/panel', enabled: true }, // Panel de cobranza
       { id: 'alumnos', label: 'Alumnos', icon: '◉', to: '/alumnos', enabled: true },
-      { id: 'pagos', label: 'Pagos', icon: '＄', enabled: false },
+      { id: 'pagos', label: 'Pagos', icon: '＄', to: '/pagos', enabled: true },
       { id: 'asistencia', label: 'Asistencia', icon: '✓', enabled: false },
     ],
   },
