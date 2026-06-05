@@ -1,0 +1,195 @@
+.reportes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+/* Filtros en línea (selector de año, rango de fechas, sucursal/categoría). */
+.reportes__filtros {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-4);
+}
+
+.reportes__filtros .field {
+  margin: 0;
+  min-width: 150px;
+}
+
+.reportes__total {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-1);
+}
+
+.reportes__total-label {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.reportes__total-value {
+  font-size: var(--fs-2xl);
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--color-text);
+}
+
+/* ============================================================
+   Ingresos por mes — barras con CSS/divs (sin chart lib)
+   ============================================================ */
+.barchart {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: var(--space-2);
+  align-items: end;
+  height: 220px;
+  padding-top: var(--space-4);
+}
+
+.barchart__col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  height: 100%;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.barchart__bar-track {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+.barchart__bar {
+  width: 70%;
+  max-width: 28px;
+  min-height: 2px;
+  background: var(--accent);
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  transition: height 0.2s ease;
+}
+
+/* Mes sin ingresos: barra apenas visible (placeholder). */
+.barchart__bar--empty {
+  background: var(--color-border-strong);
+}
+
+.barchart__label {
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+
+.barchart__value {
+  font-size: var(--fs-xs);
+  color: var(--color-text-subtle);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+@media (max-width: 720px) {
+  .barchart {
+    height: 180px;
+  }
+  .barchart__value {
+    display: none;
+  }
+}
+
+/* ============================================================
+   Asistencia global — % global (KPI) + barra de progreso CSS
+   ============================================================ */
+.asistencia-resumen {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-6);
+}
+
+.asistencia-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.asistencia-kpi__label {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.asistencia-kpi__value {
+  font-size: var(--fs-3xl);
+  font-weight: 700;
+  line-height: 1;
+  color: var(--color-text);
+}
+
+.asistencia-kpi__meta {
+  font-size: var(--fs-sm);
+  color: var(--color-text-muted);
+}
+
+/* Barra de progreso del % de asistencia (en la tabla por categoría). */
+.progress {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 140px;
+}
+
+.progress__track {
+  flex: 1;
+  height: 8px;
+  background: var(--color-surface-2);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+
+.progress__fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: var(--radius-pill);
+  transition: width 0.2s ease;
+}
+
+.progress__pct {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--color-text);
+  min-width: 44px;
+  text-align: right;
+}
+
+/* Celda de categoría en la tabla de asistencia. */
+.asistencia-cat {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.asistencia-cat__name {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.asistencia-cat__meta {
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+}

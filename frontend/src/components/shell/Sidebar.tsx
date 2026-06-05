@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { NAV_GROUPS } from './nav';
+import { navGroupsForRole } from './nav';
 import { useAuth } from '@/auth/useAuth';
 import './Sidebar.css';
 
@@ -15,11 +15,13 @@ export interface SidebarProps {
 export function Sidebar({ collapsed }: SidebarProps) {
   const { user, viewRole } = useAuth();
   const roleLabel = viewRole ? ROLE_LABEL[viewRole] ?? viewRole : '';
+  // Items gerenciales (Reportes) solo para ADMIN; el resto sigue igual.
+  const groups = navGroupsForRole(viewRole);
 
   return (
     <aside className={`sidebar${collapsed ? ' sidebar--collapsed' : ''}`}>
       <nav className="sidebar__nav" aria-label="Navegación principal">
-        {NAV_GROUPS.map((group) => (
+        {groups.map((group) => (
           <div className="sidebar__group" key={group.title}>
             <p className="sidebar__group-title">{group.title}</p>
             <ul className="sidebar__list">

@@ -4,7 +4,7 @@
 > cada epic**. Máx ~150 líneas; poda lo viejo. Esto NO es un changelog — es un snapshot
 > de "cómo está el mundo hoy".
 
-_Última actualización: 2026-06-05 — epic **Asistencia** construido y verificado E2E (3er epic)._
+_Última actualización: 2026-06-06 — epic **Reportes** cerrado (4º). **Egresos** en vuelo en sesión paralela (rama `epic/egresos`)._
 
 ## Stack snapshot
 
@@ -25,9 +25,17 @@ _Última actualización: 2026-06-05 — epic **Asistencia** construido y verific
    guardar **idempotente** por `(sesion_id,alumno_id)`, historial), y pantalla **Tomar asistencia**
    (toggles Presente/Ausente, contadores en vivo, Guardar, mobile-first). Entrenador ve solo sus
    sucursales. Probado en navegador + API: marcar → guardar → recargar refleja.
+4. **Reportes** (RF-COM-02/03): **sin migración** (agrega Cobranza+Asistencia). API
+   `GET /reportes/ingresos?anio=` (pagos CONFIRMADO por mes, 12 meses) y `GET /reportes/asistencia`
+   (% presente global + por categoría), **solo ADMIN (403 entrenador)**. Pantalla **Reportes**
+   (barras CSS de ingresos + tabla de asistencia con %, nav gateado a ADMIN). Verificado E2E.
 
-Próximos epics candidatos (SRS): **Muro de avisos** (RF-COM-01), **Egresos** (RF-FIN-07),
-**Reportes** (ingresos/asistencia, RF-COM-02/03), y fase 2 (chatbot WhatsApp, portal tutor
+**En vuelo (sesión paralela):** **Egresos** (RF-FIN-07) en rama `epic/egresos` (BD/puertos
+aislados 5435/8011/5181). Pendiente: la sesión principal **mergea `epic/egresos` a `main`** al
+terminar (conflictos triviales en `api/v1/__init__.py`, `nav.ts`, `App.tsx`, `types.ts`,
+`client.ts`, `HANDOFF.md` — todos append). Migración de Egresos = **0005** (Reportes no añadió migración).
+
+Próximos epics candidatos: **Muro de avisos** (RF-COM-01) y fase 2 (chatbot WhatsApp, portal tutor
 passwordless, facturación SIN, **OpenBCB real** cuando haya onboarding BCB).
 
 ## Active flags / config
@@ -66,10 +74,10 @@ coach1234` (ENTRENADOR). Org: `Academia Andina` (BO/BOB), 2 sucursales, 8 alumno
 
 ## In-flight work
 
-**none** — epic Asistencia cerrado (commit que borra `docs/specs/asistencia.md` + push). Repo git
+**Egresos** (rama `epic/egresos`, sesión paralela) — pendiente de merge a `main` por la sesión
+principal. Migraciones en `main`: 0001→0004 (Reportes no añadió; Egresos traerá 0005). Repo git
 en `main`, remoto `imertetsu/sport-school` (push vía `http.sslBackend=schannel` por el proxy TLS
-corporativo). Migraciones aplicadas: 0001→0004. Al abrir el próximo epic, `product-owner` crea
-`docs/specs/<epic>.md`.
+corporativo). Al abrir el próximo epic, `product-owner` crea `docs/specs/<epic>.md`.
 
 ## Recent decisions
 
@@ -106,6 +114,11 @@ corporativo). Migraciones aplicadas: 0001→0004. Al abrir el próximo epic, `pr
   devuelve `estado=null` para no marcados y deja la UX al frontend.
   **Fix (main):** un test de asistencia accedía `sesion.id` fuera de la `Session` (DetachedInstanceError
   por `expire_on_commit`) → capturar el id antes del commit + reforzado con re-chequeo de no-duplicación.
+- **2026-06-06 Epics en paralelo (2 sesiones):** Reportes (esta sesión, sin migración) + Egresos
+  (sesión aparte, rama `epic/egresos`, BD/puertos aislados). Split elegido para evitar el choque de
+  la **cadena Alembic**: solo el epic con tabla nueva (Egresos) crea migración (0005); Reportes solo
+  lee. Reportes = **solo ADMIN** (gerencial); ingresos cuenta el `pago` CONFIRMADO (no las cuotas)
+  para no doblar.
 - Multi-tenancy = **RLS por `org_id`** (no negociable, SRS §4.1 / RNF-01).
 - Cobranza/factura/notificación = **puertos + adaptadores** (SRS §4.2/§4.3); el núcleo no importa lo concreto.
 - Idempotencia de webhooks por `transaccion_id` único (no negociable, RNF-05).

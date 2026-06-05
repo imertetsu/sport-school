@@ -9,12 +9,14 @@ import type {
   AlumnoCreated,
   AlumnoDetail,
   AlumnosListResponse,
+  AsistenciaReporte,
   Categoria,
   CategoriaAsistencia,
   CuotasListResponse,
   EstadoCuota,
   GenerarCuotasResponse,
   GuardarBody,
+  IngresosReporte,
   LoginRequest,
   PagoOut,
   PanelCobranza,
@@ -288,6 +290,36 @@ export const api = {
   ): Promise<SesionesListResponse> {
     return request<SesionesListResponse>('/asistencia/sesiones', {
       query: { categoria_id: categoriaId, ...params },
+      signal,
+    });
+  },
+
+  // ---- Reportes (C1) — solo ADMIN ----
+  // GET /reportes/ingresos?anio=YYYY -> 12 meses + total del año.
+  reportesIngresos(anio?: number, signal?: AbortSignal): Promise<IngresosReporte> {
+    return request<IngresosReporte>('/reportes/ingresos', {
+      query: { anio },
+      signal,
+    });
+  },
+  // GET /reportes/asistencia?desde=&hasta=&sucursal_id=&categoria_id=
+  // -> % global + desglose por categoría.
+  reportesAsistencia(
+    params: {
+      desde?: string;
+      hasta?: string;
+      sucursalId?: string;
+      categoriaId?: string;
+    } = {},
+    signal?: AbortSignal,
+  ): Promise<AsistenciaReporte> {
+    return request<AsistenciaReporte>('/reportes/asistencia', {
+      query: {
+        desde: params.desde,
+        hasta: params.hasta,
+        sucursal_id: params.sucursalId,
+        categoria_id: params.categoriaId,
+      },
       signal,
     });
   },
