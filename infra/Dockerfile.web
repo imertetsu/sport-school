@@ -1,0 +1,48 @@
+# syntax=docker/dockerfile:1
+#
+# Imagen del frontend de CanteraSport (React + Vite).
+# Build context = ../frontend (ver docker-compose.yml: services.web.build.context).
+#
+# Multi-stage: build con node:24 -> servir el `dist/` estatico con nginx:alpine.
+# VITE_API_URL se inyecta en build (Vite hornea las VITE_* en tiempo de build).
+
+# --- Stage 1: build -------------------------------------------------------
+FROM node:24-slim AS build
+
+WORKDIR /app
+
+# Cache de dependencias: copiamos manifiestos primero.
+COPY package.json package-lock.json* ./
+# `npm ci` si hay lockfile; si no, `npm install` (handoff frontend-dev: commitear
+# package-lock.json para builds reproducibles).
+RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
+
+# Resto del codigo y build.
+COPY . .
+
+# VITE_API_URL llega como build-arg (Vite lo hornea en el bundle).
+ARG VITE_API_URL=http://localhost:8000
+ENV VITE_API_URL=${VITE_API_URL}
+RUN npm run build
+
+# --- Stage 2: runtime (nginx sirviendo dist/) -----------------------------
+FROM nginx:alpine AS runtime
+
+# SPA fallback: cualquier ruta desconocida -> index.html (React Router).
+COPY --chmod=0644 <<'EOF' /etc/nginx/conf.d/default.conf
+server {
+    listen 5173;
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
+EOF
+
+COPY --from=build /app/dist /usr/share/nginx/html
+
+EXPOSE 5173
+CMD ["nginx", "-g", "daemon off;"]

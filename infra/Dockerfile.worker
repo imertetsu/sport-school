@@ -1,0 +1,48 @@
+# syntax=docker/dockerfile:1
+#
+# Imagen del worker/beat de Celery de CanteraSport.
+#
+# Es IDENTICA a Dockerfile.api (mismo paquete `app`, mismas dependencias): el
+# worker importa `app.workers.celery_app`. Para no mantener dos imagenes en
+# paralelo, docker-compose.yml hace que `worker` y `beat` reutilicen la imagen
+# construida por el servicio `api` (build con Dockerfile.api). Este archivo
+# existe como alias explicito / fallback si se quisiera una imagen aparte.
+#
+# El entrypoint NO corre migraciones aqui (RUN_MIGRATIONS por defecto = 0):
+# el migrador unico es el servicio `api`. Ver Dockerfile.api.
+
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        libpq5 \
+        curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY pyproject.toml ./
+COPY app ./app
+
+RUN pip install -e .
+
+COPY --chmod=0755 <<'EOF' /usr/local/bin/api-entrypoint.sh
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ "${RUN_MIGRATIONS:-0}" = "1" ]; then
+  echo "[worker-entrypoint] alembic upgrade head (owner / MIGRATION_DATABASE_URL)"
+  alembic -c /app/alembic.ini upgrade head
+fi
+
+echo "[worker-entrypoint] exec: $*"
+exec "$@"
+EOF
+
+ENTRYPOINT ["api-entrypoint.sh"]
+CMD ["celery", "-A", "app.workers.celery_app", "worker", "--loglevel=info"]

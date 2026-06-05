@@ -1,0 +1,308 @@
+"""Seed idempotente de datos de ejemplo (estilo Bolivia).
+
+Crea: 1 organización (Bolivia/BOB), 1 usuario ADMIN, 1 usuario+entrenador, 2
+sucursales (Centro, Cala Cala), categorías (Sub-10/14/17) y ~8 alumnos con
+tutores + consentimiento + inscripción + ficha médica.
+
+IMPORTANTE (RLS): `organizacion` NO tiene RLS, así que se inserta directo. El
+resto son tablas tenant: antes de insertarlas se fija `app.current_org` en la
+sesión (`set_config(..., true)` por transacción). Para que esto funcione con el
+rol `cantera_app`, la migración de db-dev debe haber concedido los GRANTs (C2).
+
+Idempotencia: usa claves naturales (email de usuario, nombre de org/sucursal,
+CI de alumno) para no duplicar en re-ejecuciones.
+
+Cómo correr (desde `backend/`, con la BD migrada):
+    .venv\\Scripts\\python -m app.seed          # Windows
+    .venv/bin/python -m app.seed                # Linux/Mac
+Requiere `DATABASE_URL` apuntando a la BD (app o owner). Alternativa: correrlo
+con `MIGRATION_DATABASE_URL` (rol owner) exportado como `DATABASE_URL`.
+"""
+
+from __future__ import annotations
+
+import uuid
+from datetime import UTC, date, datetime
+from decimal import Decimal
+
+from sqlalchemy import select, text
+from sqlalchemy.orm import Session
+
+from app.core.db import SessionLocal
+from app.core.security import hash_password
+from app.models.alumno import Alumno
+from app.models.alumno_tutor import AlumnoTutor
+from app.models.categoria import Categoria
+from app.models.consentimiento import Consentimiento
+from app.models.entrenador import Entrenador
+from app.models.inscripcion import Inscripcion
+from app.models.organizacion import Organizacion
+from app.models.sucursal import Sucursal
+from app.models.tutor import Tutor
+from app.models.usuario import Usuario
+
+ADMIN_EMAIL = "admin@cantera.bo"
+ADMIN_PASS = "admin1234"
+COACH_EMAIL = "coach@cantera.bo"
+COACH_PASS = "coach1234"
+ORG_NOMBRE = "Academia Andina"
+
+
+def _set_org_context(db: Session, org_id: uuid.UUID) -> None:
+    """Fija el contexto de tenant en la sesión para insertar tablas con RLS."""
+    db.execute(text("SELECT set_config('app.current_org', :org, true)"), {"org": str(org_id)})
+
+
+def _get_or_create_org(db: Session) -> Organizacion:
+    org = db.execute(
+        select(Organizacion).where(Organizacion.nombre == ORG_NOMBRE)
+    ).scalar_one_or_none()
+    if org is not None:
+        return org
+    org = Organizacion(
+        nombre=ORG_NOMBRE,
+        pais="BO",
+        moneda="BOB",
+        regimen_fiscal="GENERAL",
+        modo_cobro_default="ANIVERSARIO",
+        dia_corte_fijo=None,
+        prorratea_primer_periodo=True,
+    )
+    db.add(org)
+    db.flush()
+    return org
+
+
+def _get_or_create_usuario(
+    db: Session, org_id: uuid.UUID, *, email: str, password: str, role: str, nombre: str
+) -> Usuario:
+    u = db.execute(select(Usuario).where(Usuario.email == email)).scalar_one_or_none()
+    if u is not None:
+        return u
+    u = Usuario(
+        org_id=org_id,
+        email=email,
+        password_hash=hash_password(password),
+        role=role,
+        nombre=nombre,
+        activo=True,
+    )
+    db.add(u)
+    db.flush()
+    return u
+
+
+def _get_or_create_sucursal(
+    db: Session, org_id: uuid.UUID, *, nombre: str, direccion: str
+) -> Sucursal:
+    s = db.execute(
+        select(Sucursal).where(Sucursal.org_id == org_id, Sucursal.nombre == nombre)
+    ).scalar_one_or_none()
+    if s is not None:
+        return s
+    s = Sucursal(org_id=org_id, nombre=nombre, direccion=direccion)
+    db.add(s)
+    db.flush()
+    return s
+
+
+def _get_or_create_categoria(
+    db: Session,
+    org_id: uuid.UUID,
+    *,
+    sucursal_id: uuid.UUID,
+    nombre: str,
+    nivel: str,
+    rango_edad: str,
+) -> Categoria:
+    c = db.execute(
+        select(Categoria).where(
+            Categoria.org_id == org_id,
+            Categoria.sucursal_id == sucursal_id,
+            Categoria.nombre == nombre,
+        )
+    ).scalar_one_or_none()
+    if c is not None:
+        return c
+    c = Categoria(
+        org_id=org_id,
+        sucursal_id=sucursal_id,
+        nombre=nombre,
+        nivel=nivel,
+        rango_edad=rango_edad,
+    )
+    db.add(c)
+    db.flush()
+    return c
+
+
+# Datos de ejemplo (design-system.md): nombres bolivianos, CI "NNNNNNN LP".
+_ALUMNOS = [
+    ("Quispe", "Mamani", "Mateo", "9123451 LP", date(2012, 3, 14), "Fútbol",
+     "O+", "Penicilina", "Asma leve (inhalador)"),
+    ("Condori", "Huanca", "Valentina", "9123452 LP", date(2010, 7, 2), "Fútbol",
+     "A+", None, None),
+    ("Vargas", "Apaza", "Santiago", "9123453 LP", date(2009, 11, 20), "Básquetbol",
+     "B+", "Polen", None),
+    ("Mamani", "Ticona", "Diego", "9123454 LP", date(2013, 1, 9), "Natación",
+     "O-", None, "Miopía"),
+    ("Choque", "Calle", "Luciana", "9123455 LP", date(2011, 5, 30), "Fútbol",
+     "AB+", "Maní", None),
+    ("Gutiérrez", "Rojas", "Sebastián", "9123456 LP", date(2008, 9, 12), "Básquetbol",
+     "A-", None, None),
+    ("Aliaga", "Cuéllar", "Daniela", "9123457 LP", date(2014, 2, 25), "Natación",
+     "O+", "Lactosa", "Asma leve"),
+    ("Flores", "Nina", "Joaquín", "9123458 LP", date(2010, 12, 5), "Fútbol",
+     "B-", None, None),
+]
+
+
+def seed() -> None:
+    """Ejecuta el seed idempotente. Imprime un resumen."""
+    db = SessionLocal()
+    try:
+        # 1) Organización (sin RLS).
+        org = _get_or_create_org(db)
+        org_id = org.id
+
+        # 2) A partir de aquí, todo es tenant -> fijar contexto.
+        _set_org_context(db, org_id)
+
+        # 3) Usuarios (ADMIN + ENTRENADOR) y entrenador.
+        _get_or_create_usuario(
+            db, org_id, email=ADMIN_EMAIL, password=ADMIN_PASS, role="ADMIN",
+            nombre="Admin CanteraSport",
+        )
+        coach_user = _get_or_create_usuario(
+            db, org_id, email=COACH_EMAIL, password=COACH_PASS, role="ENTRENADOR",
+            nombre="Carlos Coach",
+        )
+        existing_coach = db.execute(
+            select(Entrenador).where(Entrenador.usuario_id == coach_user.id)
+        ).scalar_one_or_none()
+        if existing_coach is None:
+            db.add(
+                Entrenador(
+                    org_id=org_id,
+                    usuario_id=coach_user.id,
+                    nombres="Carlos Coach",
+                    especialidad="Fútbol",
+                )
+            )
+            db.flush()
+
+        # 4) Sucursales.
+        centro = _get_or_create_sucursal(
+            db, org_id, nombre="Centro", direccion="Av. Heroínas 123, Cochabamba"
+        )
+        cala_cala = _get_or_create_sucursal(
+            db, org_id, nombre="Cala Cala", direccion="Av. América 456, Cochabamba"
+        )
+
+        # 5) Categorías (en ambas sucursales para variedad).
+        cats = {}
+        for suc in (centro, cala_cala):
+            cats[(suc.id, "Sub-10 Principiante")] = _get_or_create_categoria(
+                db, org_id, sucursal_id=suc.id, nombre="Sub-10 Principiante",
+                nivel="PRINCIPIANTE", rango_edad="Sub-10",
+            )
+            cats[(suc.id, "Sub-14 Intermedio")] = _get_or_create_categoria(
+                db, org_id, sucursal_id=suc.id, nombre="Sub-14 Intermedio",
+                nivel="INTERMEDIO", rango_edad="Sub-14",
+            )
+            cats[(suc.id, "Sub-17 Avanzado")] = _get_or_create_categoria(
+                db, org_id, sucursal_id=suc.id, nombre="Sub-17 Avanzado",
+                nivel="AVANZADO", rango_edad="Sub-17",
+            )
+
+        # 6) Alumnos + tutores + consentimiento + inscripción + ficha médica.
+        sucursales = [centro, cala_cala]
+        cat_nombres = ["Sub-10 Principiante", "Sub-14 Intermedio", "Sub-17 Avanzado"]
+        created = 0
+        for i, (ap_pat, ap_mat, nom, ci, fnac, disc, sangre, alergias, cond) in enumerate(
+            _ALUMNOS
+        ):
+            existing = db.execute(
+                select(Alumno).where(Alumno.org_id == org_id, Alumno.ci == ci)
+            ).scalar_one_or_none()
+            if existing is not None:
+                continue
+
+            suc = sucursales[i % 2]
+            cat = cats[(suc.id, cat_nombres[i % 3])]
+            alumno = Alumno(
+                org_id=org_id,
+                sucursal_id=suc.id,
+                categoria_id=cat.id,
+                ap_paterno=ap_pat,
+                ap_materno=ap_mat,
+                nombres=nom,
+                ci=ci,
+                fecha_nac=fnac,
+                disciplina=disc,
+                contacto_emergencia=f"Tutor de {nom} · +591 7{i}123456",
+                ficha_medica={
+                    "tipo_sangre": sangre,
+                    "alergias": alergias,
+                    "condiciones": cond,
+                },
+            )
+            db.add(alumno)
+            db.flush()
+
+            tutor = Tutor(
+                org_id=org_id,
+                nombres=f"Tutor {ap_pat}",
+                telefono=f"+591 7{i}123456",
+                ci=f"812345{i} LP",
+            )
+            db.add(tutor)
+            db.flush()
+            db.add(
+                AlumnoTutor(
+                    org_id=org_id,
+                    alumno_id=alumno.id,
+                    tutor_id=tutor.id,
+                    parentesco="Padre/Madre",
+                    responsable_pago=True,
+                )
+            )
+            db.add(
+                Consentimiento(
+                    org_id=org_id,
+                    tutor_id=tutor.id,
+                    alumno_id=alumno.id,
+                    version_terminos="v1",
+                    canal="PRESENCIAL",
+                    aceptado_en=datetime.now(UTC),
+                )
+            )
+            db.add(
+                Inscripcion(
+                    org_id=org_id,
+                    alumno_id=alumno.id,
+                    disciplina=disc,
+                    fecha_inscripcion=date(2024, 2, 10),
+                    monto_mensual=Decimal("250.00"),
+                    modo_cobro=None,
+                    dia_corte=None,
+                    estado="ACTIVA",
+                )
+            )
+            created += 1
+
+        db.commit()
+        print(
+            f"Seed OK: org='{ORG_NOMBRE}' ({org_id}), admin={ADMIN_EMAIL}/{ADMIN_PASS}, "
+            f"entrenador={COACH_EMAIL}/{COACH_PASS}, sucursales=2, "
+            f"alumnos nuevos={created} (de {len(_ALUMNOS)})."
+        )
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+if __name__ == "__main__":
+    seed()

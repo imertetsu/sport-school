@@ -1,0 +1,27 @@
+.appshell {
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.appshell__body {
+  flex: 1 1 auto;
+  display: flex;
+  min-height: 0;
+}
+
+.appshell__main {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-y: auto;
+  padding: var(--space-6);
+  background: var(--color-bg);
+}
+
+@media (max-width: 720px) {
+  .appshell__main {
+    padding: var(--space-4);
+  }
+}

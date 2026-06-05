@@ -1,0 +1,115 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancela runs viejos del mismo ref al empujar de nuevo.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (lint · types · imports · migrate · tests)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: cantera
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d cantera"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # Coherente con C7. En CI los servicios se exponen en localhost del runner.
+      APP_NAME: CanteraSport
+      DATABASE_URL: postgresql+psycopg://cantera_app:devpass@localhost:5432/cantera
+      MIGRATION_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/cantera
+      JWT_SECRET: ci-secret
+      JWT_EXPIRE_MINUTES: "480"
+      CORS_ORIGINS: http://localhost:5173
+      REDIS_URL: redis://localhost:6379/0
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install backend (editable + dev)
+        run: pip install -e "backend/.[dev]"
+
+      - name: Provisionar pgcrypto (gen_random_uuid)
+        # El rol de app cantera_app y la RLS los crea la migración (alembic).
+        # Aquí solo la extensión, igual que infra/postgres/init.sql.
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -d cantera -v ON_ERROR_STOP=1 \
+            -c "CREATE EXTENSION IF NOT EXISTS pgcrypto;"
+
+      - name: Ruff (lint)
+        run: ruff check backend
+
+      - name: Mypy (typecheck)
+        working-directory: backend
+        run: mypy .
+
+      - name: import-linter (arquitectura)
+        working-directory: backend
+        run: lint-imports
+
+      - name: Alembic upgrade head (como owner)
+        # alembic.ini está en la raíz (script_location=migrations,
+        # prepend_sys_path=backend). Se corre desde la raíz del repo.
+        run: alembic upgrade head
+
+      - name: Pytest
+        working-directory: backend
+        run: pytest -q
+
+  frontend:
+    name: Frontend (lint · types · build · tests)
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install (npm ci)
+        run: npm ci
+
+      - name: Lint (eslint)
+        run: npm run lint
+
+      - name: Typecheck (tsc --noEmit)
+        run: npm run typecheck
+
+      - name: Build (vite)
+        run: npm run build
+
+      - name: Test (vitest)
+        run: npm run test

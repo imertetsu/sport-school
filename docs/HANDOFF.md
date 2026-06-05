@@ -1,0 +1,126 @@
+# HANDOFF — LATINASPORT
+
+> Fuente única de estado del proyecto (junto con `CLAUDE.md`). Se **actualiza al cerrar
+> cada epic**. Máx ~150 líneas; poda lo viejo. Esto NO es un changelog — es un snapshot
+> de "cómo está el mundo hoy".
+
+_Última actualización: 2026-06-05 — epic **scaffolding + Alumnos** construido y verificado E2E._
+
+## Stack snapshot
+
+- **Backend:** Python · FastAPI · SQLAlchemy · Pydantic → `backend/`
+- **DB:** PostgreSQL + Row-Level Security (RLS) por `org_id`
+- **Migraciones:** Alembic + políticas RLS → `migrations/`
+- **Jobs:** Celery worker + beat (cron diario) → `backend/app/workers/`
+- **Frontend:** React + Vite (SPA mobile-first) → `frontend/`
+- **Infra:** Docker / docker-compose / CI → `infra/`
+- **Integraciones:** OpenBCB (QR), WhatsApp, PDF, SIN (fase 2) — detrás de puertos/adaptadores.
+
+**Estado actual:** esqueleto **construido y verificado end-to-end**. Existen `backend/`,
+`frontend/`, `migrations/`, `infra/` reales. Login → lista de alumnos → perfil (tabs +
+ficha médica gateada por rol) funcionan contra la API real con **RLS activa**. Próximo
+epic sugerido: **Cobranza** (cuotas FIJO/ANIVERSARIO + pago efectivo/QR + webhook OpenBCB
+idempotente + Panel de cobranza con KPIs).
+
+## Active flags / config
+
+### Cómo correr el slice en local (verificado en esta máquina)
+Los puertos por defecto (5432/8000/5173) están **ocupados por otros proyectos** del usuario
+(`languageacademy-db`, etc.), así que se usan overrides locales. El compose ahora acepta
+`DB_PORT`/`REDIS_PORT`/`API_PORT`/`WEB_PORT`.
+```
+# 1) BD + redis (puerto host db = 5434 aquí)
+DB_PORT=5434 docker compose -f infra/docker-compose.yml up -d --wait db redis
+# 2) migraciones (rol OWNER):
+MIGRATION_DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5434/cantera \
+  backend/.venv/Scripts/alembic upgrade head
+# 3) seed (corre como OWNER, bypassa RLS para sembrar):
+cd backend && DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5434/cantera \
+  JWT_SECRET=... CORS_ORIGINS=http://localhost:5180 .venv/Scripts/python -m app.seed
+# 4) API (rol cantera_app → RLS activa) en 8010:
+cd backend && DATABASE_URL=postgresql+psycopg://cantera_app:devpass@localhost:5434/cantera \
+  JWT_SECRET=<32+ chars> CORS_ORIGINS=http://localhost:5180,http://127.0.0.1:5180 \
+  .venv/Scripts/python -m uvicorn app.main:app --port 8010
+# 5) Frontend en 5180:
+cd frontend && VITE_API_URL=http://localhost:8010 npm run dev -- --port 5180 --strictPort
+```
+**Credenciales de seed:** `admin@cantera.bo / admin1234` (ADMIN) · `coach@cantera.bo /
+coach1234` (ENTRENADOR). Org: `Academia Andina` (BO/BOB), 2 sucursales, 8 alumnos.
+
+### Flags de negocio (configurables por organización — aún sin implementar; SRS §4.2/§7)
+- `ORGANIZACION.modo_cobro_default`: `FIJO` | `ANIVERSARIO`
+- `ORGANIZACION.dia_corte_fijo`, `prorratea_primer_periodo` (bool) — **default sin decidir** (SRS §10.4)
+- Recordatorio de pago: `N días antes`; toggles de notificación por organización (RNF-07)
+- Env reales hoy: `APP_NAME, DATABASE_URL, MIGRATION_DATABASE_URL, JWT_SECRET,
+  JWT_EXPIRE_MINUTES, CORS_ORIGINS, REDIS_URL, VITE_API_URL` (ver `.env.example`).
+  Futuras: `OPENBCB_*`, `WHATSAPP_*`. **Nunca commitear secretos.**
+
+## In-flight work
+
+Epic **scaffolding + Alumnos**: construido y verificado E2E (gates en verde, UX confirmada
+en navegador). Pendiente de **cierre formal**: este repo **no es git todavía** → para cerrar
+el epic según SSS hay que `git init` + primer commit, y en ese commit **borrar
+`docs/specs/scaffolding-alumnos.md`** (spec efímera). Hasta entonces la spec se conserva.
+
+## Recent decisions
+
+- **2026-06-05** Stack confirmado: **FastAPI + React (Vite) + PostgreSQL/RLS + Alembic + Celery** (elección del usuario sobre el SRS §11, que lo dejaba abierto).
+- **2026-06-05** Producto **en español** (UI y artefactos).
+- **2026-06-05** Recibido el **diseño UI** (prototipo claude.ai, efímero) → capturado en
+  `docs/design/design-system.md`. 4 pantallas: Panel de cobranza, Registrar pago (QR/efectivo),
+  Perfil del deportista (tabs), Asistencia (entrenador). Tokens: Space Grotesk + Hanken Grotesk,
+  acento verde/azul, badges verde/ámbar/rojo, modo claro plano.
+- **2026-06-05** Desarrolla **SnapCoding**. **Nombre = CanteraSport** (decidido por el
+  usuario), configurable vía `APP_NAME`/`VITE_APP_NAME`.
+- **2026-06-05** Slice construido por 4 agentes en paralelo (backend/db/frontend/infra).
+  **Fixes de integración (trust-but-verify, hechos por main):**
+  - `login_lookup` devolvía 5 columnas; backend leía 7 → añadidas `nombre,email` (migración 0001).
+  - `cors_origins` rompía el parseo de env (pydantic-settings JSON-decode) → `NoDecode` + validador.
+  - **passlib 1.7.4 incompatible con bcrypt ≥4.1** → reemplazado por `bcrypt` directo en `security.py`.
+  - Puertos del host del compose parametrizados (`DB_PORT`…) por colisiones en la máquina.
+- Decisión técnica (agente): acceso a ficha médica gateado a **nivel sucursal** en este slice
+  (el diseño pide nivel categoría → refinar en epic posterior).
+- Multi-tenancy = **RLS por `org_id`** (no negociable, SRS §4.1 / RNF-01).
+- Cobranza/factura/notificación = **puertos + adaptadores** (SRS §4.2/§4.3); el núcleo no importa lo concreto.
+- Idempotencia de webhooks por `transaccion_id` único (no negociable, RNF-05).
+
+## Known gotchas (los bugs caros e invisibles de este dominio)
+
+- **RLS + pooling:** el contexto de tenant (`SET LOCAL app.current_org`) se fija **por
+  transacción/petición**; en conexiones reutilizadas (pool) un contexto sin resetear
+  **fuga datos entre tenants**. Fail-closed si no hay contexto.
+- **El rol de BD de la app debe ser NO-superusuario**: un superusuario **ignora RLS** por
+  completo. (decisión infra + db)
+- **Cuotas:** nada de aritmética `+30 días`; usar "mismo día del mes" y *clamp* a 29/30/31 → último día del mes (SRS §7.2).
+- **Pagos:** webhook duplicado ⇒ sin doble pago ni doble comprobante; monto que no cuadra ⇒ **cola de conciliación**, nunca se descarta un pago (RNF-06); multi-cuota ⇒ FIFO sobre vencidas más antiguas.
+- **Menores:** no se guarda alumno sin ≥1 tutor + `CONSENTIMIENTO`; datos médicos cifrados en reposo; auditar pagos manuales / cambios de monto / emisión de comprobantes (RNF-02/03).
+
+### Gotchas de entorno / código (este slice)
+- **Puertos ocupados en esta máquina:** 5432 (`languageacademy-db`), 5433 (`ipc-db`), 8000
+  (un Django ajeno), 5173 (otro front). Usar los overrides de arriba (5434/8010/5180).
+- **`JWT_SECRET` corto** avisa (PyJWT exige ≥32 bytes para HS256). En prod usar uno largo.
+- **Seed corre como OWNER** (postgres bypassa RLS) a propósito; la **app** corre como
+  `cantera_app` (RLS activa). No conectes la app como postgres.
+- **npm install** se cuelga con el proxy TLS del equipo (`UNABLE_TO_VERIFY_LEAF_SIGNATURE`);
+  workaround dev: `npm_config_strict_ssl=false`. CI/Docker deben usar una CA/registry confiable.
+- **`Dockerfile.api` necesita** `alembic.ini` + `migrations/` (viven en la raíz, fuera del
+  build context `backend/`): en dev se montan como volúmenes; para imagen autocontenida hay
+  que extender el context (ver nota en `infra/Dockerfile.api`). El stack E2E se validó con
+  procesos locales, **no** con `docker compose up` completo (build de imágenes pendiente).
+- **Cosmético:** la categoría se muestra duplicada ("Sub-10 Principiante Principiante")
+  porque `categoria.nombre` ya incluye el nivel y la UI añade `nivel` otra vez → pulir en frontend.
+- **Drift a confirmar:** `inscripcion.monto_mensual` se serializa como número (no string);
+  los tipos del frontend lo asumían string (su `formatMoney` acepta ambos, no bloquea).
+
+## Where to look for things
+
+| Necesitas… | Mira en… |
+|------------|----------|
+| Requisitos / reglas de negocio | `LATINASPORT_SRS_v2.md` |
+| Diseño UI (pantallas, tokens, datos ejemplo) | `docs/design/design-system.md` |
+| Metodología, roster, DoD, comandos | `CLAUDE.md` |
+| Lógica de dominio, API, adaptadores, workers | `backend/app/` |
+| Esquema físico, RLS, migraciones | `migrations/` + `alembic.ini` |
+| UI admin/entrenador | `frontend/src/` |
+| Docker, CI, env, despliegue worker | `infra/` |
+| Spec del epic activo | `docs/specs/<epic>.md` (efímera) |

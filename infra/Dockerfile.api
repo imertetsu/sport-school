@@ -1,0 +1,78 @@
+# syntax=docker/dockerfile:1
+#
+# Imagen del backend de CanteraSport (FastAPI + Celery).
+# Build context = ../backend (ver docker-compose.yml: services.api.build.context).
+#
+# DECISION sobre alembic.ini + migrations/ (coordinacion con db-dev):
+#   - `alembic.ini` (de db-dev) vive en la RAIZ del repo, y `migrations/` tambien.
+#     Ambos quedan FUERA del build context (que es backend/), por lo que NO se
+#     pueden `COPY` aqui (Docker prohibe rutas fuera del contexto de build).
+#   - En DESARROLLO se montan como volumenes read-only en docker-compose.yml:
+#       ../alembic.ini  -> /app/alembic.ini
+#       ../migrations   -> /app/migrations
+#     El entrypoint invoca `alembic -c /app/alembic.ini upgrade head` desde /app.
+#   - El paquete `app` se instala con `pip install -e .`, asi que es importable
+#     globalmente; `prepend_sys_path = backend` de alembic.ini es inocuo (apunta
+#     a una carpeta inexistente dentro de la imagen y Alembic simplemente la
+#     ignora). Por eso env.py resuelve `from app.models import Base` igual.
+#   - Para una imagen 100% autocontenida (CI/prod) basta extender el build
+#     context a la raiz y descomentar los COPY marcados; en dev preferimos
+#     volumenes para iteracion rapida sin rebuild.
+
+FROM python:3.11-slim
+
+# No escribir .pyc; salida sin buffer para logs en vivo.
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Dependencias de sistema minimas. libpq para psycopg, curl para healthchecks.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        libpq5 \
+        curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# El build context es backend/. Copiamos primero pyproject.toml para cachear
+# la capa de dependencias; luego el resto del codigo.
+COPY pyproject.toml ./
+# Copiar el codigo del paquete antes del install editable (necesita los fuentes).
+COPY app ./app
+
+# Instalacion editable del backend. `app.main:app`, `app.workers.celery_app`,
+# `app.seed` quedan disponibles. (handoff backend-dev: que estos existan).
+RUN pip install -e .
+
+# --- Imagen autocontenida (opcional, CI/prod) -----------------------------
+# Para incluir migrations + alembic.ini en la imagen, cambia el build context a
+# la raiz del repo en docker-compose.yml y descomenta:
+#   COPY alembic.ini /app/alembic.ini
+#   COPY migrations  /app/migrations
+# En dev estos llegan via volumenes (ver docker-compose.yml).
+# --------------------------------------------------------------------------
+
+# Entrypoint: corre migraciones (como OWNER via MIGRATION_DATABASE_URL) y luego
+# arranca el servidor. El comando por defecto puede sobreescribirse (worker/beat).
+COPY --chmod=0755 <<'EOF' /usr/local/bin/api-entrypoint.sh
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Solo el servicio `api` corre migraciones (RUN_MIGRATIONS=1), para evitar que
+# worker y beat las disparen en paralelo (carrera de Alembic). Un unico migrador.
+if [ "${RUN_MIGRATIONS:-0}" = "1" ]; then
+  # La app NUNCA migra como superusuario en su rol de runtime: usamos
+  # MIGRATION_DATABASE_URL (rol postgres/owner). DATABASE_URL (cantera_app,
+  # NOBYPASSRLS) es solo para el runtime de la app.
+  echo "[api-entrypoint] alembic upgrade head (owner / MIGRATION_DATABASE_URL)"
+  alembic -c /app/alembic.ini upgrade head
+fi
+
+echo "[api-entrypoint] exec: $*"
+exec "$@"
+EOF
+
+ENTRYPOINT ["api-entrypoint.sh"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -1,0 +1,127 @@
+# docker-compose para el stack local de CanteraSport.
+#
+# Orden de arranque:
+#   db (healthy) -> api (corre `alembic upgrade head` como OWNER, luego uvicorn)
+#   redis (healthy) -> worker / beat (Celery)
+#   web (estático servido por nginx)
+#
+# Roles de BD (contrato C2):
+#   - Alembic (en api) migra como OWNER:  MIGRATION_DATABASE_URL (rol postgres).
+#   - La app (uvicorn/worker/beat) corre como cantera_app (NOSUPERUSER,
+#     NOBYPASSRLS): DATABASE_URL. NUNCA como superusuario (rompería la RLS).
+#
+# Variables: se leen de ../.env (ver ../.env.example).
+
+name: cantera
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: cantera
+    ports:
+      # Puerto del host parametrizable (evita colisiones con otros Postgres en la
+      # máquina de dev). Dentro de la red docker la app sigue usando db:5432.
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      # pgcrypto (gen_random_uuid). Solo corre en init de volumen vacío.
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      # `pg_isready` contra usuario y base concretos.
+      test: ["CMD-SHELL", "pg_isready -U postgres -d cantera"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  redis:
+    image: redis:7
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  api:
+    build:
+      context: ../backend
+      dockerfile: ../infra/Dockerfile.api
+    image: cantera-api
+    # Solo este servicio aplica migraciones (migrador único, evita carreras).
+    environment:
+      RUN_MIGRATIONS: "1"
+    env_file:
+      - ../.env
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      # alembic.ini y migrations/ viven en la RAÍZ del repo (de db-dev), FUERA
+      # del build context (backend/). En dev se montan como read-only para que
+      # el entrypoint corra `alembic -c /app/alembic.ini upgrade head`.
+      - ../alembic.ini:/app/alembic.ini:ro
+      - ../migrations:/app/migrations:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+  worker:
+    # Reutiliza la imagen construida por `api` (mismo paquete `app`).
+    build:
+      context: ../backend
+      dockerfile: ../infra/Dockerfile.api
+    image: cantera-api
+    environment:
+      RUN_MIGRATIONS: "0"
+    env_file:
+      - ../.env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_started
+    command: ["celery", "-A", "app.workers.celery_app", "worker", "--loglevel=info"]
+
+  beat:
+    build:
+      context: ../backend
+      dockerfile: ../infra/Dockerfile.api
+    image: cantera-api
+    environment:
+      RUN_MIGRATIONS: "0"
+    env_file:
+      - ../.env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_started
+    # Un único beat (no replicar) para no programar cron doble.
+    command: ["celery", "-A", "app.workers.celery_app", "beat", "--loglevel=info"]
+
+  web:
+    build:
+      context: ../frontend
+      dockerfile: ../infra/Dockerfile.web
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+    environment:
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+    ports:
+      - "${WEB_PORT:-5173}:5173"
+    depends_on:
+      api:
+        condition: service_started
+
+volumes:
+  db_data:
