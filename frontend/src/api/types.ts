@@ -415,3 +415,55 @@ export interface EgresoResumenItem {
   categoria_gasto: string;
   total: string; // numeric(10,2) serializado como string
 }
+
+// ============================================================
+// C1: Reportes (espejo EXACTO de los contratos del epic Reportes)
+// Solo ADMIN (require_role). Montos como string (numeric). No inventar
+// campos; si falta algo, es hand-off a backend-dev.
+// ============================================================
+
+// --- GET /reportes/ingresos?anio=YYYY ---
+// {anio, total, n_pagos, meses:[{mes:1..12, etiqueta:"ene"…, monto, n_pagos}]}
+// Fuente: pago CONFIRMADO agrupado por mes del año. Devuelve los 12 meses
+// (monto "0" si no hay). total = suma del año.
+export interface IngresosMesItem {
+  mes: number; // 1..12
+  etiqueta: string; // "ene", "feb", …
+  monto: string; // numeric(10,2) serializado como string
+  n_pagos: number;
+}
+
+export interface IngresosReporte {
+  anio: number;
+  total: string; // suma del año (numeric serializado como string)
+  n_pagos: number;
+  meses: IngresosMesItem[]; // siempre 12
+}
+
+// --- GET /reportes/asistencia?desde=&hasta=&sucursal_id=&categoria_id= ---
+// {desde, hasta, global:{...}, por_categoria:[{...}]}
+// pct_presente = round(presentes/total_marcas*100, 1) (0 si total=0).
+export interface AsistenciaGlobal {
+  sesiones: number;
+  presentes: number;
+  ausentes: number;
+  total_marcas: number;
+  pct_presente: number;
+}
+
+export interface AsistenciaPorCategoria {
+  categoria: { id: string; nombre: string };
+  sucursal: { nombre: string };
+  sesiones: number;
+  presentes: number;
+  ausentes: number;
+  total_marcas: number;
+  pct_presente: number;
+}
+
+export interface AsistenciaReporte {
+  desde: string; // date YYYY-MM-DD
+  hasta: string; // date YYYY-MM-DD
+  global: AsistenciaGlobal;
+  por_categoria: AsistenciaPorCategoria[];
+}

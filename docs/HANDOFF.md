@@ -4,7 +4,7 @@
 > cada epic**. Máx ~150 líneas; poda lo viejo. Esto NO es un changelog — es un snapshot
 > de "cómo está el mundo hoy".
 
-_Última actualización: 2026-06-06 — epic **Egresos** construido y verificado E2E (4º epic), en rama `epic/egresos` (pendiente de merge a main)._
+_Última actualización: 2026-06-06 — epics **Reportes** (4º) y **Egresos** (5º) entregados y verificados E2E; `epic/egresos` mergeado a main._
 
 ## Stack snapshot
 
@@ -16,7 +16,7 @@ _Última actualización: 2026-06-06 — epic **Egresos** construido y verificado
 - **Infra:** Docker / docker-compose / CI → `infra/`
 - **Integraciones:** OpenBCB (QR), WhatsApp, PDF, SIN (fase 2) — detrás de puertos/adaptadores.
 
-**Estado actual:** cuatro epics entregados y verificados E2E:
+**Estado actual:** cinco epics entregados y verificados E2E:
 1. **scaffolding + Alumnos**: login, lista, perfil (tabs + ficha médica por rol), RLS activa.
 2. **Cobranza**: motor de cuotas (FIJO/ANIVERSARIO), pago **efectivo** y **QR** (sandbox
    OpenBCB) con **webhook idempotente** + cola `conciliacion_pendiente`, **comprobante PDF**,
@@ -25,13 +25,16 @@ _Última actualización: 2026-06-06 — epic **Egresos** construido y verificado
    guardar **idempotente** por `(sesion_id,alumno_id)`, historial), y pantalla **Tomar asistencia**
    (toggles Presente/Ausente, contadores en vivo, Guardar, mobile-first). Entrenador ve solo sus
    sucursales. Probado en navegador + API: marcar → guardar → recargar refleja.
-4. **Egresos** (RF-FIN-07): tabla `egreso` (tenant, RLS NULLIF) + migración `0005`; API
+4. **Reportes** (RF-COM-02/03): **sin migración** (agrega Cobranza+Asistencia). API
+   `GET /reportes/ingresos?anio=` (pagos CONFIRMADO por mes, 12 meses) y `GET /reportes/asistencia`
+   (% presente global + por categoría), **solo ADMIN (403 entrenador)**. Pantalla **Reportes**
+   (barras CSS de ingresos + tabla de asistencia con %, nav gateado a ADMIN). Verificado E2E.
+5. **Egresos** (RF-FIN-07): tabla `egreso` (tenant, RLS NULLIF) + migración `0005`; API
    `/egresos` **solo ADMIN** (listar con filtros sucursal/categoría/fechas + `total_monto` del
    filtro, alta auditada con `registrado_por`), y pantalla **Egresos** (lista + filtros + total
-   Bs + alta, gateada a ADMIN). Verificado API + navegador. En rama `epic/egresos` (pendiente merge).
+   Bs + alta, gateada a ADMIN). Verificado API + navegador.
 
-Próximos epics candidatos (SRS): **Muro de avisos** (RF-COM-01),
-**Reportes** (ingresos/asistencia, RF-COM-02/03), y fase 2 (chatbot WhatsApp, portal tutor
+Próximos epics candidatos (SRS): **Muro de avisos** (RF-COM-01) y fase 2 (chatbot WhatsApp, portal tutor
 passwordless, facturación SIN, **OpenBCB real** cuando haya onboarding BCB).
 
 ## Active flags / config
@@ -70,15 +73,12 @@ coach1234` (ENTRENADOR). Org: `Academia Andina` (BO/BOB), 2 sucursales, 8 alumno
 
 ## In-flight work
 
-**Egresos** entregado en rama `epic/egresos`, **pendiente de merge a main** por la sesión
-principal (su commit de cierre borra `docs/specs/egresos.md`). *(En paralelo se construyó
-**Reportes** en otra sesión/rama — su estado lo reporta esa sesión. Al mergear ambas ramas,
-**reconciliar los archivos compartidos**: `backend/app/api/v1/__init__.py`,
-`backend/app/models/__init__.py`, `backend/app/seed.py`, `frontend/src/App.tsx`,
-`frontend/src/components/shell/nav.ts` y `Sidebar.tsx`, `frontend/src/api/client.ts` y `types.ts`,
-y este HANDOFF — ambos epics hicieron edits append; Alembic: dos hijos de `0004` → posible merge
-de heads.)* Remoto `imertetsu/sport-school` (push vía `http.sslBackend=schannel` por el proxy TLS
-corporativo). Migraciones: 0001→0005 (egresos = `0005`). Al abrir el próximo epic, `product-owner`
+**none** — epics **Reportes** y **Egresos** cerrados y **mergeados a `main`** (Egresos vía rama
+`epic/egresos`; ambas specs efímeras borradas en sus commits de cierre). La unificación de merge
+adoptó el gateo por rol de Reportes para ambos (`nav.ts` usa `roles?: Role[]` + `navGroupsForRole`;
+las rutas usan `RoleRoute allow={['ADMIN']}`; se eliminó el `EgresosRoute` bespoke). Migraciones en
+`main`: 0001→0005 (Egresos = `0005`; Reportes sin migración). Remoto `imertetsu/sport-school` (push
+vía `http.sslBackend=schannel` por el proxy TLS corporativo). Al abrir el próximo epic, `product-owner`
 crea `docs/specs/<epic>.md`.
 
 ## Recent decisions
@@ -124,6 +124,11 @@ crea `docs/specs/<epic>.md`.
   devuelve `estado=null` para no marcados y deja la UX al frontend.
   **Fix (main):** un test de asistencia accedía `sesion.id` fuera de la `Session` (DetachedInstanceError
   por `expire_on_commit`) → capturar el id antes del commit + reforzado con re-chequeo de no-duplicación.
+- **2026-06-06 Epics en paralelo (2 sesiones):** Reportes (esta sesión, sin migración) + Egresos
+  (sesión aparte, rama `epic/egresos`, BD/puertos aislados). Split elegido para evitar el choque de
+  la **cadena Alembic**: solo el epic con tabla nueva (Egresos) crea migración (0005); Reportes solo
+  lee. Reportes = **solo ADMIN** (gerencial); ingresos cuenta el `pago` CONFIRMADO (no las cuotas)
+  para no doblar.
 - Multi-tenancy = **RLS por `org_id`** (no negociable, SRS §4.1 / RNF-01).
 - Cobranza/factura/notificación = **puertos + adaptadores** (SRS §4.2/§4.3); el núcleo no importa lo concreto.
 - Idempotencia de webhooks por `transaccion_id` único (no negociable, RNF-05).
