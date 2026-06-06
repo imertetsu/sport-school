@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { APP_NAME } from '@/config';
+import { BrandName } from '@/components/BrandName';
 import { useAuth } from '@/auth/useAuth';
 import { useAccent } from '@/theme/useAccent';
 import { Avatar } from '@/components/ui';
@@ -49,7 +49,7 @@ export function TopBar({ onToggleSidebar }: TopBarProps) {
           <span className="topbar__logo" aria-hidden="true">
             ⬡
           </span>
-          <span className="topbar__brand-name">{APP_NAME}</span>
+          <BrandName className="topbar__brand-name" />
         </div>
       </div>
 

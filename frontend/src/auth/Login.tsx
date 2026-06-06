@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useLocation, useNavigate, Navigate } from 'react-router-dom';
-import { APP_NAME } from '@/config';
+import { BrandName } from '@/components/BrandName';
 import { ApiError } from '@/api/client';
 import { Button, Field } from '@/components/ui';
 import { useAuth } from './useAuth';
@@ -55,7 +55,7 @@ export function Login() {
           <span className="login__logo" aria-hidden="true">
             ⬡
           </span>
-          <span className="login__brand-name">{APP_NAME}</span>
+          <BrandName className="login__brand-name" />
         </div>
         <h1 className="login__title">Iniciar sesión</h1>
         <p className="login__subtitle">Panel de administración y entrenadores</p>
