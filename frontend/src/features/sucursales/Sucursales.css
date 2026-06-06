@@ -1,0 +1,107 @@
+.sucursales {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Celda de sucursal (nombre + dirección) */
+.suc-cell {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.suc-cell__nombre {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.suc-cell__dir {
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.suc-cell__muted,
+.cat-cell__muted {
+  color: var(--color-text-subtle);
+  font-size: var(--fs-xs);
+}
+
+.cat-cell__nombre {
+  font-weight: 600;
+}
+
+/* Acciones por fila (Categorías / Editar / Eliminar) */
+.suc-acciones {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+/* Panel de categorías de la sucursal activa */
+.sucursales__cat-panel {
+  margin-top: var(--space-4);
+}
+
+.sucursales__cat-sub {
+  margin: 0 0 var(--space-3);
+  font-size: var(--fs-sm);
+  color: var(--color-text-muted);
+}
+
+/* Confirmación inline de eliminación (sucursal o categoría) */
+.sucursales__confirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  font-size: var(--fs-sm);
+}
+
+.sucursales__confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}
+
+/* --- Modal de alta/edición (sucursal y categoría) --- */
+.sucursales__modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: var(--space-6) var(--space-4);
+  overflow-y: auto;
+  z-index: 50;
+}
+
+.sucursales__modal {
+  width: 100%;
+  max-width: 480px;
+  margin-top: var(--space-6);
+}
+
+.sucursales__modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.sucursales__modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  padding-top: var(--space-2);
+}

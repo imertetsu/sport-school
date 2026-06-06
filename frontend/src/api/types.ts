@@ -871,3 +871,40 @@ export interface EntrenadorUpdate {
   activo?: boolean;
   password?: string;
 }
+
+// ============================================================
+// Sucursales / Categorías — CRUD (epic Sucursales-Recibo, Sesión C).
+// SOLO ADMIN (el backend responde 403 a ENTRENADOR). El GET ya existe
+// (Sucursal/Categoria arriba). Aquí los bodies de escritura. DELETE devuelve
+// 204 y 409 (CONFLICT) si la entidad está en uso (no cascada). No inventar
+// campos: si falta algo, es hand-off a backend-dev.
+// ============================================================
+
+// SucursalOut del contrato: direccion es nullable. La forma de lectura `Sucursal`
+// (arriba) la sirve como string ("" si no hay); los bodies aceptan null/omitido.
+
+// --- POST /sucursales (ADMIN) -> SucursalOut (201) ---
+export interface SucursalCreate {
+  nombre: string;
+  direccion?: string | null;
+}
+
+// --- PUT /sucursales/{id} (ADMIN) -> SucursalOut ---
+export type SucursalUpdate = SucursalCreate;
+
+// --- POST /categorias (ADMIN) -> CategoriaOut (201) ---
+// nivel validado contra PRINCIPIANTE|INTERMEDIO|AVANZADO (422 si difiere).
+export interface CategoriaCreate {
+  nombre: string;
+  nivel: Nivel;
+  rango_edad?: string | null;
+  sucursal_id: string;
+}
+
+// --- PUT /categorias/{id} (ADMIN) -> CategoriaOut ---
+// sucursal_id NO editable (no se envía en el update).
+export interface CategoriaUpdate {
+  nombre: string;
+  nivel: Nivel;
+  rango_edad?: string | null;
+}

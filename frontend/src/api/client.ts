@@ -15,6 +15,8 @@ import type {
   AvisosPage,
   Categoria,
   CategoriaAsistencia,
+  CategoriaCreate,
+  CategoriaUpdate,
   CuotasListResponse,
   EgresoCreate,
   EgresoCreated,
@@ -49,6 +51,8 @@ import type {
   SolicitudOut,
   SolicitudesPage,
   Sucursal,
+  SucursalCreate,
+  SucursalUpdate,
   TokenOut,
   UserOut,
 } from './types';
@@ -497,6 +501,42 @@ export const api = {
     signal?: AbortSignal,
   ): Promise<EntrenadorOut> {
     return request<EntrenadorOut>(`/entrenadores/${id}`, { method: 'PUT', body: payload, signal });
+  },
+  // ---- Sucursales / Categorías — CRUD (SOLO ADMIN; el backend da 403 a ENTRENADOR) ----
+  // El GET de sucursales/categorías ya está arriba (sucursales/categorias).
+  // POST /sucursales (ADMIN) -> SucursalOut (201).
+  crearSucursal(body: SucursalCreate, signal?: AbortSignal): Promise<Sucursal> {
+    return request<Sucursal>('/sucursales', { method: 'POST', body, signal });
+  },
+  // PUT /sucursales/{id} (ADMIN) -> SucursalOut.
+  actualizarSucursal(
+    id: string,
+    body: SucursalUpdate,
+    signal?: AbortSignal,
+  ): Promise<Sucursal> {
+    return request<Sucursal>(`/sucursales/${id}`, { method: 'PUT', body, signal });
+  },
+  // DELETE /sucursales/{id} (ADMIN) -> 204. 409 (CONFLICT) si está en uso
+  // (categorías/alumnos); el cliente refleja el mensaje del backend, sin cascada.
+  eliminarSucursal(id: string, signal?: AbortSignal): Promise<void> {
+    return request<void>(`/sucursales/${id}`, { method: 'DELETE', signal });
+  },
+  // POST /categorias (ADMIN) -> CategoriaOut (201).
+  crearCategoria(body: CategoriaCreate, signal?: AbortSignal): Promise<Categoria> {
+    return request<Categoria>('/categorias', { method: 'POST', body, signal });
+  },
+  // PUT /categorias/{id} (ADMIN) -> CategoriaOut (sucursal_id NO editable).
+  actualizarCategoria(
+    id: string,
+    body: CategoriaUpdate,
+    signal?: AbortSignal,
+  ): Promise<Categoria> {
+    return request<Categoria>(`/categorias/${id}`, { method: 'PUT', body, signal });
+  },
+  // DELETE /categorias/{id} (ADMIN) -> 204. 409 (CONFLICT) si está en uso
+  // (alumnos/horarios/sesiones); el cliente refleja el mensaje del backend.
+  eliminarCategoria(id: string, signal?: AbortSignal): Promise<void> {
+    return request<void>(`/categorias/${id}`, { method: 'DELETE', signal });
   },
 
   // GET /reportes/asistencia?desde=&hasta=&sucursal_id=&categoria_id=

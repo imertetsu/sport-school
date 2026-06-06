@@ -32,6 +32,10 @@ class Settings(BaseSettings):
 
     # Branding (C0)
     app_name: str = "LATINOSPORT"
+    # URL pública base para construir enlaces que se envían fuera de la app (p.ej. el
+    # enlace tokenizado del recibo PDF por WhatsApp, epic Sucursales/Recibo). En dev
+    # apunta al API local; infra-dev define `PUBLIC_BASE_URL` en `.env.example`/prod.
+    public_base_url: str = "http://localhost:8014"
     # Emisor del recibo no-fiscal (epic Recibo, C2): empresa - app. Un solo lugar,
     # no hardcodeado por el PDF. No es factura SIN (fase 2).
     recibo_emisor: str = "SnapCoding - LatinoSport"

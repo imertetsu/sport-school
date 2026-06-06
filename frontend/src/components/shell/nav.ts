@@ -48,6 +48,15 @@ export const NAV_GROUPS: NavGroup[] = [
         enabled: true,
         roles: ['ADMIN'],
       },
+      // Sucursales/Categorías (catálogo): SOLO ADMIN (CRUD del catálogo).
+      {
+        id: 'sucursales',
+        label: 'Sucursales',
+        icon: '⌂',
+        to: '/sucursales',
+        enabled: true,
+        roles: ['ADMIN'],
+      },
     ],
   },
   {

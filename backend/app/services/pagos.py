@@ -205,6 +205,24 @@ def construir_comprobante_data(db: Session, *, pago: Pago, org: Organizacion) ->
     )
 
 
+def _enviar_recibo_por_whatsapp(db: Session, *, pago: Pago) -> None:
+    """Engancha (aditivo) el envío del recibo PDF por WhatsApp tras confirmar el pago.
+
+    Se llama UNA vez por confirmación (efectivo: flujo único; QR: la guarda
+    `pago.estado == "CONFIRMADO"` de `_confirmar_y_aplicar` ya corta el reenvío en
+    webhooks duplicados). Selecciona el adaptador por configuración vía
+    `get_whatsapp_port()` (mock en dev/CI). NO altera la conciliación ni lanza: el
+    recibo no es crítico para confirmar el pago (sin teléfono/fallo ⇒ se ignora).
+
+    Import diferido de `deps`/`recibo_envio` para no acoplar el módulo de pagos al
+    wiring de adaptadores en import time.
+    """
+    from app.services import recibo_envio
+    from app.services.deps import get_whatsapp_port
+
+    recibo_envio.enviar_recibo_whatsapp(db, pago=pago, port=get_whatsapp_port())
+
+
 def _asignar_numero_recibo(db: Session, pago: Pago) -> None:
     """Asigna el correlativo `REC-NNNNNN` por org al pago, si aún no tiene (RF-REC).
 
@@ -281,6 +299,11 @@ def _confirmar_y_aplicar(
             template="comprobante",
             variables={"pago_id": str(pago.id), "monto": str(pago.monto)},
         )
+
+    # Recibo PDF al tutor por WhatsApp (epic Sucursales/Recibo). Aditivo: una sola
+    # vez por confirmación (la guarda `estado == "CONFIRMADO"` de arriba garantiza
+    # que un webhook duplicado no reentra aquí, así que no se reenvía).
+    _enviar_recibo_por_whatsapp(db, pago=pago)
 
 
 def _sincronizar_puentes(
@@ -418,6 +441,10 @@ def registrar_pago_efectivo(
             template="comprobante",
             variables={"pago_id": str(pago.id), "monto": str(pago.monto)},
         )
+
+    # Recibo PDF al tutor por WhatsApp (epic Sucursales/Recibo). Aditivo: el efectivo
+    # se confirma una sola vez en este flujo, así que el recibo se envía una vez.
+    _enviar_recibo_por_whatsapp(db, pago=pago)
     return pago
 
 
