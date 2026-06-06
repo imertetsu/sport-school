@@ -123,7 +123,9 @@ interface RequestOptions {
 }
 
 function buildUrl(path: string, query?: RequestOptions['query']): string {
-  const url = new URL(`${API_BASE_URL}${API_PREFIX}${path}`);
+  // 2º arg = base: si API_BASE_URL está vacío (mismo origen), resuelve la ruta
+  // relativa contra el origen actual; si es absoluto, el base se ignora.
+  const url = new URL(`${API_BASE_URL}${API_PREFIX}${path}`, window.location.origin);
   if (query) {
     for (const [key, value] of Object.entries(query)) {
       if (value !== undefined && value !== null && value !== '') {

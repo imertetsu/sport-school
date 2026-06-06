@@ -115,9 +115,11 @@ services:
       context: ../frontend
       dockerfile: ../infra/Dockerfile.web
       args:
-        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+        # Vacío por defecto = mismo origen (nginx proxya /api -> api:8000). Se respeta
+        # el valor del .env aunque sea vacío (forma `-` sin `:`); en dev se puede fijar.
+        VITE_API_URL: ${VITE_API_URL-}
     environment:
-      VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+      VITE_API_URL: ${VITE_API_URL-}
     ports:
       - "${WEB_PORT:-5173}:5173"
     depends_on:

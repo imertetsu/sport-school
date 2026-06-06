@@ -2,8 +2,10 @@
 export const APP_NAME: string = import.meta.env.VITE_APP_NAME ?? 'LATINOSPORT';
 
 // Base del API sin slash final. El cliente le agrega el prefijo /api/v1.
+// Vacío ('') = MISMO ORIGEN: la SPA y la API se sirven tras el mismo host/puerto
+// (nginx hace de proxy inverso a /api). En dev se fija VITE_API_URL a la API local.
 export const API_BASE_URL: string = (
-  import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+  import.meta.env.VITE_API_URL ?? ''
 ).replace(/\/+$/, '');
 
 export const API_PREFIX = '/api/v1';
