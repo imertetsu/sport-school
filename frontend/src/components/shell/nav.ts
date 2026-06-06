@@ -31,6 +31,8 @@ export const NAV_GROUPS: NavGroup[] = [
       { id: 'pagos', label: 'Pagos', icon: '＄', to: '/pagos', enabled: true },
       // Egresos (financiero): SOLO ADMIN (RF-FIN-07).
       { id: 'egresos', label: 'Egresos', icon: '▽', to: '/egresos', enabled: true, roles: ['ADMIN'] },
+      // Entrenadores (Epic B): gestión SOLO ADMIN (el item no aparece para ENTRENADOR).
+      { id: 'entrenadores', label: 'Entrenadores', icon: '♟', to: '/entrenadores', enabled: true, roles: ['ADMIN'] },
       { id: 'asistencia', label: 'Asistencia', icon: '✓', to: '/asistencia', enabled: true },
       // Horarios / programación de clases: visible a ADMIN y ENTRENADOR (sin `roles`).
       // El backend filtra la vista por rol; la escritura es solo ADMIN.

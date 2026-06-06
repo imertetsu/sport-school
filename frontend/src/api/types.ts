@@ -829,3 +829,45 @@ export interface SuperAdminActivoOut {
   id: string;
   activo: boolean;
 }
+
+// ============================================================
+// Epic B · Gestión de Entrenadores (espejo EXACTO del contrato fijado por main).
+// Listar: cualquier rol autenticado (pobla selectores). Alta/edición: SOLO ADMIN
+// (el backend responde 403 a ENTRENADOR). No inventar campos: si falta algo, es
+// hand-off a backend-dev.
+// ============================================================
+
+// --- GET /entrenadores?solo_activos= -> item de lista ---
+// {id, usuario_id, nombres, email, especialidad|null, disciplinas[], activo}.
+// email y activo provienen del usuario ligado (join por entrenador.usuario_id).
+export interface EntrenadorOut {
+  id: string;
+  usuario_id: string;
+  nombres: string;
+  email: string;
+  especialidad: string | null;
+  disciplinas: string[];
+  activo: boolean;
+}
+
+// --- POST /entrenadores (ADMIN) body ---
+// Crea usuario(ENTRENADOR, activo) + entrenador en una transacción.
+// Email ya en uso (en esta org o en otra) -> 409. password < 8 -> 422.
+export interface EntrenadorCreate {
+  nombres: string;
+  email: string;
+  password: string;
+  especialidad?: string | null;
+  disciplinas?: string[];
+}
+
+// --- PUT /entrenadores/{id} (ADMIN) body (todos opcionales) ---
+// Edita nombres/especialidad/disciplinas y activo (+ password si viene).
+// activo=false da de baja; activo=true reactiva. password < 8 (si viene) -> 422.
+export interface EntrenadorUpdate {
+  nombres?: string;
+  especialidad?: string | null;
+  disciplinas?: string[];
+  activo?: boolean;
+  password?: string;
+}

@@ -1,0 +1,131 @@
+.entrenadores {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Celda de entrenador (nombres + email apilados) en la tabla */
+.entrenador-cell {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.entrenador-cell__nombre {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.entrenador-cell__email {
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.entrenador-cell__muted {
+  color: var(--color-text-subtle);
+}
+
+/* Chips de disciplinas en la tabla */
+.entrenador-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+/* Paginación / acciones de fila */
+.entrenadores__acciones {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* --- Modal de alta/edición --- */
+.entrenadores__modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: var(--space-6) var(--space-4);
+  overflow-y: auto;
+  z-index: 50;
+}
+
+.entrenadores__modal {
+  width: 100%;
+  max-width: 520px;
+  margin-top: var(--space-6);
+}
+
+.entrenadores__modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.entrenadores__modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  padding-top: var(--space-2);
+}
+
+/* --- Entrada multi-tag de disciplinas --- */
+.tag-input {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.tag-input__add {
+  flex-shrink: 0;
+}
+
+.tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-pill);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-soft-border);
+  color: var(--accent-text);
+}
+
+.tag-chip__remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: var(--fs-sm);
+  line-height: 1;
+  padding: 0;
+}
+
+.tag-chip__remove:hover {
+  color: var(--state-overdue-text);
+}
+
+/* Toggle activo/inactivo en edición */
+.entrenadores__toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--fs-sm);
+  color: var(--color-text-muted);
+}

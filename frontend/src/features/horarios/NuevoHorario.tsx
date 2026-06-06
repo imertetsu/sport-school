@@ -3,6 +3,7 @@ import { api, ApiError } from '@/api/client';
 import type {
   Categoria,
   DiaSemana,
+  EntrenadorOut,
   HorarioCreate,
   HorarioCreated,
 } from '@/api/types';
@@ -57,11 +58,12 @@ export function NuevoHorario({ horario, sucursalId, onClose, onSaved }: NuevoHor
     horario ? toTimeInput(horario.hora_inicio) : '',
   );
   const [horaFin, setHoraFin] = useState(horario ? toTimeInput(horario.hora_fin) : '');
-  // Entrenador opcional. NOTA (hand-off): C2 no expone un endpoint para listar
-  // entrenadores; hasta entonces se captura el id como texto opcional.
+  // Entrenador opcional. Se elige de la lista real de activos (Epic B); ''
+  // representa la opción "Sin entrenador" (envía entrenador_id = null).
   const [entrenadorId, setEntrenadorId] = useState(horario?.entrenador_id ?? '');
 
   const [categorias, setCategorias] = useState<Categoria[]>([]);
+  const [entrenadores, setEntrenadores] = useState<EntrenadorOut[]>([]);
 
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -85,6 +87,25 @@ export function NuevoHorario({ horario, sucursalId, onClose, onSaved }: NuevoHor
       controller.abort();
     };
   }, [sucursalId]);
+
+  // Carga los entrenadores activos para el selector (Epic B). Scoped por org (RLS).
+  useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+    api
+      .listEntrenadores(true, controller.signal)
+      .then((data) => {
+        if (active) setEntrenadores(data);
+      })
+      .catch((err) => {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        // No bloquea el formulario; el campo quedará con "Sin entrenador".
+      });
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, []);
 
   // Validación de UX que refleja la del backend (no la reemplaza).
   function validate(): Record<string, string> {
@@ -124,7 +145,8 @@ export function NuevoHorario({ horario, sucursalId, onClose, onSaved }: NuevoHor
       dia_semana: diaSemana,
       hora_inicio: horaInicio,
       hora_fin: horaFin,
-      entrenador_id: entrenadorId.trim() || null,
+      // '' = "Sin entrenador" -> null; cualquier otro valor es el id del select.
+      entrenador_id: entrenadorId || null,
     };
 
     setSubmitting(true);
@@ -219,13 +241,20 @@ export function NuevoHorario({ horario, sucursalId, onClose, onSaved }: NuevoHor
               />
             </div>
 
-            <Field
-              label="ID de entrenador"
+            <SelectField
+              label="Entrenador"
               value={entrenadorId}
               onChange={(e) => setEntrenadorId(e.target.value)}
               error={fieldErrors.entrenador_id}
-              hint="Opcional. Déjalo vacío si aún no hay entrenador asignado."
-            />
+              hint="Opcional. Elige «Sin entrenador» si aún no hay uno asignado."
+            >
+              <option value="">Sin entrenador</option>
+              {entrenadores.map((e) => (
+                <option key={e.id} value={e.id}>
+                  {e.nombres}
+                </option>
+              ))}
+            </SelectField>
 
             <div className="horarios__modal-actions">
               <Button variant="secondary" onClick={onClose} disabled={submitting}>
