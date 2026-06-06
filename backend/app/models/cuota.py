@@ -42,9 +42,14 @@ class Cuota(UUIDPkMixin, OrgScoped, Base):
     periodo_fin: Mapped[date] = mapped_column(Date, nullable=False)
     vence_el: Mapped[date] = mapped_column(Date, nullable=False)
     monto: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    # Abonos (0009): cuánto se ha aplicado a esta cuota. Saldo = monto - monto_pagado
+    # (derivado, no se persiste). EXACTO a 0009_abonos.py (contrato con db-dev).
+    monto_pagado: Mapped[Decimal] = mapped_column(
+        Numeric(10, 2), nullable=False, default=Decimal("0")
+    )
     estado: Mapped[str] = mapped_column(
         String, nullable=False, default="PENDIENTE"
-    )  # PENDIENTE | PAGADO | VENCIDO
+    )  # PENDIENTE | PARCIAL | PAGADO | VENCIDO
     es_prorrateo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     generada_en: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

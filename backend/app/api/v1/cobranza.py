@@ -27,6 +27,7 @@ from app.core.db import get_db
 from app.core.tenant import CurrentUser, require_role, set_tenant_context
 from app.models.alumno import Alumno
 from app.models.categoria import Categoria
+from app.models.credito import Credito
 from app.models.cuota import Cuota
 from app.models.inscripcion import Inscripcion
 from app.models.organizacion import Organizacion
@@ -37,6 +38,7 @@ from app.schemas.cobranza import (
     AlumnoRef,
     AlumnosActivos,
     CategoriaNombre,
+    CuotaAplicada,
     CuotaItem,
     CuotasAgg,
     CuotasPage,
@@ -137,6 +139,8 @@ def listar_cuotas(
                 periodo_inicio=cuota.periodo_inicio,
                 vence_el=cuota.vence_el,
                 monto=cuota.monto,
+                monto_pagado=cuota.monto_pagado,
+                saldo=cuota.monto - cuota.monto_pagado,
                 estado=cuota.estado,
                 ultimo_metodo=metodos.get(cuota.id),
             )
@@ -183,20 +187,25 @@ def panel(
         )
     ).scalar_one()
 
-    # Cuotas pendientes / vencidas (count + monto).
+    # Cuotas pendientes / vencidas (count + SALDO, no monto nominal — abonos).
+    # Saldo = monto - monto_pagado. PARCIAL cuenta como pendiente (saldo > 0).
+    saldo_expr = Cuota.monto - Cuota.monto_pagado
     pend = db.execute(
-        select(func.count(), func.coalesce(func.sum(Cuota.monto), 0)).where(
-            Cuota.estado == "PENDIENTE"
+        select(func.count(), func.coalesce(func.sum(saldo_expr), 0)).where(
+            Cuota.estado.in_(("PENDIENTE", "PARCIAL"))
         )
     ).one()
     venc = db.execute(
-        select(func.count(), func.coalesce(func.sum(Cuota.monto), 0)).where(
+        select(func.count(), func.coalesce(func.sum(saldo_expr), 0)).where(
             Cuota.estado == "VENCIDO"
         )
     ).one()
 
-    # Morosidad: por alumno, cuotas VENCIDO (o PENDIENTE ya pasada de fecha),
-    # con monto total adeudado y días de mora (desde el vencimiento más antiguo).
+    # Crédito a favor: Σ saldos de crédito de la org (KPI nuevo, abonos).
+    credito_total = db.execute(select(func.coalesce(func.sum(Credito.saldo), 0))).scalar_one()
+
+    # Morosidad: por alumno, cuotas VENCIDO, con SALDO total adeudado (no monto
+    # nominal) y días de mora (desde el vencimiento más antiguo).
     moros_rows = db.execute(
         select(
             Alumno.id,
@@ -204,7 +213,7 @@ def panel(
             Alumno.ap_materno,
             Alumno.nombres,
             Categoria.nombre,
-            func.sum(Cuota.monto),
+            func.sum(saldo_expr),
             func.min(Cuota.vence_el),
         )
         .join(Inscripcion, Inscripcion.id == Cuota.inscripcion_id)
@@ -245,6 +254,7 @@ def panel(
         cuotas_pendientes=CuotasAgg(count=pend[0], monto=pend[1]),
         cuotas_vencidas=CuotasAgg(count=venc[0], monto=venc[1]),
         morosidad=morosidad,
+        credito_total=credito_total,
     )
 
 
@@ -257,19 +267,71 @@ def pagar_efectivo(
     user: CurrentUser = Depends(require_role("ADMIN")),
     db: Session = Depends(get_db),
 ) -> PagoOut:
-    """Registra un pago en efectivo (CONFIRMADO directo) y lo aplica FIFO (C3)."""
+    """Registra un pago en efectivo y lo aplica FIFO con abonos parciales (RF-ABO).
+
+    `monto_recibido` opcional (efectivo de caja); `None` ⇒ paga el total (Σ saldos).
+    El servicio consume crédito previo, distribuye FIFO y deja el sobrepago como
+    crédito. La respuesta enriquece con crédito aplicado/generado y el detalle por
+    cuota (saldo restante + estado).
+    """
     try:
         pago = pagos_svc.registrar_pago_efectivo(
             db,
             org_id=uuid.UUID(user.org_id),
             cuota_ids=body.cuota_ids,
             registrado_por=uuid.UUID(user.user_id),
+            monto_recibido=body.monto_recibido,
             comprobante=get_comprobante_service(),
             notifier=get_notification_service(),
         )
     except pagos_svc.PagoError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    return PagoOut.model_validate(pago)
+    return _pago_out_enriquecido(db, pago)
+
+
+def _pago_out_enriquecido(db: Session, pago: Pago) -> PagoOut:
+    """`PagoOut` con detalle de abonos: cuotas_aplicadas + crédito generado."""
+    filas = db.execute(
+        select(
+            PagoCuota.cuota_id,
+            PagoCuota.monto_aplicado,
+            Cuota.monto,
+            Cuota.monto_pagado,
+            Cuota.estado,
+        )
+        .join(Cuota, Cuota.id == PagoCuota.cuota_id)
+        .where(PagoCuota.pago_id == pago.id)
+    ).all()
+    cuotas_aplicadas = [
+        CuotaAplicada(
+            cuota_id=cid,
+            monto_aplicado=aplicado,
+            saldo_restante=monto - monto_pagado,
+            estado=estado,
+        )
+        for cid, aplicado, monto, monto_pagado, estado in filas
+    ]
+
+    credito_generado = Decimal("0")
+    insc_row = db.execute(
+        select(Cuota.inscripcion_id)
+        .join(PagoCuota, PagoCuota.cuota_id == Cuota.id)
+        .where(PagoCuota.pago_id == pago.id)
+        .limit(1)
+    ).first()
+    if insc_row is not None:
+        credito_generado = pagos_svc.saldo_credito_inscripcion(db, insc_row[0])
+
+    return PagoOut(
+        id=pago.id,
+        estado=pago.estado,
+        metodo=pago.metodo,
+        monto=pago.monto,
+        comprobante_url=pago.comprobante_url,
+        credito_aplicado=pago.credito_aplicado,
+        credito_generado=credito_generado,
+        cuotas_aplicadas=cuotas_aplicadas,
+    )
 
 
 # --------------------------------------------------------------------------- #

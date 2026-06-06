@@ -116,6 +116,18 @@
   color: var(--color-text-subtle);
 }
 
+/* Saldo de la cuota (Abonos): saldo pendiente + monto nominal como contexto. */
+.cuota-cell__saldo {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.cuota-cell__saldo-de {
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+}
+
 /* --- Panel de morosidad --- */
 .moras {
   list-style: none;

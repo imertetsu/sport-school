@@ -15,6 +15,7 @@ from app.models.base import Base
 from app.models.categoria import Categoria
 from app.models.conciliacion_pendiente import ConciliacionPendiente
 from app.models.consentimiento import Consentimiento
+from app.models.credito import Credito
 from app.models.cuota import Cuota
 from app.models.egreso import Egreso
 from app.models.entrenador import Entrenador
@@ -44,6 +45,7 @@ __all__ = [
     "Cuota",
     "Pago",
     "PagoCuota",
+    "Credito",
     "ConciliacionPendiente",
     "Sesion",
     "Asistencia",

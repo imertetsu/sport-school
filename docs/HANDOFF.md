@@ -4,7 +4,7 @@
 > cada epic**. Máx ~150 líneas; poda lo viejo. Esto NO es un changelog — es un snapshot
 > de "cómo está el mundo hoy".
 
-_Última actualización: 2026-06-06 — **Rename interno cantera→latinosport** + **primer deploy real** (servidor vivo en 177.222.39.139). 8 epics en main._
+_Última actualización: 2026-06-06 — epic **Abonos** (pagos parciales, 9º) entregado en rama `epic/abonos` (pendiente de FF a main). 8 epics en main + Abonos en vuelo._
 
 ## Stack snapshot
 
@@ -55,6 +55,12 @@ up --build` valida el stack desde cero. Ver "Recent decisions".
    `GET /solicitudes` (scoped por rol), **aprobar** (solo ADMIN → **reutiliza `services/alumno.py`**
    para crear alumno+tutor+consentimiento[+inscripción], 409 si resuelta) y **rechazar** (motivo).
    Pantalla **Solicitudes** (form "Nueva solicitud" + cola con Aprobar/Rechazar solo-admin). Verificado E2E.
+9. **Abonos** (pagos parciales, extensión de Cobranza): migración `0009` (`cuota.monto_pagado`, estado
+   **`PARCIAL`**, `pago.credito_aplicado`, tabla `credito` RLS NULLIF). Motor puro `abono_engine` (FIFO);
+   **efectivo** acepta `monto_recibido` (parcial → saldo; sobrepago → **crédito por inscripción** consumido
+   en el siguiente pago). Panel/cuotas/morosidad por **saldo** + KPI **"Crédito a favor"**; recibo con
+   Aplicado/Saldo/crédito. **QR/webhook intactos** (QR siempre por el total). Verificado E2E (132 tests +
+   smoke API + navegador). En rama `epic/abonos`.
 
 Próximos candidatos: resto de **Fase 2** (portal passwordless OTP/WhatsApp, chatbot cobros, factura SIN,
 **OpenBCB real** con onboarding BCB). Fase 3: rendimiento, voz, analítica.
@@ -98,14 +104,22 @@ coach1234` (ENTRENADOR). Org: `Academia Andina` (BO/BOB), 2 sucursales, 8 alumno
 
 ## In-flight work
 
-**none** — 8 epics en `main` (MVP + deploy endurecido + Fase 2: Programación de clases, Auto-registro).
-Migraciones `0001→0008` (Egresos=0005, Muro=0006, Horarios=0007, Auto-registro=0008; Reportes sin migración).
+**Abonos** (9º epic, pagos parciales) entregado en rama `epic/abonos` — **pendiente de FF a `main`** (su
+commit de cierre borra `docs/specs/abonos.md`). 8 epics en `main` + Abonos en vuelo.
+Migraciones `0001→0009` (Egresos=0005, Muro=0006, Horarios=0007, Auto-registro=0008, Abonos=0009; Reportes sin migración).
 Gateo por rol unificado: `nav.ts` usa `roles?: Role[]` + `navGroupsForRole`; rutas solo-ADMIN usan
 `RoleRoute allow={['ADMIN']}`. Remoto `imertetsu/sport-school` (push vía `http.sslBackend=schannel`
 por el proxy TLS). Al abrir el próximo epic, `product-owner` crea `docs/specs/<epic>.md`.
 
 ## Recent decisions
 
+- **2026-06-06 Epic Abonos (pagos parciales).** Diseño por platform-architect. Producto: QR **siempre por
+  el total** (webhook/conciliación intactos) → **parciales solo por efectivo** (`monto_recibido`); sobrepago
+  → **saldo a favor (crédito) por inscripción** consumido en el siguiente pago; cuota a medias → **`PARCIAL`**
+  con **precedencia de VENCIDO**. Esquema (0009): `cuota.monto_pagado` (saldo derivado), `pago.credito_aplicado`
+  (invariante `Σ aplicado = monto + credito_aplicado`; "ingresos"=caja real), tabla `credito`. **Fix de
+  integración (main):** tests `@db` fallaban con `ObjectDeletedError` (acceso a ORM tras commit bajo RLS sin
+  GUC) → `Session(expire_on_commit=False)` en los tests.
 - **2026-06-06 Rename interno cantera→latinosport + primer deploy real.** Por consistencia con
   la marca se renombró TODO `cantera`→`latinosport`: **BD `latinosport`**, **rol `latinosport_app`**
   (migración 0001 + GRANTs + función `login_lookup`; las policies `org_isolation` NO llevan `TO <rol>`

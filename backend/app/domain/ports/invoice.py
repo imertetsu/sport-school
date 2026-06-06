@@ -15,11 +15,18 @@ from typing import Protocol, runtime_checkable
 
 @dataclass(frozen=True)
 class CuotaLinea:
-    """Una cuota cubierta por el pago, para el detalle del comprobante (C5)."""
+    """Una cuota cubierta por el pago, para el detalle del comprobante (C5).
+
+    Abonos (RF-ABO): `monto_aplicado` es lo que este pago aplicó a la cuota y
+    `saldo_restante` el saldo tras aplicarlo. Defaults: `monto_aplicado = monto`,
+    `saldo_restante = 0` ⇒ el comprobante QR (pago total) luce igual que hoy.
+    """
 
     periodo_inicio: str
     vence_el: str
     monto: Decimal
+    monto_aplicado: Decimal | None = None
+    saldo_restante: Decimal = Decimal("0")
 
 
 @dataclass(frozen=True)
@@ -28,6 +35,10 @@ class ComprobanteData:
 
     El adaptador concreto convierte esto en un PDF. Es una estructura de dominio:
     sin SQLAlchemy ni FastAPI.
+
+    Abonos (RF-ABO): `credito_aplicado` (crédito previo consumido) y
+    `credito_generado` (saldo a favor generado por el sobrepago) van al pie del
+    comprobante. Defaults 0 ⇒ el comprobante QR luce igual que hoy.
     """
 
     numero: str
@@ -38,6 +49,8 @@ class ComprobanteData:
     fecha: datetime
     monto_total: Decimal
     cuotas: list[CuotaLinea] = field(default_factory=list)
+    credito_aplicado: Decimal = Decimal("0")
+    credito_generado: Decimal = Decimal("0")
 
 
 @runtime_checkable

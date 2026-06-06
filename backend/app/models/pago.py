@@ -29,7 +29,12 @@ class Pago(UUIDPkMixin, OrgScoped, Base):
     estado: Mapped[str] = mapped_column(
         String, nullable=False, default="PENDIENTE"
     )  # PENDIENTE | CONFIRMADO | FALLIDO
-    monto: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    monto: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)  # solo efectivo/caja
+    # Abonos (0009): crédito previo de la inscripción consumido en este pago. Invariante:
+    # Σ pago_cuota.monto_aplicado = pago.monto + pago.credito_aplicado. EXACTO a 0009.
+    credito_aplicado: Mapped[Decimal] = mapped_column(
+        Numeric(10, 2), nullable=False, default=Decimal("0")
+    )
     transaccion_id: Mapped[str | None] = mapped_column(
         String, nullable=True, unique=True
     )  # referencia externa OpenBCB

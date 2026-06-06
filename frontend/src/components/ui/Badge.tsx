@@ -10,17 +10,21 @@ export type BadgeTone =
   | 'neutral'
   | 'accent';
 
-export type EstadoCuota = 'PAGADO' | 'PENDIENTE' | 'VENCIDO';
+// PARCIAL (epic Abonos): pago a medias, saldo > 0 y sin vencer → ámbar (tono pending),
+// reusando el sistema verde/ámbar/rojo (no se introduce un color nuevo).
+export type EstadoCuota = 'PAGADO' | 'PENDIENTE' | 'PARCIAL' | 'VENCIDO';
 
 const ESTADO_TONE: Record<EstadoCuota, BadgeTone> = {
   PAGADO: 'paid',
   PENDIENTE: 'pending',
+  PARCIAL: 'pending',
   VENCIDO: 'overdue',
 };
 
 const ESTADO_LABEL: Record<EstadoCuota, string> = {
   PAGADO: 'Pagado',
   PENDIENTE: 'Pendiente',
+  PARCIAL: 'Parcial',
   VENCIDO: 'Vencido',
 };
 

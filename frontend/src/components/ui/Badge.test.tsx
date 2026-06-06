@@ -19,6 +19,7 @@ describe('EstadoBadge', () => {
   it.each([
     ['PAGADO', 'Pagado', 'badge--paid'],
     ['PENDIENTE', 'Pendiente', 'badge--pending'],
+    ['PARCIAL', 'Parcial', 'badge--pending'],
     ['VENCIDO', 'Vencido', 'badge--overdue'],
   ] as const)('mapea %s a etiqueta %s y clase %s', (estado, label, cls) => {
     const { container } = render(<EstadoBadge estado={estado} />);

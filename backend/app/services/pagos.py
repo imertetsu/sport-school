@@ -18,21 +18,43 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
+from app.domain.cobranza.abono_engine import distribuir_abono
 from app.domain.ports.invoice import ComprobanteData, ComprobanteService, CuotaLinea
 from app.domain.ports.notification import NotificationService
 from app.models.alumno import Alumno
 from app.models.conciliacion_pendiente import ConciliacionPendiente
+from app.models.credito import Credito
 from app.models.cuota import Cuota
 from app.models.inscripcion import Inscripcion
 from app.models.organizacion import Organizacion
 from app.models.pago import Pago
 from app.models.pago_cuota import PagoCuota
+
+
+def _saldo(cuota: Cuota) -> Decimal:
+    """Saldo derivado de una cuota (RF-ABO-03): `monto - monto_pagado`."""
+    return cuota.monto - cuota.monto_pagado
+
+
+def _estado_destino(cuota: Cuota, hoy: date) -> str:
+    """Estado destino tras aplicar un abono (RF-ABO-05).
+
+    `saldo == 0` → PAGADO; elif `vence_el < hoy` → VENCIDO (precedencia sobre
+    parcial); elif `monto_pagado > 0` → PARCIAL; else sin cambio (estado actual).
+    """
+    if _saldo(cuota) <= Decimal("0"):
+        return "PAGADO"
+    if cuota.vence_el < hoy:
+        return "VENCIDO"
+    if cuota.monto_pagado > Decimal("0"):
+        return "PARCIAL"
+    return cuota.estado
 
 
 class PagoError(Exception):
@@ -58,14 +80,29 @@ def cargar_cuotas_fifo(db: Session, cuota_ids: list[uuid.UUID]) -> list[Cuota]:
 
 
 def _aplicar_pago_a_cuotas(
-    db: Session, *, pago: Pago, cuotas: list[Cuota], org_id: uuid.UUID
+    db: Session,
+    *,
+    pago: Pago,
+    cuotas: list[Cuota],
+    org_id: uuid.UUID,
+    aplicaciones: dict[uuid.UUID, Decimal] | None = None,
+    hoy: date | None = None,
 ) -> None:
-    """Aplica el pago a las cuotas (FIFO) vía `pago_cuota` y marca PAGADO.
+    """Aplica el pago a las cuotas (FIFO) vía `pago_cuota` y recalcula su estado.
 
-    Idempotente: si ya existe la fila puente (pago_id, cuota_id), no la duplica.
-    El `monto_aplicado` es el monto de cada cuota (multi-cuota = suma).
+    `aplicaciones` mapea `cuota_id -> monto a aplicar`. Si es `None`, se aplica el
+    saldo completo de cada cuota (camino del pago total / QR).
+
+    **Idempotente (RF-ABO-07):** solo incrementa `cuota.monto_pagado` y recalcula
+    `cuota.estado` cuando **INSERTA** la fila puente (rama `ya is None`). El
+    `UNIQUE(pago_id, cuota_id)` es la barrera: re-aplicar el mismo pago a la misma
+    cuota no altera nada (no doble cobro). El estado destino sigue RF-ABO-05.
     """
+    hoy = hoy or datetime.now(UTC).date()
     for cuota in cuotas:
+        monto_aplicado = aplicaciones.get(cuota.id) if aplicaciones is not None else _saldo(cuota)
+        if monto_aplicado is None:
+            monto_aplicado = Decimal("0")
         ya = db.execute(
             select(PagoCuota.id).where(PagoCuota.pago_id == pago.id, PagoCuota.cuota_id == cuota.id)
         ).first()
@@ -75,10 +112,11 @@ def _aplicar_pago_a_cuotas(
                     org_id=org_id,
                     pago_id=pago.id,
                     cuota_id=cuota.id,
-                    monto_aplicado=cuota.monto,
+                    monto_aplicado=monto_aplicado,
                 )
             )
-        cuota.estado = "PAGADO"
+            cuota.monto_pagado = cuota.monto_pagado + monto_aplicado
+            cuota.estado = _estado_destino(cuota, hoy)
     db.flush()
 
 
@@ -117,17 +155,39 @@ def _nombre_completo(a: Alumno) -> str:
 
 
 def construir_comprobante_data(db: Session, *, pago: Pago, org: Organizacion) -> ComprobanteData:
-    """Arma `ComprobanteData` (dominio) a partir del pago y sus cuotas."""
+    """Arma `ComprobanteData` (dominio) a partir del pago y sus cuotas.
+
+    Abonos: cada línea lleva `monto_aplicado` (de la fila puente) y `saldo_restante`
+    (saldo de la cuota tras aplicar). Pie: `credito_aplicado` (crédito previo
+    consumido por este pago) y `credito_generado` (saldo a favor de la inscripción
+    tras el pago). Para QR full → aplicado = monto, saldo = 0, créditos = 0 (igual
+    que hoy).
+    """
     cuotas = _cuotas_de_pago(db, pago.id)
     alumno = _alumno_de_cuotas(db, cuotas)
+
+    aplicados: dict[uuid.UUID, Decimal] = {
+        row.cuota_id: row.monto_aplicado
+        for row in db.execute(
+            select(PagoCuota.cuota_id, PagoCuota.monto_aplicado).where(PagoCuota.pago_id == pago.id)
+        ).all()
+    }
+
     lineas = [
         CuotaLinea(
             periodo_inicio=c.periodo_inicio.isoformat(),
             vence_el=c.vence_el.isoformat(),
             monto=c.monto,
+            monto_aplicado=aplicados.get(c.id, c.monto),
+            saldo_restante=_saldo(c),
         )
         for c in cuotas
     ]
+
+    credito_generado = Decimal("0")
+    if cuotas:
+        credito_generado = saldo_credito_inscripcion(db, cuotas[0].inscripcion_id)
+
     return ComprobanteData(
         numero=str(pago.id),
         org_nombre=org.nombre,
@@ -137,6 +197,8 @@ def construir_comprobante_data(db: Session, *, pago: Pago, org: Organizacion) ->
         fecha=pago.pagado_en or datetime.now(UTC),
         monto_total=pago.monto,
         cuotas=lineas,
+        credito_aplicado=pago.credito_aplicado,
+        credito_generado=credito_generado,
     )
 
 
@@ -149,17 +211,34 @@ def _confirmar_y_aplicar(
     comprobante: ComprobanteService | None,
     notifier: NotificationService | None,
 ) -> None:
-    """Marca el pago CONFIRMADO, aplica FIFO, fija comprobante_url y notifica.
+    """Marca el pago CONFIRMADO, aplica el saldo a las cuotas, fija comprobante y notifica.
 
-    Idempotente: si el pago ya está CONFIRMADO no reaplica ni renotifica.
+    Camino **QR/webhook**: el pago cubre el total. Las filas puente `pago_cuota` ya
+    existen (creadas en `crear_pago_qr` como intención); por eso la aplicación del
+    saldo a `monto_pagado`/estado se hace aquí, guardada por la idempotencia de
+    `pago.estado == "CONFIRMADO"` (no reaplica ni renotifica un pago ya confirmado).
+    El QR full cae en el motor con `monto_recibido == Σ saldo` → todas PAGADO, sin
+    crédito (RF-ABO QR intacto).
     """
     if pago.estado == "CONFIRMADO":
         return
 
+    hoy = datetime.now(UTC).date()
     pago.estado = "CONFIRMADO"
     if pago.pagado_en is None:
         pago.pagado_en = datetime.now(UTC)
-    _aplicar_pago_a_cuotas(db, pago=pago, cuotas=cuotas, org_id=org_id)
+
+    # QR full: cada cuota se salda por completo. El motor reparte el monto del pago
+    # (== Σ saldos) sobre los saldos FIFO; sin remanente.
+    saldos = [_saldo(c) for c in cuotas]
+    resultado = distribuir_abono(pago.monto, saldos)
+    aplicaciones = {c.id: m for c, m in zip(cuotas, resultado.aplicaciones, strict=True)}
+    for cuota, monto_aplicado in zip(cuotas, resultado.aplicaciones, strict=True):
+        cuota.monto_pagado = cuota.monto_pagado + monto_aplicado
+        cuota.estado = _estado_destino(cuota, hoy)
+    # Sincroniza el monto_aplicado de las filas puente pre-creadas (intención QR).
+    _sincronizar_puentes(db, pago=pago, aplicaciones=aplicaciones)
+    db.flush()
 
     # comprobante_url apunta al endpoint que genera el PDF on-the-fly (C5).
     pago.comprobante_url = f"/api/v1/cobranza/comprobantes/{pago.id}.pdf"
@@ -173,8 +252,58 @@ def _confirmar_y_aplicar(
         )
 
 
+def _sincronizar_puentes(
+    db: Session, *, pago: Pago, aplicaciones: dict[uuid.UUID, Decimal]
+) -> None:
+    """Fija el `monto_aplicado` real en las filas puente del pago (QR confirm).
+
+    Las filas se crearon como intención en `crear_pago_qr` con `monto_aplicado =
+    cuota.monto`; tras confirmar, lo igualamos a lo realmente aplicado (= saldo del
+    momento). Para el QR full coinciden, pero lo dejamos explícito por robustez.
+    """
+    puentes = db.execute(select(PagoCuota).where(PagoCuota.pago_id == pago.id)).scalars().all()
+    for puente in puentes:
+        nuevo = aplicaciones.get(puente.cuota_id)
+        if nuevo is not None:
+            puente.monto_aplicado = nuevo
+
+
 # --------------------------------------------------------------------------- #
-# Efectivo
+# Crédito (saldo a favor por inscripción) — RF-ABO-06/07
+# --------------------------------------------------------------------------- #
+def _credito_de_inscripcion(db: Session, inscripcion_id: uuid.UUID) -> Credito | None:
+    """Fila de crédito de la inscripción (única por `UNIQUE(inscripcion_id)`)."""
+    return db.execute(
+        select(Credito).where(Credito.inscripcion_id == inscripcion_id)
+    ).scalar_one_or_none()
+
+
+def _upsert_credito(
+    db: Session, *, org_id: uuid.UUID, inscripcion_id: uuid.UUID, saldo: Decimal
+) -> None:
+    """Fija el `saldo` de crédito de la inscripción (upsert por UNIQUE inscripcion_id).
+
+    Crea la fila si no existe (solo cuando hay saldo > 0; nunca persiste un crédito
+    en 0 que no existía). `CHECK(saldo >= 0)` lo garantiza el motor (remanente ≥ 0).
+    """
+    credito = _credito_de_inscripcion(db, inscripcion_id)
+    if credito is None:
+        if saldo > Decimal("0"):
+            db.add(Credito(org_id=org_id, inscripcion_id=inscripcion_id, saldo=saldo))
+            db.flush()
+        return
+    credito.saldo = saldo
+    db.flush()
+
+
+def saldo_credito_inscripcion(db: Session, inscripcion_id: uuid.UUID) -> Decimal:
+    """Saldo a favor actual de la inscripción (0 si no hay crédito)."""
+    credito = _credito_de_inscripcion(db, inscripcion_id)
+    return credito.saldo if credito is not None else Decimal("0")
+
+
+# --------------------------------------------------------------------------- #
+# Efectivo (con abonos parciales + crédito)
 # --------------------------------------------------------------------------- #
 def registrar_pago_efectivo(
     db: Session,
@@ -182,32 +311,80 @@ def registrar_pago_efectivo(
     org_id: uuid.UUID,
     cuota_ids: list[uuid.UUID],
     registrado_por: uuid.UUID,
+    monto_recibido: Decimal | None = None,
     comprobante: ComprobanteService | None = None,
     notifier: NotificationService | None = None,
 ) -> Pago:
-    """Crea un pago EFECTIVO CONFIRMADO y lo aplica (FIFO) (C3)."""
+    """Crea un pago EFECTIVO CONFIRMADO y lo aplica FIFO con abonos (RF-ABO).
+
+    `monto_recibido` es el efectivo de caja. `None` ⇒ Σ saldos (paga todo, igual que
+    hoy). El servicio consume primero el **crédito previo** de la inscripción (como
+    monto inicial) y luego el efectivo; `pago.monto` = efectivo, `pago.credito_aplicado`
+    = crédito consumido. El remanente (sobrepago) → upsert del crédito de la
+    inscripción. Invariante RF-ABO-08:
+    `Σ pago_cuota.monto_aplicado = pago.monto + pago.credito_aplicado`.
+
+    Asume cuotas homogéneas en inscripción (RF-ABO-11): el form lo restringe.
+    """
+    hoy = datetime.now(UTC).date()
     cuotas = cargar_cuotas_fifo(db, cuota_ids)
-    monto = sum((c.monto for c in cuotas), Decimal("0"))
+    inscripcion_id = cuotas[0].inscripcion_id
+
+    saldos = [_saldo(c) for c in cuotas]
+    suma_saldos = sum(saldos, Decimal("0"))
+
+    efectivo_recibido = monto_recibido if monto_recibido is not None else suma_saldos
+    credito_previo = saldo_credito_inscripcion(db, inscripcion_id)
+
+    # Monto disponible = crédito previo (se consume PRIMERO) + efectivo de caja.
+    disponible = credito_previo + efectivo_recibido
+    resultado = distribuir_abono(disponible, saldos)
+    total_aplicado = sum(resultado.aplicaciones, Decimal("0"))
+
+    # Imputación: el crédito previo entra primero, así que se consume primero.
+    #   credito_aplicado = min(credito_previo, total_aplicado)
+    #   pago.monto       = total_aplicado - credito_aplicado  (efectivo realmente aplicado)
+    # El sobrante (efectivo recibido no aplicado + crédito no consumido) = remanente,
+    # que se vuelve crédito de la inscripción. Esto hace que la invariante RF-ABO-08
+    # (Σ aplicado = pago.monto + pago.credito_aplicado) se cumpla en TODOS los flujos.
+    credito_aplicado = credito_previo if credito_previo < total_aplicado else total_aplicado
+    monto_efectivo_aplicado = total_aplicado - credito_aplicado
 
     pago = Pago(
         org_id=org_id,
         metodo="EFECTIVO",
-        estado="PENDIENTE",  # se confirma abajo (mismo flujo que QR/webhook)
-        monto=monto,
+        estado="PENDIENTE",  # se confirma abajo
+        monto=monto_efectivo_aplicado,  # efectivo de caja aplicado (RF-ABO-07/08)
+        credito_aplicado=credito_aplicado,
         registrado_por=registrado_por,
         pagado_en=datetime.now(UTC),
     )
     db.add(pago)
     db.flush()
 
-    _confirmar_y_aplicar(
+    pago.estado = "CONFIRMADO"
+    aplicaciones = {c.id: m for c, m in zip(cuotas, resultado.aplicaciones, strict=True)}
+    _aplicar_pago_a_cuotas(
         db,
         pago=pago,
         cuotas=cuotas,
         org_id=org_id,
-        comprobante=comprobante,
-        notifier=notifier,
+        aplicaciones=aplicaciones,
+        hoy=hoy,
     )
+
+    # Remanente (sobrepago) → crédito de la inscripción (RF-ABO-06).
+    _upsert_credito(db, org_id=org_id, inscripcion_id=inscripcion_id, saldo=resultado.remanente)
+
+    pago.comprobante_url = f"/api/v1/cobranza/comprobantes/{pago.id}.pdf"
+    db.flush()
+
+    if notifier is not None:
+        notifier.send(
+            to=str(pago.id),
+            template="comprobante",
+            variables={"pago_id": str(pago.id), "monto": str(pago.monto)},
+        )
     return pago
 
 

@@ -38,6 +38,7 @@ const PANEL: PanelData = {
   alumnos_activos: { count: 142, sucursales: 2, disciplinas: 3 },
   cuotas_pendientes: { count: 23, monto: '5290' },
   cuotas_vencidas: { count: 7, monto: '1680' },
+  credito_total: '0',
   morosidad: [
     {
       alumno_id: 'a1',
@@ -62,6 +63,8 @@ const CUOTAS: CuotasListResponse = {
       periodo_inicio: '2026-06-01',
       vence_el: '2026-06-30',
       monto: '250',
+      monto_pagado: '0',
+      saldo: '250',
       estado: 'VENCIDO',
       ultimo_metodo: null,
     },
@@ -73,6 +76,8 @@ const CUOTAS: CuotasListResponse = {
       periodo_inicio: '2026-06-01',
       vence_el: '2026-06-30',
       monto: '180',
+      monto_pagado: '180',
+      saldo: '0',
       estado: 'PAGADO',
       ultimo_metodo: 'QR',
     },
@@ -113,6 +118,18 @@ describe('PanelCobranza', () => {
     const { container } = renderPanel();
     await screen.findByText('Cuotas vencidas');
     expect(container.querySelector('.kpi-card--overdue')).not.toBeNull();
+  });
+
+  it('no muestra la KPI de crédito si credito_total es 0', async () => {
+    renderPanel();
+    await screen.findByText('Cuotas vencidas');
+    expect(screen.queryByText('Crédito a favor')).not.toBeInTheDocument();
+  });
+
+  it('muestra la KPI "Crédito a favor" cuando hay crédito (Abonos)', async () => {
+    panelMock.mockResolvedValue({ ...PANEL, credito_total: '320' });
+    renderPanel();
+    expect(await screen.findByText('Crédito a favor')).toBeInTheDocument();
   });
 
   it('renderiza la tabla de cuotas devueltas por la API mock', async () => {

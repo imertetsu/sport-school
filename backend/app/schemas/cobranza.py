@@ -39,7 +39,11 @@ class CategoriaNombre(BaseModel):
 
 
 class CuotaItem(BaseModel):
-    """Item de `GET /cobranza/cuotas` (C4)."""
+    """Item de `GET /cobranza/cuotas` (C4).
+
+    Abonos: `monto_pagado` (acumulado aplicado) y `saldo` (= monto - monto_pagado).
+    `estado` puede ser `PARCIAL`.
+    """
 
     id: uuid.UUID
     alumno: AlumnoRef
@@ -48,6 +52,8 @@ class CuotaItem(BaseModel):
     periodo_inicio: date
     vence_el: date
     monto: Decimal
+    monto_pagado: Decimal = Decimal("0")
+    saldo: Decimal = Decimal("0")
     estado: str
     ultimo_metodo: str | None = None
 
@@ -88,22 +94,32 @@ class MorosidadItem(BaseModel):
 
 
 class PanelOut(BaseModel):
-    """`GET /cobranza/panel` (C4)."""
+    """`GET /cobranza/panel` (C4).
+
+    Abonos: `cuotas_pendientes`/`cuotas_vencidas` suman **saldos** (no montos
+    nominales); morosidad por saldo. `credito_total` = Σ `credito.saldo` de la org.
+    """
 
     ingresos_mes: IngresosMes
     alumnos_activos: AlumnosActivos
     cuotas_pendientes: CuotasAgg
     cuotas_vencidas: CuotasAgg
     morosidad: list[MorosidadItem]
+    credito_total: Decimal = Decimal("0")
 
 
 # --------------------------------------------------------------------------- #
 # Pagos
 # --------------------------------------------------------------------------- #
 class PagoEfectivoIn(BaseModel):
-    """`POST /cobranza/pagos/efectivo` (C3)."""
+    """`POST /cobranza/pagos/efectivo` (C3 + abonos).
+
+    `monto_recibido` opcional (efectivo de caja). `None` ⇒ paga el total (Σ saldos).
+    Si se envía debe ser `> 0`; un excedente sobre Σ saldos queda como crédito.
+    """
 
     cuota_ids: list[uuid.UUID] = Field(..., min_length=1)
+    monto_recibido: Decimal | None = Field(default=None, gt=0)
 
 
 class PagoQrIn(BaseModel):
@@ -112,8 +128,22 @@ class PagoQrIn(BaseModel):
     cuota_ids: list[uuid.UUID] = Field(..., min_length=1)
 
 
+class CuotaAplicada(BaseModel):
+    """Detalle por cuota de un pago efectivo con abono (RF-ABO)."""
+
+    cuota_id: uuid.UUID
+    monto_aplicado: Decimal
+    saldo_restante: Decimal
+    estado: str
+
+
 class PagoOut(BaseModel):
-    """Polling `GET /cobranza/pagos/{id}` (C3)."""
+    """Polling `GET /cobranza/pagos/{id}` (C3) + respuesta de pago efectivo (abonos).
+
+    `monto` = efectivo de caja. `credito_aplicado` = crédito previo consumido;
+    `credito_generado` = saldo a favor generado por el sobrepago. `cuotas_aplicadas`
+    detalla qué recibió cada cuota. Defaults `0`/`[]` ⇒ el polling QR no se rompe.
+    """
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -122,6 +152,9 @@ class PagoOut(BaseModel):
     metodo: str
     monto: Decimal
     comprobante_url: str | None = None
+    credito_aplicado: Decimal = Decimal("0")
+    credito_generado: Decimal = Decimal("0")
+    cuotas_aplicadas: list[CuotaAplicada] = Field(default_factory=list)
 
 
 class QrOut(BaseModel):

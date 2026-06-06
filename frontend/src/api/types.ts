@@ -181,7 +181,8 @@ export type AlumnoCreated = AlumnoDetail;
 // No inventar campos. Si falta algo, es hand-off a backend-dev.
 // ============================================================
 
-export type EstadoCuota = 'PENDIENTE' | 'PAGADO' | 'VENCIDO';
+// PARCIAL = saldo > 0 y < monto, sin vencer (epic Abonos). El backend manda el estado.
+export type EstadoCuota = 'PENDIENTE' | 'PARCIAL' | 'PAGADO' | 'VENCIDO';
 export type MetodoPago = 'EFECTIVO' | 'QR';
 // estado del PAGO (distinto del estado de la CUOTA)
 export type EstadoPago = 'PENDIENTE' | 'CONFIRMADO' | 'FALLIDO';
@@ -210,6 +211,9 @@ export interface CuotaListItem {
   periodo_inicio: string; // date
   vence_el: string; // date
   monto: string; // numeric(10,2) serializado como string
+  // Abonos: monto ya cubierto y saldo derivado (monto - monto_pagado). Strings numeric.
+  monto_pagado: string; // numeric(10,2) serializado como string
+  saldo: string; // numeric(10,2) serializado como string (lo deriva el backend)
   estado: EstadoCuota;
   ultimo_metodo: MetodoPago | null;
 }
@@ -246,8 +250,11 @@ export interface MorosidadItem {
 export interface PanelCobranza {
   ingresos_mes: PanelIngresosMes;
   alumnos_activos: PanelAlumnosActivos;
+  // Abonos: cuotas_pendientes/cuotas_vencidas suman SALDO (no monto nominal); el
+  // backend ya lo calcula así. credito_total = Σ credito.saldo de la org.
   cuotas_pendientes: PanelCuotasAgg;
   cuotas_vencidas: PanelCuotasAgg;
+  credito_total: string; // numeric(10,2) serializado como string
   morosidad: MorosidadItem[];
 }
 
@@ -255,6 +262,9 @@ export interface PanelCobranza {
 // crea pago EFECTIVO CONFIRMADO aplicado a cuota_ids (FIFO en backend).
 export interface RegistrarPagoEfectivoBody {
   cuota_ids: string[];
+  // Abonos (RF-ABO): monto recibido en caja. null/omitido => paga el total (Σ saldo).
+  // El backend distribuye FIFO y guarda el sobrepago como crédito de la inscripción.
+  monto_recibido?: string | null; // numeric(10,2) serializado como string
 }
 
 // --- POST /cobranza/pagos/qr (body) ---
@@ -263,14 +273,28 @@ export interface RegistrarPagoQrBody {
   cuota_ids: string[];
 }
 
+// Abonos: aplicación del pago a una cuota concreta (FIFO en backend).
+export interface PagoCuotaAplicada {
+  cuota_id: string;
+  monto_aplicado: string; // numeric(10,2) serializado como string
+  saldo_restante: string; // numeric(10,2) serializado como string (0 => quedó PAGADO)
+  estado: EstadoCuota; // estado destino de la cuota tras aplicar
+}
+
 // --- GET /cobranza/pagos/{id} (polling) ---
-// {id, estado, metodo, monto, comprobante_url}
+// {id, estado, metodo, monto, comprobante_url} + campos de abonos.
+// monto = solo efectivo de caja; credito_aplicado = crédito previo consumido;
+// credito_generado = sobrepago guardado como saldo a favor. Defaults 0/[] => QR
+// y el polling existente no se rompen.
 export interface PagoOut {
   id: string;
   estado: EstadoPago;
   metodo: MetodoPago;
   monto: string;
   comprobante_url: string | null;
+  credito_generado: string; // numeric(10,2) serializado como string
+  credito_aplicado: string; // numeric(10,2) serializado como string
+  cuotas_aplicadas: PagoCuotaAplicada[];
 }
 
 // --- POST /cobranza/pagos/qr -> QR a mostrar ---

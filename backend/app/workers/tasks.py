@@ -51,10 +51,11 @@ def _procesar_org(db, *, org_id: uuid.UUID, hoy: date) -> int:
     # 1) Generación incremental idempotente.
     creadas = generar_cuotas_org(db, org_id=org_id, hoy=hoy)
 
-    # 2) Marcar VENCIDO (idempotente: solo PENDIENTE con vence_el < hoy).
+    # 2) Marcar VENCIDO (idempotente). Abonos: también las PARCIAL con vence_el < hoy
+    #    (precedencia de vencido sobre parcial, RF-ABO-05). Re-correr no cambia nada.
     db.execute(
         update(Cuota)
-        .where(Cuota.estado == "PENDIENTE", Cuota.vence_el < hoy)
+        .where(Cuota.estado.in_(("PENDIENTE", "PARCIAL")), Cuota.vence_el < hoy)
         .values(estado="VENCIDO")
     )
     db.flush()

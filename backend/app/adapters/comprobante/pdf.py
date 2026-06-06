@@ -8,6 +8,8 @@ método, fecha y número de comprobante. Sin I/O de BD: recibe `ComprobanteData`
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 from fpdf import FPDF
 
 from app.domain.ports.invoice import ComprobanteData, ComprobanteService
@@ -41,31 +43,60 @@ class PdfComprobanteService(ComprobanteService):
         pdf.cell(0, 6, _ascii(data.alumno_nombre), new_x="LMARGIN", new_y="NEXT")
         pdf.ln(4)
 
-        # Tabla de cuotas cubiertas.
+        # Tabla de cuotas cubiertas (con Aplicado / Saldo — abonos parciales).
         pdf.set_font("Helvetica", "B", 11)
         pdf.cell(0, 7, "Cuotas cubiertas", new_x="LMARGIN", new_y="NEXT")
         pdf.set_font("Helvetica", "B", 9)
-        pdf.cell(60, 7, "Periodo (inicio)", border=1)
-        pdf.cell(60, 7, "Vence", border=1)
-        pdf.cell(40, 7, f"Monto ({_ascii(data.moneda)})", border=1, new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(40, 7, "Periodo (inicio)", border=1)
+        pdf.cell(35, 7, "Vence", border=1)
+        pdf.cell(30, 7, f"Monto ({_ascii(data.moneda)})", border=1)
+        pdf.cell(30, 7, "Aplicado", border=1)
+        pdf.cell(30, 7, "Saldo", border=1, new_x="LMARGIN", new_y="NEXT")
         pdf.set_font("Helvetica", "", 9)
         for linea in data.cuotas:
-            pdf.cell(60, 7, _ascii(linea.periodo_inicio), border=1)
-            pdf.cell(60, 7, _ascii(linea.vence_el), border=1)
-            pdf.cell(40, 7, f"{linea.monto:.2f}", border=1, new_x="LMARGIN", new_y="NEXT")
+            aplicado = linea.monto_aplicado if linea.monto_aplicado is not None else linea.monto
+            pdf.cell(40, 7, _ascii(linea.periodo_inicio), border=1)
+            pdf.cell(35, 7, _ascii(linea.vence_el), border=1)
+            pdf.cell(30, 7, f"{linea.monto:.2f}", border=1)
+            pdf.cell(30, 7, f"{aplicado:.2f}", border=1)
+            pdf.cell(30, 7, f"{linea.saldo_restante:.2f}", border=1, new_x="LMARGIN", new_y="NEXT")
 
         # Total.
         pdf.ln(2)
         pdf.set_font("Helvetica", "B", 11)
         pdf.cell(120, 8, "Total", border=0)
         pdf.cell(
-            40,
+            45,
             8,
             f"{data.monto_total:.2f} {_ascii(data.moneda)}",
             border=0,
             new_x="LMARGIN",
             new_y="NEXT",
         )
+
+        # Pie: crédito aplicado / saldo a favor generado (defaults 0 ⇒ QR igual que hoy).
+        if data.credito_aplicado > Decimal("0") or data.credito_generado > Decimal("0"):
+            pdf.set_font("Helvetica", "", 9)
+            if data.credito_aplicado > Decimal("0"):
+                pdf.cell(120, 6, "Credito aplicado", border=0)
+                pdf.cell(
+                    45,
+                    6,
+                    f"-{data.credito_aplicado:.2f} {_ascii(data.moneda)}",
+                    border=0,
+                    new_x="LMARGIN",
+                    new_y="NEXT",
+                )
+            if data.credito_generado > Decimal("0"):
+                pdf.cell(120, 6, "Saldo a favor generado", border=0)
+                pdf.cell(
+                    45,
+                    6,
+                    f"{data.credito_generado:.2f} {_ascii(data.moneda)}",
+                    border=0,
+                    new_x="LMARGIN",
+                    new_y="NEXT",
+                )
 
         out = pdf.output()
         return bytes(out)

@@ -6,7 +6,7 @@ import type {
   PagoOut,
   QrResponse,
 } from '@/api/types';
-import { Badge, Button, Card, EstadoBadge, Tabs, type TabItem } from '@/components/ui';
+import { Badge, Button, Card, EstadoBadge, Field, Tabs, type TabItem } from '@/components/ui';
 import { formatDate, formatMoney } from '@/lib/format';
 import './RegistrarPago.css';
 
@@ -110,21 +110,49 @@ export function RegistrarPago({ cuotaInicial, onClose, onConfirmado }: Registrar
     };
   }, [busqueda, cuotaInicial]);
 
-  const toggleCuota = useCallback((id: string) => {
-    setSeleccion((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
-    );
-  }, []);
+  const catalogoById = useMemo(
+    () => new Map(catalogo.map((c) => [c.id, c])),
+    [catalogo],
+  );
 
-  const montoTotal = useMemo(() => {
-    const byId = new Map(catalogo.map((c) => [c.id, c]));
+  // RF-ABO-11: un pago aplica a cuotas de UNA sola inscripción/alumno (el crédito
+  // es por inscripción). El alumno de la selección actual ancla qué se puede sumar.
+  const alumnoSeleccionadoId = useMemo(() => {
+    for (const id of seleccion) {
+      const c = catalogoById.get(id);
+      if (c) return c.alumno.id;
+    }
+    return null;
+  }, [seleccion, catalogoById]);
+
+  const toggleCuota = useCallback(
+    (cuota: CuotaListItem) => {
+      setSeleccion((prev) => {
+        if (prev.includes(cuota.id)) {
+          return prev.filter((x) => x !== cuota.id);
+        }
+        // Si ya hay selección de otro alumno, la reemplazamos (no se mezclan alumnos).
+        const ancla = prev
+          .map((id) => catalogoById.get(id))
+          .find((c): c is CuotaListItem => c != null);
+        if (ancla && ancla.alumno.id !== cuota.alumno.id) {
+          return [cuota.id];
+        }
+        return [...prev, cuota.id];
+      });
+    },
+    [catalogoById],
+  );
+
+  // Total a cobrar = Σ SALDO de lo seleccionado (Abonos: el saldo es lo que falta).
+  const saldoTotal = useMemo(() => {
     return seleccion.reduce((sum, id) => {
-      const c = byId.get(id);
-      return sum + (c ? Number(c.monto) : 0);
+      const c = catalogoById.get(id);
+      return sum + (c ? Number(c.saldo) : 0);
     }, 0);
-  }, [seleccion, catalogo]);
+  }, [seleccion, catalogoById]);
 
-  const listaCuotas = cuotaInicial ? cuotasAlumno : cuotasAlumno;
+  const listaCuotas = cuotasAlumno;
 
   const selector = (
     <div className="rp-selector">
@@ -161,35 +189,46 @@ export function RegistrarPago({ cuotaInicial, onClose, onConfirmado }: Registrar
         </p>
       ) : (
         <ul className="rp-cuotas">
-          {listaCuotas.map((c) => (
-            <li key={c.id}>
-              <label className="rp-cuota">
-                <input
-                  type="checkbox"
-                  checked={seleccion.includes(c.id)}
-                  onChange={() => toggleCuota(c.id)}
-                />
-                <span className="rp-cuota__body">
-                  <span className="rp-cuota__top">
-                    {!cuotaInicial && (
-                      <span className="rp-cuota__alumno">{c.alumno.nombre_completo}</span>
-                    )}
-                    <EstadoBadge estado={c.estado} />
+          {listaCuotas.map((c) => {
+            // RF-ABO-11: solo cuotas del alumno ya anclado son combinables.
+            const bloqueada =
+              alumnoSeleccionadoId != null && c.alumno.id !== alumnoSeleccionadoId;
+            return (
+              <li key={c.id}>
+                <label
+                  className={`rp-cuota${bloqueada ? ' rp-cuota--disabled' : ''}`}
+                  title={
+                    bloqueada
+                      ? 'Solo puedes cobrar cuotas de un mismo alumno por pago.'
+                      : undefined
+                  }
+                >
+                  <input
+                    type="checkbox"
+                    checked={seleccion.includes(c.id)}
+                    onChange={() => toggleCuota(c)}
+                    disabled={bloqueada}
+                  />
+                  <span className="rp-cuota__body">
+                    <span className="rp-cuota__top">
+                      {!cuotaInicial && (
+                        <span className="rp-cuota__alumno">{c.alumno.nombre_completo}</span>
+                      )}
+                      <EstadoBadge estado={c.estado} />
+                    </span>
+                    <span className="rp-cuota__meta">Vence {formatDate(c.vence_el)}</span>
                   </span>
-                  <span className="rp-cuota__meta">
-                    Vence {formatDate(c.vence_el)}
-                  </span>
-                </span>
-                <span className="rp-cuota__monto tabular">{formatMoney(c.monto)}</span>
-              </label>
-            </li>
-          ))}
+                  <span className="rp-cuota__monto tabular">{formatMoney(c.saldo)}</span>
+                </label>
+              </li>
+            );
+          })}
         </ul>
       )}
 
       <div className="rp-total">
         <span>Total a cobrar</span>
-        <span className="rp-total__monto tabular">{formatMoney(montoTotal)}</span>
+        <span className="rp-total__monto tabular">{formatMoney(saldoTotal)}</span>
       </div>
     </div>
   );
@@ -198,7 +237,13 @@ export function RegistrarPago({ cuotaInicial, onClose, onConfirmado }: Registrar
     {
       id: 'efectivo',
       label: 'Efectivo',
-      content: <PagoEfectivo cuotaIds={seleccion} onConfirmado={onConfirmado} />,
+      content: (
+        <PagoEfectivo
+          cuotaIds={seleccion}
+          saldoTotal={saldoTotal}
+          onConfirmado={onConfirmado}
+        />
+      ),
     },
     {
       id: 'qr',
@@ -233,21 +278,44 @@ export function RegistrarPago({ cuotaInicial, onClose, onConfirmado }: Registrar
 // --- Pago en efectivo: confirma y muestra comprobante (PDF + WhatsApp visual) ---
 function PagoEfectivo({
   cuotaIds,
+  saldoTotal,
   onConfirmado,
 }: {
   cuotaIds: string[];
+  // Σ saldo de lo seleccionado: default del "Monto recibido" (Abonos).
+  saldoTotal: number;
   onConfirmado?: () => void;
 }) {
   const [pago, setPago] = useState<PagoOut | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // "Monto recibido" en caja. Vacío => paga el total (Σ saldo). El backend
+  // distribuye FIFO y guarda el sobrepago como crédito de la inscripción.
+  const [montoRecibido, setMontoRecibido] = useState('');
+
+  const recibidoNum = montoRecibido.trim() === '' ? null : Number(montoRecibido);
+  const recibidoInvalido =
+    recibidoNum !== null && (Number.isNaN(recibidoNum) || recibidoNum <= 0);
+  // Sobrepago que iría a crédito (preview; el backend tiene la última palabra).
+  const excedente =
+    recibidoNum !== null && !recibidoInvalido && recibidoNum > saldoTotal
+      ? recibidoNum - saldoTotal
+      : 0;
+  const parcial =
+    recibidoNum !== null && !recibidoInvalido && recibidoNum < saldoTotal;
 
   async function confirmar() {
-    if (cuotaIds.length === 0) return;
+    if (cuotaIds.length === 0 || recibidoInvalido) return;
     setSubmitting(true);
     setError(null);
     try {
-      const res = await api.pagoEfectivo({ cuota_ids: cuotaIds });
+      // Vacío o igual al total => omitimos monto_recibido (camino "paga todo"
+      // intacto). Solo lo mandamos cuando el operador escribió un valor distinto.
+      const body =
+        recibidoNum === null || recibidoNum === saldoTotal
+          ? { cuota_ids: cuotaIds }
+          : { cuota_ids: cuotaIds, monto_recibido: montoRecibido.trim() };
+      const res = await api.pagoEfectivo(body);
       setPago(res);
       onConfirmado?.();
     } catch (err) {
@@ -269,6 +337,26 @@ function PagoEfectivo({
         Registra el cobro en efectivo. Se aplicará a la(s) cuota(s) seleccionada(s) y se
         generará el comprobante.
       </p>
+      <Field
+        type="number"
+        inputMode="decimal"
+        min="0"
+        step="0.01"
+        label="Monto recibido"
+        value={montoRecibido}
+        onChange={(e) => setMontoRecibido(e.target.value)}
+        placeholder={saldoTotal > 0 ? String(saldoTotal) : '0'}
+        error={recibidoInvalido ? 'Ingresa un monto mayor a 0.' : undefined}
+        hint={
+          recibidoInvalido
+            ? undefined
+            : excedente > 0
+              ? `Sobrepago: ${formatMoney(excedente)} quedará como crédito a favor.`
+              : parcial
+                ? 'Pago parcial: el saldo restante queda pendiente.'
+                : 'Vacío = cobrar el total seleccionado.'
+        }
+      />
       {error && (
         <div className="page-error" role="alert">
           {error}
@@ -277,7 +365,7 @@ function PagoEfectivo({
       <Button
         variant="primary"
         onClick={confirmar}
-        disabled={submitting || cuotaIds.length === 0}
+        disabled={submitting || cuotaIds.length === 0 || recibidoInvalido}
       >
         {submitting ? 'Registrando…' : 'Confirmar pago en efectivo'}
       </Button>
@@ -423,16 +511,65 @@ function PagoQr({
 // --- Comprobante: PDF (descarga real) + WhatsApp (visual) ---
 function Comprobante({ pago, confirmadoQr }: { pago: PagoOut; confirmadoQr?: boolean }) {
   const [whatsappEnviado, setWhatsappEnviado] = useState(false);
+  const cuotas = pago.cuotas_aplicadas ?? [];
+  const creditoAplicado = Number(pago.credito_aplicado ?? 0);
+  const creditoGenerado = Number(pago.credito_generado ?? 0);
+  // ¿Quedó algo a medias? (saldo restante > 0 en alguna cuota → estado PARCIAL).
+  const hayParcial = cuotas.some(
+    (c) => c.estado === 'PARCIAL' || Number(c.saldo_restante) > 0,
+  );
   return (
     <div className="rp-comprobante">
       <Card>
         <div className="rp-comprobante__head">
-          <Badge tone="paid">✓ {confirmadoQr ? 'Pago confirmado' : 'Pago registrado'}</Badge>
+          <Badge tone={hayParcial ? 'pending' : 'paid'}>
+            {hayParcial
+              ? 'Pago parcial registrado'
+              : `✓ ${confirmadoQr ? 'Pago confirmado' : 'Pago registrado'}`}
+          </Badge>
           <span className="rp-comprobante__monto tabular">{formatMoney(pago.monto)}</span>
         </div>
         <p className="rp-comprobante__text">
           Comprobante generado. Descárgalo en PDF o envíalo por WhatsApp.
         </p>
+
+        {cuotas.length > 0 && (
+          <ul className="rp-aplicaciones">
+            {cuotas.map((c) => (
+              <li key={c.cuota_id} className="rp-aplicacion">
+                <span className="rp-aplicacion__top">
+                  <EstadoBadge estado={c.estado} />
+                  <span className="rp-aplicacion__aplicado tabular">
+                    {formatMoney(c.monto_aplicado)}
+                  </span>
+                </span>
+                {Number(c.saldo_restante) > 0 && (
+                  <span className="rp-aplicacion__saldo tabular">
+                    Saldo restante: {formatMoney(c.saldo_restante)}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {(creditoAplicado > 0 || creditoGenerado > 0) && (
+          <div className="rp-credito">
+            {creditoAplicado > 0 && (
+              <p className="rp-credito__line">
+                <span>Crédito aplicado</span>
+                <span className="tabular">−{formatMoney(creditoAplicado)}</span>
+              </p>
+            )}
+            {creditoGenerado > 0 && (
+              <p className="rp-credito__line rp-credito__line--favor">
+                <span>Saldo a favor generado</span>
+                <span className="tabular">{formatMoney(creditoGenerado)}</span>
+              </p>
+            )}
+          </div>
+        )}
+
         <div className="rp-comprobante__actions">
           <a
             className="btn btn--secondary btn--md"

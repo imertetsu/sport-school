@@ -111,6 +111,16 @@
   background: var(--color-surface-hover);
 }
 
+/* RF-ABO-11: cuota de otro alumno no combinable en el mismo pago. */
+.rp-cuota--disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.rp-cuota--disabled:hover {
+  background: none;
+}
+
 .rp-cuota__body {
   display: flex;
   flex-direction: column;
@@ -252,4 +262,64 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-3);
+}
+
+/* --- Comprobante · aplicaciones por cuota (Abonos: Aplicado / Saldo) --- */
+.rp-aplicaciones {
+  list-style: none;
+  margin: 0 0 var(--space-4);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.rp-aplicacion {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.rp-aplicacion__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.rp-aplicacion__aplicado {
+  font-weight: 600;
+}
+
+.rp-aplicacion__saldo {
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+}
+
+/* --- Comprobante · pie de crédito (aplicado / saldo a favor generado) --- */
+.rp-credito {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-bottom: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+
+.rp-credito__line {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  font-size: var(--fs-sm);
+  color: var(--color-text-muted);
+}
+
+.rp-credito__line--favor {
+  font-weight: 600;
+  color: var(--color-text);
 }

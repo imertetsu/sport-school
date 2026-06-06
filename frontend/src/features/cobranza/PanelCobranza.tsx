@@ -27,6 +27,7 @@ const FILTROS: { value: EstadoFiltro; label: string }[] = [
   { value: '', label: 'Todos' },
   { value: 'PAGADO', label: 'Pagado' },
   { value: 'PENDIENTE', label: 'Pendiente' },
+  { value: 'PARCIAL', label: 'Parcial' },
   { value: 'VENCIDO', label: 'Vencido' },
 ];
 
@@ -153,9 +154,21 @@ export function PanelCobranza() {
       },
       {
         key: 'monto',
-        header: 'Monto',
+        header: 'Saldo',
         align: 'right',
-        render: (c) => <span className="tabular">{formatMoney(c.monto)}</span>,
+        // Abonos: mostramos el SALDO pendiente (lo que falta cobrar). Si hay un
+        // abono parcial, el monto nominal de la cuota va como contexto debajo.
+        render: (c) => {
+          const tieneAbono = c.estado === 'PARCIAL' || Number(c.monto_pagado) > 0;
+          return (
+            <span className="cuota-cell__saldo">
+              <span className="tabular">{formatMoney(c.saldo)}</span>
+              {tieneAbono && c.saldo !== c.monto && (
+                <span className="cuota-cell__saldo-de tabular">de {formatMoney(c.monto)}</span>
+              )}
+            </span>
+          );
+        },
       },
       {
         key: 'vence_el',
@@ -202,6 +215,10 @@ export function PanelCobranza() {
   const activos = panel?.alumnos_activos;
   const pendientes = panel?.cuotas_pendientes;
   const vencidas = panel?.cuotas_vencidas;
+  // Abonos: saldo a favor acumulado (Σ credito.saldo de la org). Solo se muestra
+  // si hay crédito; si es 0/ausente no aporta y no abulta la grilla.
+  const creditoTotal = panel?.credito_total;
+  const tieneCredito = creditoTotal != null && Number(creditoTotal) > 0;
 
   return (
     <div className="panel-cobranza">
@@ -254,6 +271,14 @@ export function PanelCobranza() {
           tone="overdue"
           loading={!panel && !panelError}
         />
+        {tieneCredito && (
+          <KPICard
+            label="Crédito a favor"
+            value={formatMoney(creditoTotal)}
+            hint="saldo de abonos por aplicar"
+            loading={!panel && !panelError}
+          />
+        )}
       </div>
 
       <div className="panel-cobranza__cols">
