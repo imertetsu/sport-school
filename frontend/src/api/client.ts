@@ -21,6 +21,9 @@ import type {
   EgresoResumenItem,
   EgresosFilters,
   EgresosPage,
+  EntrenadorCreate,
+  EntrenadorOut,
+  EntrenadorUpdate,
   EstadoCuota,
   GenerarCuotasResponse,
   GuardarBody,
@@ -469,6 +472,31 @@ export const api = {
       body,
       signal,
     });
+  },
+
+  // ---- Entrenadores (Epic B) ----
+  // GET /entrenadores?solo_activos= -> lista scoped por org (RLS). Listar lo
+  // puede cualquier rol (pobla selectores como el de Horarios). Orden por nombres.
+  listEntrenadores(soloActivos?: boolean, signal?: AbortSignal): Promise<EntrenadorOut[]> {
+    return request<EntrenadorOut[]>('/entrenadores', {
+      query: { solo_activos: soloActivos ? 'true' : undefined },
+      signal,
+    });
+  },
+  // POST /entrenadores (ADMIN) -> crea usuario(ENTRENADOR) + entrenador en una
+  // transacción y lo devuelve (201). Email ya en uso -> 409; el cliente lo refleja.
+  createEntrenador(payload: EntrenadorCreate, signal?: AbortSignal): Promise<EntrenadorOut> {
+    return request<EntrenadorOut>('/entrenadores', { method: 'POST', body: payload, signal });
+  },
+  // PUT /entrenadores/{id} (ADMIN) -> edita nombres/especialidad/disciplinas y
+  // activo (+ password si viene). activo=false da de baja; activo=true reactiva.
+  // id inexistente -> 404. Devuelve el entrenador actualizado.
+  updateEntrenador(
+    id: string,
+    payload: EntrenadorUpdate,
+    signal?: AbortSignal,
+  ): Promise<EntrenadorOut> {
+    return request<EntrenadorOut>(`/entrenadores/${id}`, { method: 'PUT', body: payload, signal });
   },
 
   // GET /reportes/asistencia?desde=&hasta=&sucursal_id=&categoria_id=

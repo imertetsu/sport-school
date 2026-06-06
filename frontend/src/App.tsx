@@ -13,6 +13,7 @@ import { TomarAsistencia } from '@/features/asistencia/TomarAsistencia';
 import { Horarios } from '@/features/horarios/Horarios';
 import { Muro } from '@/features/avisos/Muro';
 import { Egresos } from '@/features/egresos/Egresos';
+import { Entrenadores } from '@/features/entrenadores/Entrenadores';
 import { Reportes } from '@/features/reportes/Reportes';
 import { NoAutorizado } from '@/features/reportes/NoAutorizado';
 
@@ -64,6 +65,17 @@ export default function App() {
               element={
                 <RoleRoute allow={['ADMIN']}>
                   <Reportes />
+                </RoleRoute>
+              }
+            />
+            {/* Entrenadores (Epic B): gestión solo ADMIN. El backend deja listar
+                a cualquier rol (pobla selectores) pero la pantalla de gestión y
+                sus escrituras son ADMIN (require_role). */}
+            <Route
+              path="/entrenadores"
+              element={
+                <RoleRoute allow={['ADMIN']}>
+                  <Entrenadores />
                 </RoleRoute>
               }
             />

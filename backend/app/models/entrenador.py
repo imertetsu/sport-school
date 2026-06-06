@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import ForeignKey, String
+from sqlalchemy import ForeignKey, String, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -19,3 +20,6 @@ class Entrenador(UUIDPkMixin, OrgScoped, TimestampMixin, Base):
     )
     nombres: Mapped[str] = mapped_column(String, nullable=False)
     especialidad: Mapped[str | None] = mapped_column(String, nullable=True)
+    disciplinas: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
