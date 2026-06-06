@@ -19,7 +19,12 @@ services:
     image: postgres:16
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      # Password del superusuario. Viene del .env (en prod el bootstrap genera uno
+      # fuerte) y DEBE coincidir con el de MIGRATION_DATABASE_URL. Default `postgres`
+      # para dev. OJO: Postgres solo aplica este password al INICIALIZAR el volumen
+      # vacío; cambiarlo sobre un volumen existente NO lo actualiza (recrear con
+      # `docker compose down -v`).
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB: cantera
     ports:
       # Puerto del host parametrizable (evita colisiones con otros Postgres en la
