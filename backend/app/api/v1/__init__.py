@@ -13,6 +13,8 @@ from app.api.v1 import (
     cobranza,
     egresos,
     horarios,
+    plataforma,
+    recibos,
     reportes,
     solicitudes,
     sucursales,
@@ -31,6 +33,8 @@ api_router.include_router(egresos.router)
 api_router.include_router(reportes.router)
 api_router.include_router(avisos.router)
 api_router.include_router(horarios.router)
+api_router.include_router(recibos.router)
 api_router.include_router(solicitudes.router)
+api_router.include_router(plataforma.router)
 api_router.include_router(openbcb_webhook.router)
 api_router.include_router(whatsapp_webhook.router)

@@ -32,6 +32,10 @@ class Settings(BaseSettings):
 
     # Branding (C0)
     app_name: str = "LATINOSPORT"
+    # URL pública base para construir enlaces que se envían fuera de la app (p.ej. el
+    # enlace tokenizado del recibo PDF por WhatsApp, epic Sucursales/Recibo). En dev
+    # apunta al API local; infra-dev define `PUBLIC_BASE_URL` en `.env.example`/prod.
+    public_base_url: str = "http://localhost:8014"
     # Emisor del recibo no-fiscal (epic Recibo, C2): empresa - app. Un solo lugar,
     # no hardcodeado por el PDF. No es factura SIN (fase 2).
     recibo_emisor: str = "SnapCoding - LatinoSport"
@@ -76,6 +80,12 @@ class Settings(BaseSettings):
     whatsapp_graph_version: str = "v21.0"
     # Días antes del vencimiento en que el recordatorio adjunta el QR de cobro.
     recordatorio_qr_dias_antes: int = 3
+
+    # Bootstrap del primer super admin de plataforma (Epic Super Admin). Las consume
+    # `python -m app.seed_plataforma` (idempotente por email). En prod se inyectan vía
+    # `.env` (infra-dev) y NUNCA se commitean secretos. Sin ellas, el seed no crea nada.
+    platform_admin_email: str | None = None
+    platform_admin_password: str | None = None
 
     @field_validator("cors_origins", mode="before")
     @classmethod

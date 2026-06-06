@@ -14,6 +14,7 @@ import { Horarios } from '@/features/horarios/Horarios';
 import { Muro } from '@/features/avisos/Muro';
 import { Egresos } from '@/features/egresos/Egresos';
 import { Reportes } from '@/features/reportes/Reportes';
+import { Sucursales } from '@/features/sucursales/Sucursales';
 import { NoAutorizado } from '@/features/reportes/NoAutorizado';
 
 export default function App() {
@@ -64,6 +65,15 @@ export default function App() {
               element={
                 <RoleRoute allow={['ADMIN']}>
                   <Reportes />
+                </RoleRoute>
+              }
+            />
+            {/* Sucursales/Categorías (catálogo): gate de rol ADMIN. */}
+            <Route
+              path="/sucursales"
+              element={
+                <RoleRoute allow={['ADMIN']}>
+                  <Sucursales />
                 </RoleRoute>
               }
             />
