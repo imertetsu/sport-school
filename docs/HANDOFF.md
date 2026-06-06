@@ -106,6 +106,13 @@ por el proxy TLS). Al abrir el próximo epic, `product-owner` crea `docs/specs/<
 
 ## Recent decisions
 
+- **2026-06-06 CI/CD.** Job `deploy` en `.github/workflows/ci.yml`: en push a `main`, tras
+  pasar backend+frontend, hace **SSH al servidor** (sshpass, user+pass) → `git reset --hard
+  origin/main` + `bash infra/deploy.sh` (build-on-server: `docker compose up -d --build`, la
+  imagen aplica migraciones). **Gateado por `vars.DEPLOY_ENABLED=='true'`** (se salta hasta que
+  se active). **Secretos de repo requeridos** (Settings→Secrets→Actions): `SERVER_HOST`,
+  `SERVER_USER`, `SERVER_PASSWORD`, `SERVER_PORT`, `DEPLOY_PATH`. El servidor necesita Docker +
+  repo clonado + `.env` de **producción** (APP_ENV=production, secretos reales) en la raíz.
 - **2026-06-06 Fase 2 — Auto-registro de alumno (EN SISTEMA).** El usuario descartó la 1ª versión
   con **link/token público** (se construyó y se **borró** antes de commitear); ahora el registro es
   una **pantalla autenticada**: entrenador/admin captura `POST /solicitudes` → cola → solo ADMIN

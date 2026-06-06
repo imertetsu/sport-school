@@ -113,3 +113,34 @@ jobs:
 
       - name: Test (vitest)
         run: npm run test
+
+  # ---------------------------------------------------------------------------
+  # CD — Despliegue por SSH al servidor (build-on-server).
+  # Solo corre en push a `main`, DESPUÉS de que backend+frontend pasen (needs),
+  # y SOLO si activas la variable de repo DEPLOY_ENABLED=true (así no falla antes
+  # de configurar secretos/servidor). Credenciales = secretos del repo (Settings →
+  # Secrets and variables → Actions). NUNCA en el código.
+  # ---------------------------------------------------------------------------
+  deploy:
+    name: Deploy (SSH → servidor)
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    if: >-
+      github.ref == 'refs/heads/main'
+      && github.event_name == 'push'
+      && vars.DEPLOY_ENABLED == 'true'
+    steps:
+      - name: Instalar sshpass
+        run: sudo apt-get update && sudo apt-get install -y sshpass
+
+      - name: Desplegar (git reset --hard origin/main + infra/deploy.sh)
+        env:
+          SSHPASS: ${{ secrets.SERVER_PASSWORD }}
+          HOST: ${{ secrets.SERVER_HOST }}
+          USER_: ${{ secrets.SERVER_USER }}
+          PORT: ${{ secrets.SERVER_PORT }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          sshpass -e ssh -o StrictHostKeyChecking=accept-new -p "$PORT" \
+            "$USER_@$HOST" \
+            "cd '$DEPLOY_PATH' && git fetch --all --prune && git reset --hard origin/main && bash infra/deploy.sh"
