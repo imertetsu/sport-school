@@ -170,7 +170,9 @@ REDIS_URL=redis://redis:6379/0
 JWT_SECRET=${JWT}
 JWT_EXPIRE_MINUTES=480
 CORS_ORIGINS=http://${SERVER_IP}:${WEB_PORT}
-VITE_API_URL=http://${SERVER_IP}:${API_PORT}
+# Vacío = MISMO ORIGEN: la SPA llama a /api y nginx (web) lo proxya a api:8000.
+# Solo se expone el puerto WEB; la app no depende de la IP pública horneada.
+VITE_API_URL=
 OPENBCB_SANDBOX=false
 OPENBCB_BASE_URL=
 OPENBCB_API_KEY=
@@ -185,6 +187,16 @@ EOF
 
   chmod 600 "$ENV_FILE"
   echo "[bootstrap] .env generado (chmod 600). Secretos NO se imprimen por seguridad."
+fi
+
+# ---------------------------------------------------------------------------
+# 5b) Firewall: si ufw está activo, permitir SOLO el puerto WEB (el único que se
+#     expone al exterior; la API viaja por el proxy de nginx en ESE mismo puerto).
+#     No se abren 8000/5432/6379: el navegador nunca los toca.
+# ---------------------------------------------------------------------------
+if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: active"; then
+  echo "[bootstrap] ufw activo: permitiendo ${WEB_PORT}/tcp (web)…"
+  ufw allow "${WEB_PORT}/tcp" || true
 fi
 
 # ---------------------------------------------------------------------------
@@ -203,7 +215,8 @@ echo ""
 echo "[bootstrap] ============================================================"
 echo "[bootstrap] LISTO. Commit desplegado: ${DEPLOYED_COMMIT}"
 echo "[bootstrap] SPA (frontend): http://${SERVER_IP}:${WEB_PORT}"
-echo "[bootstrap] API (docs):     http://${SERVER_IP}:${API_PORT}/docs"
+echo "[bootstrap] API (docs):     http://${SERVER_IP}:${WEB_PORT}/docs   (mismo puerto, vía proxy)"
+echo "[bootstrap] Exponer al exterior SOLO el puerto WEB (${WEB_PORT}); NUNCA 8000/5432/6379."
 echo "[bootstrap] ------------------------------------------------------------"
 echo "[bootstrap] NOTA: el seed NO corre en deploy. La BD arranca vacía (solo"
 echo "[bootstrap]       migraciones aplicadas); NO hay usuario admin sembrado."
