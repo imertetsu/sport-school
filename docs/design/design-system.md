@@ -1,20 +1,20 @@
-# Referencia de diseño — UI de LATINASPORT / CanteraSport
+# Referencia de diseño — UI de LATINOSPORT
 
 > Capturado del prototipo clickable de claude.ai (efímero) el 2026-06-05. Fuente de verdad
 > **visual** para `frontend-dev`. El SRS manda en reglas de negocio; esto manda en look&feel.
 > Prototipo = solo UI: datos de ejemplo, y acciones PDF/WhatsApp son visuales.
 
 ## Marca y nomenclatura
-- Nombre por defecto del prototipo: **CanteraSport**; alternativa **LATINASPORT** (era un
-  *toggle* en el prototipo). El nombre debe ser una **constante/branding configurable**, no
-  hardcodeado por toda la app. _(decisión de nombre oficial: pendiente — ver HANDOFF)_
+- **Nombre oficial: LATINOSPORT** (decisión del usuario, 2026-06-06). Configurable vía
+  `APP_NAME`/`VITE_APP_NAME` (no hardcodear). Nombres previos del prototipo: CanteraSport/LATINASPORT.
 - Desarrolla: **SnapCoding**.
 
 ## Sistema de diseño (design tokens)
 - **Tipografía:** `Space Grotesk` (display, cifras, encabezados) + `Hanken Grotesk` (UI,
   cuerpo). Carácter geométrico/deportivo.
-- **Acento:** verde o azul, **intercambiable** (era Tweaks). Default: **verde**. Expón el
-  acento como variable de tema (CSS var / token), no color fijo.
+- **Acento:** **AZUL por defecto** (oklch matiz ~250°: principal `oklch(0.58 0.16 250)` ≈ #2F6BD6,
+  fuerte `oklch(0.50 0.17 252)`, suave `oklch(0.95 0.03 250)`, tinta `oklch(0.46 0.14 252)`); verde
+  como alterno, **intercambiable** vía `[data-accent]`. Acento como variable de tema, no color fijo.
 - **Modo:** claro, superficies **planas** (sin sombras pesadas), bordes/divisores sutiles.
 - **Densidad:** cómoda (más aire, legible).
 - **Radio de esquinas:** redondeado, configurable.

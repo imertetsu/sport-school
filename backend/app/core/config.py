@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     app_env: str = "dev"
 
     # Branding (C0)
-    app_name: str = "CanteraSport"
+    app_name: str = "LATINOSPORT"
 
     # Base de datos: la app corre como rol `cantera_app` (NOBYPASSRLS).
     # Driver psycopg v3 -> postgresql+psycopg:// (C3).

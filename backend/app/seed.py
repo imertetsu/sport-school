@@ -554,7 +554,7 @@ def seed() -> None:
         # 3) Usuarios (ADMIN + ENTRENADOR) y entrenador.
         _get_or_create_usuario(
             db, org_id, email=ADMIN_EMAIL, password=ADMIN_PASS, role="ADMIN",
-            nombre="Admin CanteraSport",
+            nombre="Admin LATINOSPORT",
         )
         coach_user = _get_or_create_usuario(
             db, org_id, email=COACH_EMAIL, password=COACH_PASS, role="ENTRENADOR",

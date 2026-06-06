@@ -1,8 +1,8 @@
 /* ============================================================
-   CanteraSport — design tokens
+   LATINOSPORT — design tokens
    Fuente visual de verdad: docs/design/design-system.md
    - Tipografía: Space Grotesk (display/cifras) + Hanken Grotesk (UI/cuerpo)
-   - Acento: verde (default) o azul, intercambiable vía [data-accent]
+   - Acento: AZUL (default, oklch matiz ~250°) o verde, intercambiable vía [data-accent]
    - Estados badge: verde=Pagado, ámbar=Pendiente, rojo=Vencido
    - Modo claro, superficies planas, densidad cómoda, radio configurable
    ============================================================ */
@@ -61,14 +61,14 @@
   --color-text-subtle: #8a939e;
   --color-text-on-accent: #ffffff;
 
-  /* --- Acento por defecto: VERDE --- */
-  --accent: #16a34a;
-  --accent-hover: #15803d;
-  --accent-active: #166534;
-  --accent-soft: #e8f6ee;
-  --accent-soft-border: #bfe6cd;
-  --accent-text: #137a3a;
-  --accent-ring: rgba(22, 163, 74, 0.28);
+  /* --- Acento por defecto: AZUL (oklch, matiz ~250°) --- */
+  --accent: oklch(0.58 0.16 250); /* principal   ≈ #2F6BD6 */
+  --accent-hover: oklch(0.5 0.17 252); /* fuerte (hover/activo) ≈ #2156C2 */
+  --accent-active: oklch(0.46 0.14 252); /* press/tinta ≈ #1E4FA8 */
+  --accent-soft: oklch(0.95 0.03 250); /* suave: fondo de badges/chips activos */
+  --accent-soft-border: oklch(0.88 0.05 250);
+  --accent-text: oklch(0.46 0.14 252); /* tinta: texto sobre fondos suaves */
+  --accent-ring: oklch(0.58 0.16 250 / 0.28);
 
   /* --- Estados badge (fijos, no dependen del acento) --- */
   /* verde = Pagado */
@@ -103,16 +103,28 @@
   --sidebar-w-collapsed: 64px;
 }
 
-/* Acento alterno: AZUL (intercambiable). */
+/* Acento AZUL explícito (== default). */
 :root[data-accent='azul'],
 .accent-azul {
-  --accent: #2563eb;
-  --accent-hover: #1d4ed8;
-  --accent-active: #1e40af;
-  --accent-soft: #e8eefe;
-  --accent-soft-border: #c2d4fb;
-  --accent-text: #1d4ed8;
-  --accent-ring: rgba(37, 99, 235, 0.28);
+  --accent: oklch(0.58 0.16 250);
+  --accent-hover: oklch(0.5 0.17 252);
+  --accent-active: oklch(0.46 0.14 252);
+  --accent-soft: oklch(0.95 0.03 250);
+  --accent-soft-border: oklch(0.88 0.05 250);
+  --accent-text: oklch(0.46 0.14 252);
+  --accent-ring: oklch(0.58 0.16 250 / 0.28);
+}
+
+/* Acento alterno: VERDE (intercambiable vía Tweak). */
+:root[data-accent='verde'],
+.accent-verde {
+  --accent: #16a34a;
+  --accent-hover: #15803d;
+  --accent-active: #166534;
+  --accent-soft: #e8f6ee;
+  --accent-soft-border: #bfe6cd;
+  --accent-text: #137a3a;
+  --accent-ring: rgba(22, 163, 74, 0.28);
 }
 
 /* ============================================================

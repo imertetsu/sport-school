@@ -106,6 +106,12 @@ por el proxy TLS). Al abrir el próximo epic, `product-owner` crea `docs/specs/<
 
 ## Recent decisions
 
+- **2026-06-06 Rebrand → LATINOSPORT + acento AZUL.** Nombre oficial **LATINOSPORT** (antes
+  CanteraSport) en `APP_NAME`/`VITE_APP_NAME`, config backend/frontend, `<title>`, seed (admin) y
+  docstrings. **Acento por defecto = AZUL** en oklch (`--accent: oklch(0.58 0.16 250)` ≈ #2F6BD6,
+  hover `0.50 0.17 252`, suave `0.95 0.03 250`, tinta `0.46 0.14 252`); verde pasa a alterno
+  (`[data-accent='verde']`). Se renovaron las storage keys a `latinosport.*` para que el azul
+  aplique aunque hubiera un acento viejo guardado. Badges de estado (verde/ámbar/rojo) NO cambian.
 - **2026-06-06 CI/CD.** Job `deploy` en `.github/workflows/ci.yml`: en push a `main`, tras
   pasar backend+frontend, hace **SSH al servidor** (sshpass, user+pass) → `git reset --hard
   origin/main` + `bash infra/deploy.sh` (build-on-server: `docker compose up -d --build`, la

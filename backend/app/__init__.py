@@ -1,1 +1,1 @@
-"""Paquete `app` — backend de CanteraSport."""
+"""Paquete `app` — backend de LATINOSPORT."""

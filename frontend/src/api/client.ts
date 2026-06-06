@@ -1,4 +1,4 @@
-// Wrapper fetch tipado contra la API de CanteraSport (C5).
+// Wrapper fetch tipado contra la API de LATINOSPORT (C5).
 // - Base: import.meta.env.VITE_API_URL + /api/v1
 // - Agrega Authorization: Bearer desde el token guardado
 // - Maneja 401 (token inválido/expirado) y 422 (validación)

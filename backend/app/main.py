@@ -1,4 +1,4 @@
-"""Factory de la aplicación FastAPI (CanteraSport).
+"""Factory de la aplicación FastAPI (LATINOSPORT).
 
 Monta el router `/api/v1`, configura CORS desde settings y expone `/health`.
 """
