@@ -6,6 +6,7 @@ import { AppShell } from '@/components/shell/AppShell';
 import { AlumnosList } from '@/features/alumnos/AlumnosList';
 import { AlumnoPerfil } from '@/features/alumnos/AlumnoPerfil';
 import { NuevoAlumno } from '@/features/alumnos/NuevoAlumno';
+import { Solicitudes } from '@/features/solicitudes/Solicitudes';
 import { PanelCobranza } from '@/features/cobranza/PanelCobranza';
 import { PagosHistorial } from '@/features/cobranza/PagosHistorial';
 import { TomarAsistencia } from '@/features/asistencia/TomarAsistencia';
@@ -34,6 +35,11 @@ export default function App() {
             <Route path="/alumnos" element={<AlumnosList />} />
             <Route path="/alumnos/nuevo" element={<NuevoAlumno />} />
             <Route path="/alumnos/:id" element={<AlumnoPerfil />} />
+            {/* Solicitudes (auto-registro EN SISTEMA): ruta protegida normal,
+                visible a ADMIN y ENTRENADOR (sin gate de rol). El backend filtra
+                la cola por rol; aprobar/rechazar solo lo muestra la UI a ADMIN y
+                el backend lo exige (require_role). NO hay ruta pública. */}
+            <Route path="/solicitudes" element={<Solicitudes />} />
             <Route path="/asistencia" element={<TomarAsistencia />} />
             {/* Horarios / programación de clases: visible a ADMIN y ENTRENADOR
                 (sin gate de rol). El backend filtra la vista por rol; las

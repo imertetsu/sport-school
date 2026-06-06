@@ -4,7 +4,7 @@
 > cada epic**. Máx ~150 líneas; poda lo viejo. Esto NO es un changelog — es un snapshot
 > de "cómo está el mundo hoy".
 
-_Última actualización: 2026-06-06 — MVP completo + deploy endurecido + **Fase 2** iniciada con **Programación de clases** (7º epic)._
+_Última actualización: 2026-06-06 — Fase 2: **Programación de clases** (7º) + **Auto-registro de alumno** en-sistema (8º). 8 epics en main._
 
 ## Stack snapshot
 
@@ -49,12 +49,18 @@ up --build` valida el stack desde cero. Ver "Recent decisions".
    get-or-create de Asistencia**, idempotente) + `recordatorios_clase` (cada hora, idempotente vía
    `recordatorio_enviado_en`, Noop). Pantalla **Horarios** (rejilla semanal Lun–Dom, alta/edición
    ADMIN). Verificado API + navegador.
+8. **Auto-registro de alumno** (RF-USR) — **versión EN SISTEMA** (NO link/token público; decisión del
+   usuario). Tabla `solicitud_registro` (RLS NULLIF) — migración `0008`. `POST /solicitudes`
+   **autenticado** (ADMIN o ENTRENADOR captura; entrenador scoped a sus sucursales), cola
+   `GET /solicitudes` (scoped por rol), **aprobar** (solo ADMIN → **reutiliza `services/alumno.py`**
+   para crear alumno+tutor+consentimiento[+inscripción], 409 si resuelta) y **rechazar** (motivo).
+   Pantalla **Solicitudes** (form "Nueva solicitud" + cola con Aprobar/Rechazar solo-admin). Verificado E2E.
 
-Próximos candidatos: resto de **Fase 2** (auto-registro tutor, portal passwordless OTP/WhatsApp,
-chatbot cobros, factura SIN, **OpenBCB real** con onboarding BCB). Fase 3: rendimiento, voz, analítica.
+Próximos candidatos: resto de **Fase 2** (portal passwordless OTP/WhatsApp, chatbot cobros, factura SIN,
+**OpenBCB real** con onboarding BCB). Fase 3: rendimiento, voz, analítica.
 **Deuda menor:** `GET /entrenadores` (selector de entrenador en Horarios usa campo de texto hoy);
-nombre del UNIQUE de `horario_clase` difiere modelo↔migración (cosmético, sin impacto runtime);
-cosmético categoría duplicada; `JUSTIFICADO` en asistencia; gating fino por categoría; podar este HANDOFF.
+nombre del UNIQUE de `horario_clase` difiere modelo↔migración (cosmético); cosmético categoría duplicada;
+`JUSTIFICADO` en asistencia; gating fino por categoría; podar este HANDOFF.
 
 ## Active flags / config
 
@@ -92,14 +98,21 @@ coach1234` (ENTRENADOR). Org: `Academia Andina` (BO/BOB), 2 sucursales, 8 alumno
 
 ## In-flight work
 
-**none** — MVP completo + deploy endurecido + Fase 2 iniciada (Programación de clases). Los 7 epics
-en `main`. Migraciones `0001→0007` (Egresos=0005, Muro=0006, Horarios=0007; Reportes sin migración).
+**none** — 8 epics en `main` (MVP + deploy endurecido + Fase 2: Programación de clases, Auto-registro).
+Migraciones `0001→0008` (Egresos=0005, Muro=0006, Horarios=0007, Auto-registro=0008; Reportes sin migración).
 Gateo por rol unificado: `nav.ts` usa `roles?: Role[]` + `navGroupsForRole`; rutas solo-ADMIN usan
 `RoleRoute allow={['ADMIN']}`. Remoto `imertetsu/sport-school` (push vía `http.sslBackend=schannel`
 por el proxy TLS). Al abrir el próximo epic, `product-owner` crea `docs/specs/<epic>.md`.
 
 ## Recent decisions
 
+- **2026-06-06 Fase 2 — Auto-registro de alumno (EN SISTEMA).** El usuario descartó la 1ª versión
+  con **link/token público** (se construyó y se **borró** antes de commitear); ahora el registro es
+  una **pantalla autenticada**: entrenador/admin captura `POST /solicitudes` → cola → solo ADMIN
+  aprueba (reutiliza `services/alumno.py`, factorizado desde el router de Alumnos) o rechaza.
+  **Fix (main):** el modelo usaba `TimestampMixin` (created_at+updated_at) pero la migración/contrato
+  solo tenían `created_at` → quitado el mixin (solo `created_at`, consistente con egreso/aviso); lo
+  cazó el seed + 5 tests `db`.
 - **2026-06-06 Fase 2 — Programación de clases** (RF-DEP-03). `horario_clase` + `sesion` ampliada
   (migración 0007). El cron `generar_sesiones_programadas` **reutiliza** `_get_or_create_sesion` de
   `app.services.asistencia` (no duplica; key `(categoria,fecha,hora_inicio)`); `recordatorios_clase`

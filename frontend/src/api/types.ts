@@ -591,3 +591,104 @@ export interface HorarioCreate {
 
 // POST/PUT /horarios devuelven el horario (mismo shape que un item de la lista).
 export type HorarioCreated = HorarioOut;
+
+// ============================================================
+// C2/C3: Auto-registro de alumno — Solicitudes (espejo EXACTO de los contratos
+// C2/C3 del epic Auto-registro, versión EN SISTEMA). Toda la API es autenticada
+// (NADA público, sin token/link). Captura: ADMIN o ENTRENADOR. Aprobar/rechazar:
+// solo ADMIN. No inventar campos: si falta algo, es hand-off a backend-dev.
+// ============================================================
+
+export type EstadoSolicitud = 'PENDIENTE' | 'APROBADA' | 'RECHAZADA';
+
+// Ficha médica de la solicitud (jsonb opcional). Misma forma que FichaMedicaCreate.
+export interface SolicitudFichaMedica {
+  tipo_sangre: string;
+  alergias: string;
+  condiciones: string;
+}
+
+// Datos del tutor capturados en la solicitud (sin responsable_pago: lo decide el
+// admin al aprobar reutilizando la creación de alumno).
+export interface SolicitudTutorCreate {
+  nombres: string;
+  telefono: string;
+  ci?: string | null;
+  parentesco: string;
+}
+
+// Consentimiento capturado en el sistema (aceptado debe ser true → 422 si no).
+export interface SolicitudConsentimientoCreate {
+  aceptado: true;
+  version_terminos: string;
+}
+
+// --- POST /solicitudes (body) — C2 ---
+// creado_por lo fija el backend desde el token. Si es ENTRENADOR, la
+// sucursal_sugerida_id (si viene) debe estar en sus sucursales (403 si no).
+export interface SolicitudCreate {
+  ap_paterno: string;
+  ap_materno: string;
+  nombres: string;
+  ci: string;
+  fecha_nac: string; // date YYYY-MM-DD
+  disciplina: string;
+  contacto_emergencia?: string | null;
+  ficha_medica?: SolicitudFichaMedica | null;
+  tutor: SolicitudTutorCreate; // datos mínimos del tutor → 422 si faltan
+  consentimiento: SolicitudConsentimientoCreate; // aceptado:true obligatorio → 422
+  sucursal_sugerida_id?: string | null;
+  categoria_sugerida_id?: string | null;
+}
+
+// Tutor embebido en la solicitud (forma de salida).
+export interface SolicitudTutor {
+  nombres: string;
+  telefono: string;
+  ci: string | null;
+  parentesco: string;
+}
+
+// --- GET /solicitudes (item) y GET /solicitudes/{id} — C3 (SolicitudOut) ---
+// datos enviados + estado + creado_por_nombre + sucursal/categoria sugeridas +
+// created_at + alumno_id|null + motivo_rechazo|null.
+export interface SolicitudOut {
+  id: string;
+  estado: EstadoSolicitud;
+  ap_paterno: string;
+  ap_materno: string;
+  nombres: string;
+  ci: string;
+  fecha_nac: string; // date YYYY-MM-DD
+  disciplina: string;
+  contacto_emergencia: string | null;
+  ficha_medica: SolicitudFichaMedica | null;
+  tutor: SolicitudTutor;
+  sucursal_sugerida: SucursalRef | null;
+  categoria_sugerida: CategoriaRef | null;
+  creado_por_nombre: string | null;
+  created_at: string; // timestamptz
+  alumno_id: string | null; // set al aprobar
+  motivo_rechazo: string | null; // set al rechazar
+}
+
+// GET /solicitudes -> {items, total, page, page_size}.
+export type SolicitudesPage = Paginated<SolicitudOut>;
+
+// --- POST /solicitudes/{id}/aprobar (ADMIN) body — C3 ---
+// Crea el alumno real reutilizando la lógica del epic Alumnos. 409 si ya resuelta.
+export interface AprobarBody {
+  sucursal_id: string; // requerido
+  categoria_id?: string | null;
+  monto_mensual?: string | null; // numeric serializado como string; si viene → inscripción
+  modo_cobro?: ModoCobro | null;
+}
+
+// POST /solicitudes/{id}/aprobar devuelve el alumno creado.
+export type SolicitudAlumnoCreado = AlumnoDetail;
+
+// --- POST /solicitudes/{id}/rechazar (ADMIN) body — C3 ---
+// 409 si ya resuelta. Devuelve la solicitud actualizada (RECHAZADA).
+export interface RechazarBody {
+  motivo: string;
+}

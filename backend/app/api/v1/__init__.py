@@ -14,6 +14,7 @@ from app.api.v1 import (
     egresos,
     horarios,
     reportes,
+    solicitudes,
     sucursales,
 )
 from app.api.v1.webhooks import openbcb as openbcb_webhook
@@ -29,4 +30,5 @@ api_router.include_router(egresos.router)
 api_router.include_router(reportes.router)
 api_router.include_router(avisos.router)
 api_router.include_router(horarios.router)
+api_router.include_router(solicitudes.router)
 api_router.include_router(openbcb_webhook.router)

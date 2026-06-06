@@ -1,0 +1,175 @@
+.solicitudes {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Filtro por estado (default PENDIENTE) */
+.solicitudes__filtros {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+  max-width: 240px;
+}
+
+/* Celdas de la cola */
+.solicitudes__alumno {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.solicitudes__nombre {
+  font-weight: 600;
+}
+
+.solicitudes__sub {
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 220px;
+}
+
+.solicitudes__estado {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  align-items: flex-start;
+}
+
+.solicitudes__acciones {
+  display: inline-flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+/* Paginación */
+.solicitudes__pager {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  font-size: var(--fs-sm);
+  color: var(--color-text-muted);
+}
+
+/* --- Modales (alta / aprobar / rechazar) --- */
+.solicitudes__modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: var(--space-6) var(--space-4);
+  overflow-y: auto;
+  z-index: 50;
+}
+
+.solicitudes__modal {
+  width: 100%;
+  max-width: 640px;
+  margin-top: var(--space-6);
+}
+
+.solicitudes__modal--sm {
+  max-width: 460px;
+}
+
+.solicitudes__modal-lead {
+  margin: 0 0 var(--space-3);
+  color: var(--color-text-muted);
+  font-size: var(--fs-sm);
+}
+
+.solicitudes__modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.solicitudes__fieldset {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  margin: 0;
+}
+
+.solicitudes__legend {
+  font-weight: 600;
+  font-size: var(--fs-sm);
+  padding: 0 var(--space-2);
+}
+
+.solicitudes__textarea {
+  resize: vertical;
+  min-height: 72px;
+  font-family: inherit;
+}
+
+.solicitudes__modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  padding-top: var(--space-2);
+}
+
+/* Layout compartido reusado del alta de alumno (definido aquí para que el
+   feature no dependa del orden de carga de otros CSS). */
+.solicitudes .form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.solicitudes__modal .form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.solicitudes__modal .form-grid + .form-grid {
+  margin-top: var(--space-4);
+}
+
+.solicitudes__modal .form-grid--single {
+  grid-template-columns: 1fr;
+}
+
+.solicitudes__modal .checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+}
+
+.solicitudes__modal .checkbox-row--lg {
+  align-items: flex-start;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.solicitudes__modal .checkbox-row--lg input {
+  margin-top: 3px;
+}
+
+.solicitudes__modal .checkbox-row--error span {
+  color: var(--color-danger);
+}
+
+.solicitudes__modal .checkbox-row input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  flex: 0 0 auto;
+}
+
+@media (max-width: 640px) {
+  .solicitudes__modal .form-grid {
+    grid-template-columns: 1fr;
+  }
+}

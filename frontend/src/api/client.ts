@@ -37,6 +37,13 @@ import type {
   RosterOut,
   SemanaOut,
   SesionesListResponse,
+  AprobarBody,
+  EstadoSolicitud,
+  RechazarBody,
+  SolicitudAlumnoCreado,
+  SolicitudCreate,
+  SolicitudOut,
+  SolicitudesPage,
   Sucursal,
   TokenOut,
   UserOut,
@@ -399,6 +406,52 @@ export const api = {
   // DELETE /horarios/{id} (ADMIN) -> soft-delete (activo=false), responde 204.
   eliminarHorario(id: string, signal?: AbortSignal): Promise<void> {
     return request<void>(`/horarios/${id}`, { method: 'DELETE', signal });
+  },
+
+  // ---- Auto-registro / Solicitudes (C2/C3) — TODO autenticado, NADA público ----
+  // GET /solicitudes?estado=&page=&page_size= -> cola scoped por rol en el backend.
+  // ADMIN ve todas las de la org; ENTRENADOR solo las de sus sucursales.
+  solicitudes(
+    params: { estado?: EstadoSolicitud; page?: number; page_size?: number } = {},
+    signal?: AbortSignal,
+  ): Promise<SolicitudesPage> {
+    return request<SolicitudesPage>('/solicitudes', { query: params, signal });
+  },
+  // GET /solicitudes/{id} -> SolicitudOut.
+  solicitud(id: string, signal?: AbortSignal): Promise<SolicitudOut> {
+    return request<SolicitudOut>(`/solicitudes/${id}`, { signal });
+  },
+  // POST /solicitudes (ADMIN o ENTRENADOR) -> crea la solicitud PENDIENTE y la devuelve.
+  // 422 si falta consentimiento/datos del tutor; 403 si entrenador sugiere sucursal fuera de su alcance.
+  crearSolicitud(body: SolicitudCreate, signal?: AbortSignal): Promise<SolicitudOut> {
+    return request<SolicitudOut>('/solicitudes', { method: 'POST', body, signal });
+  },
+  // POST /solicitudes/{id}/aprobar (ADMIN) -> crea el alumno real (reusa Alumnos) y lo devuelve.
+  // Marca APROBADA y set alumno_id. 409 si ya resuelta; 403 si no es ADMIN.
+  aprobarSolicitud(
+    id: string,
+    body: AprobarBody,
+    signal?: AbortSignal,
+  ): Promise<SolicitudAlumnoCreado> {
+    return request<SolicitudAlumnoCreado>(`/solicitudes/${id}/aprobar`, {
+      method: 'POST',
+      body,
+      signal,
+    });
+  },
+  // POST /solicitudes/{id}/rechazar (ADMIN) -> RECHAZADA con motivo; devuelve la solicitud.
+  // 409 si ya resuelta; 403 si no es ADMIN.
+  rechazarSolicitud(
+    id: string,
+    motivo: string,
+    signal?: AbortSignal,
+  ): Promise<SolicitudOut> {
+    const body: RechazarBody = { motivo };
+    return request<SolicitudOut>(`/solicitudes/${id}/rechazar`, {
+      method: 'POST',
+      body,
+      signal,
+    });
   },
 
   // GET /reportes/asistencia?desde=&hasta=&sucursal_id=&categoria_id=

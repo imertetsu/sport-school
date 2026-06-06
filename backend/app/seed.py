@@ -45,6 +45,7 @@ from app.models.organizacion import Organizacion
 from app.models.pago import Pago
 from app.models.pago_cuota import PagoCuota
 from app.models.sesion import Sesion
+from app.models.solicitud_registro import SolicitudRegistro
 from app.models.sucursal import Sucursal
 from app.models.tutor import Tutor
 from app.models.usuario import Usuario
@@ -481,6 +482,64 @@ def _seed_horarios(db: Session, org_id: uuid.UUID) -> dict[str, int]:
     return {"horarios": creados}
 
 
+def _seed_solicitudes(db: Session, org_id: uuid.UUID) -> dict[str, int]:
+    """Crea 1 solicitud de auto-registro PENDIENTE de ejemplo (idempotente).
+
+    `creado_por` = entrenador (capturó la solicitud desde el sistema). Sugerencia
+    de sucursal Centro + su primera categoría. Idempotente por clave natural
+    (org + CI del alumno propuesto). NO hay token/link público.
+    """
+    coach = db.execute(
+        select(Usuario).where(Usuario.email == COACH_EMAIL)
+    ).scalar_one_or_none()
+    centro = db.execute(
+        select(Sucursal).where(Sucursal.org_id == org_id, Sucursal.nombre == "Centro")
+    ).scalar_one_or_none()
+    if centro is None:
+        return {"solicitudes": 0}
+    categoria = db.execute(
+        select(Categoria).where(
+            Categoria.org_id == org_id, Categoria.sucursal_id == centro.id
+        )
+    ).scalars().first()
+
+    ci_propuesto = "9200001 LP"
+    existente = db.execute(
+        select(SolicitudRegistro.id).where(
+            SolicitudRegistro.org_id == org_id, SolicitudRegistro.ci == ci_propuesto
+        )
+    ).first()
+    if existente is not None:
+        return {"solicitudes": 0}
+
+    db.add(
+        SolicitudRegistro(
+            org_id=org_id,
+            estado="PENDIENTE",
+            ap_paterno="Rojas",
+            ap_materno="Mamani",
+            nombres="Camila",
+            ci=ci_propuesto,
+            fecha_nac=date(2013, 6, 20),
+            disciplina="Fútbol",
+            contacto_emergencia="Madre · +591 70000001",
+            ficha_medica={"tipo_sangre": "O+", "alergias": None, "condiciones": None},
+            tutor_nombres="María Rojas",
+            tutor_telefono="+591 70000001",
+            tutor_ci="8200001 LP",
+            parentesco="Madre",
+            consent_version="v1",
+            consent_canal="SISTEMA",
+            consent_aceptado_en=datetime.now(UTC),
+            sucursal_sugerida_id=centro.id,
+            categoria_sugerida_id=categoria.id if categoria else None,
+            creado_por=coach.id if coach else None,
+        )
+    )
+    db.flush()
+    return {"solicitudes": 1}
+
+
 def seed() -> None:
     """Ejecuta el seed idempotente. Imprime un resumen."""
     db = SessionLocal()
@@ -631,6 +690,9 @@ def seed() -> None:
         # 11) Horarios: 1-2 horarios recurrentes de ejemplo (rejilla semanal).
         hor = _seed_horarios(db, org_id)
 
+        # 12) Solicitudes: 1 solicitud de auto-registro PENDIENTE (capturada por coach).
+        sol = _seed_solicitudes(db, org_id)
+
         db.commit()
         print(
             f"Seed OK: org='{ORG_NOMBRE}' ({org_id}), admin={ADMIN_EMAIL}/{ADMIN_PASS}, "
@@ -641,7 +703,8 @@ def seed() -> None:
             f"Asistencia: sesiones_creadas={asis['sesiones']}, marcas={asis['marcas']}. "
             f"Egresos: creados={egr['egresos']}. "
             f"Avisos: creados={avs['avisos']}. "
-            f"Horarios: creados={hor['horarios']}."
+            f"Horarios: creados={hor['horarios']}. "
+            f"Solicitudes: creadas={sol['solicitudes']}."
         )
     except Exception:
         db.rollback()
