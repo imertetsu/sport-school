@@ -19,6 +19,7 @@ Revises:
 Create Date: 2026-06-05
 
 """
+import os
 from typing import Sequence, Union
 
 import sqlalchemy as sa
@@ -356,17 +357,20 @@ def upgrade() -> None:
 
     # ------------------------------------------------------------------ #
     # 4) Rol de app `cantera_app`: LOGIN, NOSUPERUSER, NOBYPASSRLS.
-    #    Password = 'devpass' (coincide con DATABASE_URL de C7).
-    #    Idempotente (DO $$ ... IF NOT EXISTS).
+    #    Password configurable por env APP_DB_PASSWORD (default 'devpass' para dev/CI).
+    #    En PRODUCCIÓN: setea APP_DB_PASSWORD fuerte y úsalo igual en DATABASE_URL
+    #    (cantera_app:<APP_DB_PASSWORD>). Idempotente (DO $$ ... IF NOT EXISTS): solo
+    #    crea el rol si no existe; para rotar la clave luego usa ALTER ROLE a mano.
     # ------------------------------------------------------------------ #
+    _app_db_pw = os.environ.get("APP_DB_PASSWORD", "devpass").replace("'", "''")
     op.execute(
-        """
+        f"""
         DO $$
         BEGIN
             IF NOT EXISTS (
                 SELECT FROM pg_roles WHERE rolname = 'cantera_app'
             ) THEN
-                CREATE ROLE cantera_app LOGIN PASSWORD 'devpass'
+                CREATE ROLE cantera_app LOGIN PASSWORD '{_app_db_pw}'
                     NOSUPERUSER NOBYPASSRLS;
             END IF;
         END
