@@ -15,7 +15,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import DateTime, ForeignKey, Numeric, String, func
+from sqlalchemy import DateTime, ForeignKey, Numeric, String, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -24,6 +24,13 @@ from app.models.base import Base, OrgScoped, UUIDPkMixin
 
 class Pago(UUIDPkMixin, OrgScoped, Base):
     __tablename__ = "pago"
+
+    # Recibo no-fiscal (epic Recibo): correlativo `REC-NNNNNN` por org, asignado al
+    # confirmar (NULL hasta entonces). El UNIQUE(org_id, numero_recibo) lo declara la
+    # migración 0010 (autoridad); se refleja aquí en __table_args__ por coherencia.
+    __table_args__ = (
+        UniqueConstraint("org_id", "numero_recibo", name="uq_pago_org_numero_recibo"),
+    )
 
     metodo: Mapped[str] = mapped_column(String, nullable=False)  # EFECTIVO | QR
     estado: Mapped[str] = mapped_column(
@@ -46,6 +53,9 @@ class Pago(UUIDPkMixin, OrgScoped, Base):
         PG_UUID(as_uuid=True), ForeignKey("usuario.id"), nullable=True
     )  # solo efectivo
     comprobante_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    numero_recibo: Mapped[str | None] = mapped_column(
+        String, nullable=True
+    )  # REC-NNNNNN, NULL hasta CONFIRMADO (epic Recibo)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

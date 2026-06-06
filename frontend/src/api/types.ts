@@ -295,6 +295,9 @@ export interface PagoOut {
   credito_generado: string; // numeric(10,2) serializado como string
   credito_aplicado: string; // numeric(10,2) serializado como string
   cuotas_aplicadas: PagoCuotaAplicada[];
+  // Recibo (epic Recibo): N° correlativo por org REC-NNNNNN, asignado al
+  // confirmar. null hasta confirmar / pagos históricos sin backfill.
+  numero_recibo?: string | null;
 }
 
 // --- POST /cobranza/pagos/qr -> QR a mostrar ---

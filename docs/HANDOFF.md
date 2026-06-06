@@ -4,7 +4,7 @@
 > cada epic**. Máx ~150 líneas; poda lo viejo. Esto NO es un changelog — es un snapshot
 > de "cómo está el mundo hoy".
 
-_Última actualización: 2026-06-06 — epic **Abonos** (pagos parciales, 9º) entregado en rama `epic/abonos` (pendiente de FF a main). 8 epics en main + Abonos en vuelo._
+_Última actualización: 2026-06-06 — epic **Recibo** (comprobante con marca + nº correlativo, 10º) entregado en rama `epic/recibo` (pendiente de FF a main). Abonos ya en main. Migraciones 0001→0010._
 
 ## Stack snapshot
 
@@ -60,7 +60,13 @@ up --build` valida el stack desde cero. Ver "Recent decisions".
    **efectivo** acepta `monto_recibido` (parcial → saldo; sobrepago → **crédito por inscripción** consumido
    en el siguiente pago). Panel/cuotas/morosidad por **saldo** + KPI **"Crédito a favor"**; recibo con
    Aplicado/Saldo/crédito. **QR/webhook intactos** (QR siempre por el total). Verificado E2E (132 tests +
-   smoke API + navegador). En rama `epic/abonos`.
+   smoke API + navegador). **En `main`.**
+10. **Recibo** (comprobante no-fiscal presentable, extensión de Cobranza): migración `0010`
+   (`pago.numero_recibo` + UNIQUE(org_id,numero_recibo), tabla `recibo_contador` RLS NULLIF, backfill
+   retrocompat). Cabecera **"SnapCoding - LatinoSport"** + nombre de la escuela, **N° correlativo por org**
+   `REC-NNNNNN` (asignado al confirmar, idempotente, atómico vía contador, en ambos caminos efectivo+QR),
+   leyenda **"no válido como factura"** (conserva Aplicado/Saldo/crédito de Abonos). UI muestra el N°.
+   Verificado E2E (140 tests + smoke API que valida el contenido del PDF). En rama `epic/recibo`.
 
 Próximos candidatos: resto de **Fase 2** (portal passwordless OTP/WhatsApp, chatbot cobros, factura SIN,
 **OpenBCB real** con onboarding BCB). Fase 3: rendimiento, voz, analítica.
@@ -104,15 +110,21 @@ coach1234` (ENTRENADOR). Org: `Academia Andina` (BO/BOB), 2 sucursales, 8 alumno
 
 ## In-flight work
 
-**Abonos** (9º epic, pagos parciales) entregado en rama `epic/abonos` — **pendiente de FF a `main`** (su
-commit de cierre borra `docs/specs/abonos.md`). 8 epics en `main` + Abonos en vuelo.
-Migraciones `0001→0009` (Egresos=0005, Muro=0006, Horarios=0007, Auto-registro=0008, Abonos=0009; Reportes sin migración).
+**Recibo** (10º epic) entregado en rama `epic/recibo` — **pendiente de FF a `main`** (su commit de cierre
+borra `docs/specs/recibo.md`). Abonos (9º) ya en `main`.
+Migraciones `0001→0010` (Egresos=0005, Muro=0006, Horarios=0007, Auto-registro=0008, Abonos=0009, Recibo=0010; Reportes sin migración).
 Gateo por rol unificado: `nav.ts` usa `roles?: Role[]` + `navGroupsForRole`; rutas solo-ADMIN usan
 `RoleRoute allow={['ADMIN']}`. Remoto `imertetsu/sport-school` (push vía `http.sslBackend=schannel`
 por el proxy TLS). Al abrir el próximo epic, `product-owner` crea `docs/specs/<epic>.md`.
 
 ## Recent decisions
 
+- **2026-06-06 Epic Recibo.** Comprobante → recibo no-fiscal: cabecera "SnapCoding - LatinoSport" (const
+  `settings.recibo_emisor`), **N° correlativo por org** `REC-NNNNNN` vía tabla `recibo_contador` (incremento
+  atómico `INSERT … ON CONFLICT DO UPDATE … RETURNING`), asignado al confirmar en **ambos** caminos (efectivo
+  y QR comparten helper `_asignar_numero_recibo`, idempotente), leyenda "no válido como factura". NO es factura
+  SIN (fase 2). **Fix de integración (main):** el helper de test `_sembrar_org_con_cuota` reinsertaba la org
+  (el fixture lo llama 2× para la misma org) → `duplicate key` → `INSERT … ON CONFLICT (id) DO NOTHING`.
 - **2026-06-06 Epic Abonos (pagos parciales).** Diseño por platform-architect. Producto: QR **siempre por
   el total** (webhook/conciliación intactos) → **parciales solo por efectivo** (`monto_recibido`); sobrepago
   → **saldo a favor (crédito) por inscripción** consumido en el siguiente pago; cuota a medias → **`PARCIAL`**

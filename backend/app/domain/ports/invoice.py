@@ -39,6 +39,11 @@ class ComprobanteData:
     Abonos (RF-ABO): `credito_aplicado` (crédito previo consumido) y
     `credito_generado` (saldo a favor generado por el sobrepago) van al pie del
     comprobante. Defaults 0 ⇒ el comprobante QR luce igual que hoy.
+
+    Recibo (epic Recibo): `numero_recibo` (correlativo `REC-NNNNNN` por org) y
+    `emisor` (branding "SnapCoding - LatinoSport") van a la cabecera del PDF. El
+    constructor (`construir_comprobante_data`) los llena explícitamente; los defaults
+    solo existen para no romper dataclass ordering ni constructores de tests.
     """
 
     numero: str
@@ -51,6 +56,8 @@ class ComprobanteData:
     cuotas: list[CuotaLinea] = field(default_factory=list)
     credito_aplicado: Decimal = Decimal("0")
     credito_generado: Decimal = Decimal("0")
+    numero_recibo: str = "—"
+    emisor: str = "SnapCoding - LatinoSport"
 
 
 @runtime_checkable

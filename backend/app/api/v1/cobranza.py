@@ -328,6 +328,7 @@ def _pago_out_enriquecido(db: Session, pago: Pago) -> PagoOut:
         metodo=pago.metodo,
         monto=pago.monto,
         comprobante_url=pago.comprobante_url,
+        numero_recibo=pago.numero_recibo,
         credito_aplicado=pago.credito_aplicado,
         credito_generado=credito_generado,
         cuotas_aplicadas=cuotas_aplicadas,

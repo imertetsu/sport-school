@@ -24,6 +24,7 @@ from app.models.inscripcion import Inscripcion
 from app.models.organizacion import Organizacion
 from app.models.pago import Pago
 from app.models.pago_cuota import PagoCuota
+from app.models.recibo_contador import ReciboContador
 from app.models.sesion import Sesion
 from app.models.solicitud_registro import SolicitudRegistro
 from app.models.sucursal import Sucursal
@@ -45,6 +46,7 @@ __all__ = [
     "Cuota",
     "Pago",
     "PagoCuota",
+    "ReciboContador",
     "Credito",
     "ConciliacionPendiente",
     "Sesion",

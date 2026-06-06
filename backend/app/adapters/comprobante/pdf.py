@@ -23,13 +23,15 @@ class PdfComprobanteService(ComprobanteService):
         pdf.set_auto_page_break(auto=True, margin=15)
         pdf.add_page()
 
-        # Encabezado: organización + título.
+        # Encabezado: emisor (marca) + organización + título.
         pdf.set_font("Helvetica", "B", 16)
-        pdf.cell(0, 10, _ascii(data.org_nombre), new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(0, 10, _ascii(data.emisor), new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", "B", 13)
+        pdf.cell(0, 8, _ascii(data.org_nombre), new_x="LMARGIN", new_y="NEXT")
         pdf.set_font("Helvetica", "B", 12)
-        pdf.cell(0, 8, "Comprobante de pago", new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(0, 8, "Recibo de pago", new_x="LMARGIN", new_y="NEXT")
         pdf.set_font("Helvetica", "", 10)
-        pdf.cell(0, 6, f"Nro: {_ascii(data.numero)}", new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(0, 6, f"N de recibo: {_ascii(data.numero_recibo)}", new_x="LMARGIN", new_y="NEXT")
         pdf.cell(
             0, 6, f"Fecha: {data.fecha.strftime('%Y-%m-%d %H:%M')}", new_x="LMARGIN", new_y="NEXT"
         )
@@ -97,6 +99,17 @@ class PdfComprobanteService(ComprobanteService):
                     new_x="LMARGIN",
                     new_y="NEXT",
                 )
+
+        # Pie legal: este recibo no reemplaza a una factura SIN (fase 2).
+        pdf.ln(6)
+        pdf.set_font("Helvetica", "I", 9)
+        pdf.cell(
+            0,
+            6,
+            _ascii("Documento no válido como factura"),
+            new_x="LMARGIN",
+            new_y="NEXT",
+        )
 
         out = pdf.output()
         return bytes(out)

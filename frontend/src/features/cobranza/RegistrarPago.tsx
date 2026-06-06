@@ -529,6 +529,9 @@ function Comprobante({ pago, confirmadoQr }: { pago: PagoOut; confirmadoQr?: boo
           </Badge>
           <span className="rp-comprobante__monto tabular">{formatMoney(pago.monto)}</span>
         </div>
+        {pago.numero_recibo && (
+          <p className="rp-comprobante__recibo">Recibo {pago.numero_recibo}</p>
+        )}
         <p className="rp-comprobante__text">
           Comprobante generado. Descárgalo en PDF o envíalo por WhatsApp.
         </p>

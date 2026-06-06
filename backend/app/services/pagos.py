@@ -24,6 +24,7 @@ from decimal import Decimal
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.domain.cobranza.abono_engine import distribuir_abono
 from app.domain.ports.invoice import ComprobanteData, ComprobanteService, CuotaLinea
 from app.domain.ports.notification import NotificationService
@@ -199,7 +200,35 @@ def construir_comprobante_data(db: Session, *, pago: Pago, org: Organizacion) ->
         cuotas=lineas,
         credito_aplicado=pago.credito_aplicado,
         credito_generado=credito_generado,
+        numero_recibo=pago.numero_recibo or "—",
+        emisor=settings.recibo_emisor,
     )
+
+
+def _asignar_numero_recibo(db: Session, pago: Pago) -> None:
+    """Asigna el correlativo `REC-NNNNNN` por org al pago, si aún no tiene (RF-REC).
+
+    **Idempotente (RF-REC-03):** si `pago.numero_recibo` ya está fijado, no reasigna
+    ni consume número. El incremento del contador de la org es **atómico** (un solo
+    `INSERT ... ON CONFLICT (org_id) DO UPDATE ... RETURNING`, RF-REC-04), de modo que
+    dos confirmaciones concurrentes de la misma org no obtienen el mismo número. Corre
+    bajo el `app.current_org` ya fijado (RLS de `recibo_contador`).
+    """
+    if pago.numero_recibo is not None:
+        return
+    n = db.execute(
+        text(
+            "INSERT INTO recibo_contador (org_id, ultimo_numero) "
+            "VALUES (:org_id, 1) "
+            "ON CONFLICT (org_id) "
+            "DO UPDATE SET ultimo_numero = recibo_contador.ultimo_numero + 1, "
+            "updated_at = now() "
+            "RETURNING ultimo_numero"
+        ),
+        {"org_id": str(pago.org_id)},
+    ).scalar_one()
+    pago.numero_recibo = f"REC-{int(n):06d}"
+    db.flush()
 
 
 def _confirmar_y_aplicar(
@@ -227,6 +256,8 @@ def _confirmar_y_aplicar(
     pago.estado = "CONFIRMADO"
     if pago.pagado_en is None:
         pago.pagado_en = datetime.now(UTC)
+    # Recibo: correlativo por org al confirmar (idempotente; ver _asignar_numero_recibo).
+    _asignar_numero_recibo(db, pago)
 
     # QR full: cada cuota se salda por completo. El motor reparte el monto del pago
     # (== Σ saldos) sobre los saldos FIFO; sin remanente.
@@ -363,6 +394,8 @@ def registrar_pago_efectivo(
     db.flush()
 
     pago.estado = "CONFIRMADO"
+    # Recibo: correlativo por org al confirmar (efectivo NO pasa por _confirmar_y_aplicar).
+    _asignar_numero_recibo(db, pago)
     aplicaciones = {c.id: m for c, m in zip(cuotas, resultado.aplicaciones, strict=True)}
     _aplicar_pago_a_cuotas(
         db,

@@ -152,6 +152,7 @@ class PagoOut(BaseModel):
     metodo: str
     monto: Decimal
     comprobante_url: str | None = None
+    numero_recibo: str | None = None
     credito_aplicado: Decimal = Decimal("0")
     credito_generado: Decimal = Decimal("0")
     cuotas_aplicadas: list[CuotaAplicada] = Field(default_factory=list)

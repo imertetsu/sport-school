@@ -252,6 +252,13 @@
   font-weight: 700;
 }
 
+.rp-comprobante__recibo {
+  margin: 0 0 var(--space-2);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
 .rp-comprobante__text {
   margin: 0 0 var(--space-4);
   font-size: var(--fs-sm);

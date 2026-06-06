@@ -32,6 +32,9 @@ class Settings(BaseSettings):
 
     # Branding (C0)
     app_name: str = "LATINOSPORT"
+    # Emisor del recibo no-fiscal (epic Recibo, C2): empresa - app. Un solo lugar,
+    # no hardcodeado por el PDF. No es factura SIN (fase 2).
+    recibo_emisor: str = "SnapCoding - LatinoSport"
 
     # Base de datos: la app corre como rol `latinosport_app` (NOBYPASSRLS).
     # Driver psycopg v3 -> postgresql+psycopg:// (C3).
@@ -90,8 +93,7 @@ class Settings(BaseSettings):
                 problemas.append("OPENBCB_SANDBOX debe ser false en producción")
             if problemas:
                 raise ValueError(
-                    "Configuración insegura para APP_ENV=production: "
-                    + "; ".join(problemas)
+                    "Configuración insegura para APP_ENV=production: " + "; ".join(problemas)
                 )
         return self
 
