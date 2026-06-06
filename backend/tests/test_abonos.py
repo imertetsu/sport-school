@@ -480,12 +480,12 @@ def test_reaplicar_pago_es_idempotente(app_engine: Engine, abono_fixture: dict) 
     # Re-aplicar el MISMO pago a la MISMA cuota (re-INSERT bloqueado por UNIQUE).
     with Session(app_engine, expire_on_commit=False) as db:
         _set_org(db, org)
-        pago = db.get(Pago, pago_id)
+        pago_obj = db.get(Pago, pago_id)
         cuota = db.get(Cuota, c1)
-        assert pago is not None and cuota is not None
+        assert pago_obj is not None and cuota is not None
         pagos_svc._aplicar_pago_a_cuotas(
             db,
-            pago=pago,
+            pago=pago_obj,
             cuotas=[cuota],
             org_id=org,
             aplicaciones={c1: Decimal("40.00")},
@@ -764,10 +764,10 @@ def test_recibo_pago_parcial(app_engine: Engine, abono_fixture: dict) -> None:
 
     with Session(app_engine, expire_on_commit=False) as db:
         _set_org(db, org)
-        pago = db.get(Pago, pago_id)
+        pago_obj = db.get(Pago, pago_id)
         org_obj = db.get(Organizacion, org)
-        assert pago is not None and org_obj is not None
-        data = pagos_svc.construir_comprobante_data(db, pago=pago, org=org_obj)
+        assert pago_obj is not None and org_obj is not None
+        data = pagos_svc.construir_comprobante_data(db, pago=pago_obj, org=org_obj)
 
     # 1ª cuota saldada, 2ª parcial.
     saldos = sorted(linea.saldo_restante for linea in data.cuotas)
