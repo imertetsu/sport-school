@@ -29,6 +29,9 @@ export const NAV_GROUPS: NavGroup[] = [
       // Egresos (financiero): SOLO ADMIN (RF-FIN-07).
       { id: 'egresos', label: 'Egresos', icon: '▽', to: '/egresos', enabled: true, roles: ['ADMIN'] },
       { id: 'asistencia', label: 'Asistencia', icon: '✓', to: '/asistencia', enabled: true },
+      // Horarios / programación de clases: visible a ADMIN y ENTRENADOR (sin `roles`).
+      // El backend filtra la vista por rol; la escritura es solo ADMIN.
+      { id: 'horarios', label: 'Horarios', icon: '◷', to: '/horarios', enabled: true },
       // Muro de avisos (RF-COM-01): visible a ADMIN y ENTRENADOR (sin `roles`).
       // El feed ya viene filtrado por el backend; la escritura es solo ADMIN.
       { id: 'avisos', label: 'Avisos', icon: '✸', to: '/avisos', enabled: true },

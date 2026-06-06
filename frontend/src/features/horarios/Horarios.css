@@ -1,0 +1,144 @@
+.horarios {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Filtros (categoría y/o sucursal) */
+.horarios__filtros {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.horarios__empty {
+  margin: 0;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+/* Rejilla semanal: 7 columnas (Lun..Dom). En móvil hace scroll horizontal. */
+.horarios__grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(140px, 1fr));
+  gap: var(--space-3);
+  overflow-x: auto;
+  padding-bottom: var(--space-2);
+}
+
+.horarios__col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.horarios__col-titulo {
+  margin: 0;
+  padding-bottom: var(--space-2);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.horarios__col-vacio {
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--color-text-subtle);
+  text-align: center;
+  padding: var(--space-3) 0;
+}
+
+/* Bloque de clase dentro de un día */
+.horario-bloque {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+}
+
+.horario-bloque__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.horario-bloque__hora {
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.horario-bloque__categoria {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--color-text-muted);
+}
+
+.horario-bloque__acciones {
+  display: flex;
+  gap: var(--space-1);
+}
+
+/* Confirmación inline de eliminación (soft-delete) */
+.horario-bloque__confirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
+  background: var(--color-danger-bg);
+  border: 1px solid var(--color-danger-border);
+  color: var(--color-danger);
+  font-size: var(--fs-xs);
+}
+
+.horario-bloque__confirm-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+/* --- Modal de alta/edición --- */
+.horarios__modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: var(--space-6) var(--space-4);
+  overflow-y: auto;
+  z-index: 50;
+}
+
+.horarios__modal {
+  width: 100%;
+  max-width: 520px;
+  margin-top: var(--space-6);
+}
+
+.horarios__modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.horarios__modal-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+
+.horarios__modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  padding-top: var(--space-2);
+}

@@ -4,7 +4,7 @@
 > cada epic**. Máx ~150 líneas; poda lo viejo. Esto NO es un changelog — es un snapshot
 > de "cómo está el mundo hoy".
 
-_Última actualización: 2026-06-06 — **MVP fase 1 COMPLETO** (6 epics). Cierra con **Muro de avisos** (6º)._
+_Última actualización: 2026-06-06 — MVP completo + deploy endurecido + **Fase 2** iniciada con **Programación de clases** (7º epic)._
 
 ## Stack snapshot
 
@@ -39,10 +39,22 @@ _Última actualización: 2026-06-06 — **MVP fase 1 COMPLETO** (6 epics). Cierr
    (422), y pantalla **Avisos** (muro de tarjetas + alta/edición ADMIN, toggle "mostrar vencidos").
    Verificado API + navegador (UTF-8/emoji OK).
 
-Próximos candidatos: **endurecer deploy** (docker `up --build`, CI, secretos prod) y **fase 2**
-(auto-registro tutor, portal passwordless OTP/WhatsApp, chatbot cobros, factura SIN, **OpenBCB real**
-con onboarding BCB). Fase 3: rendimiento, voz, analítica. Deuda menor: cosmético categoría duplicada,
-`JUSTIFICADO` en asistencia, gating fino por categoría, podar este HANDOFF.
+**Deploy endurecido** (2026-06-06): imagen api/worker autocontenida + guard de prod; `docker compose
+up --build` valida el stack desde cero. Ver "Recent decisions".
+
+### Fase 2 (en curso)
+7. **Programación de clases** (RF-DEP-03): tabla `horario_clase` (RLS NULLIF) + `sesion` ampliada
+   (`horario_id`, `recordatorio_enviado_en`) — migración `0007`. API `/horarios` (CRUD ADMIN +
+   `/horarios/semana` scoped por rol). Cron: `generar_sesiones_programadas` (1×/día, **reutiliza el
+   get-or-create de Asistencia**, idempotente) + `recordatorios_clase` (cada hora, idempotente vía
+   `recordatorio_enviado_en`, Noop). Pantalla **Horarios** (rejilla semanal Lun–Dom, alta/edición
+   ADMIN). Verificado API + navegador.
+
+Próximos candidatos: resto de **Fase 2** (auto-registro tutor, portal passwordless OTP/WhatsApp,
+chatbot cobros, factura SIN, **OpenBCB real** con onboarding BCB). Fase 3: rendimiento, voz, analítica.
+**Deuda menor:** `GET /entrenadores` (selector de entrenador en Horarios usa campo de texto hoy);
+nombre del UNIQUE de `horario_clase` difiere modelo↔migración (cosmético, sin impacto runtime);
+cosmético categoría duplicada; `JUSTIFICADO` en asistencia; gating fino por categoría; podar este HANDOFF.
 
 ## Active flags / config
 
@@ -80,14 +92,19 @@ coach1234` (ENTRENADOR). Org: `Academia Andina` (BO/BOB), 2 sucursales, 8 alumno
 
 ## In-flight work
 
-**none — MVP fase 1 completo.** Los 6 epics están en `main`. Migraciones `0001→0006` (Egresos=0005,
-Muro=0006; Reportes sin migración). Patrón de gateo por rol unificado: `nav.ts` usa `roles?: Role[]`
-+ `navGroupsForRole`; rutas solo-ADMIN usan `RoleRoute allow={['ADMIN']}`. Remoto
-`imertetsu/sport-school` (push vía `http.sslBackend=schannel` por el proxy TLS). Al abrir el próximo
-epic, `product-owner` crea `docs/specs/<epic>.md`.
+**none** — MVP completo + deploy endurecido + Fase 2 iniciada (Programación de clases). Los 7 epics
+en `main`. Migraciones `0001→0007` (Egresos=0005, Muro=0006, Horarios=0007; Reportes sin migración).
+Gateo por rol unificado: `nav.ts` usa `roles?: Role[]` + `navGroupsForRole`; rutas solo-ADMIN usan
+`RoleRoute allow={['ADMIN']}`. Remoto `imertetsu/sport-school` (push vía `http.sslBackend=schannel`
+por el proxy TLS). Al abrir el próximo epic, `product-owner` crea `docs/specs/<epic>.md`.
 
 ## Recent decisions
 
+- **2026-06-06 Fase 2 — Programación de clases** (RF-DEP-03). `horario_clase` + `sesion` ampliada
+  (migración 0007). El cron `generar_sesiones_programadas` **reutiliza** `_get_or_create_sesion` de
+  `app.services.asistencia` (no duplica; key `(categoria,fecha,hora_inicio)`); `recordatorios_clase`
+  (cada hora) es idempotente vía `sesion.recordatorio_enviado_en`; ambos recorren orgs fijando
+  contexto (patrón de `cobranza_diaria`). `dia_semana` 0=Lunes…6=Domingo (= `date.weekday()`).
 - **2026-06-06 Hardening de deploy.** Validado `docker compose up --build` de punta a punta
   (db+redis+api+worker+beat+web) en proyecto/puertos aislados (`-p cantera_verify`): la imagen
   api aplica las 6 migraciones sobre BD vacía y arranca como `cantera_app`; web sirve la SPA.

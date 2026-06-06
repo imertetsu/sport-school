@@ -24,6 +24,9 @@ import type {
   EstadoCuota,
   GenerarCuotasResponse,
   GuardarBody,
+  HorarioCreate,
+  HorarioCreated,
+  HorarioOut,
   IngresosReporte,
   LoginRequest,
   PagoOut,
@@ -32,6 +35,7 @@ import type {
   RegistrarPagoEfectivoBody,
   RegistrarPagoQrBody,
   RosterOut,
+  SemanaOut,
   SesionesListResponse,
   Sucursal,
   TokenOut,
@@ -355,6 +359,46 @@ export const api = {
   // DELETE /avisos/{id} (ADMIN) -> soft-delete (activo=false), responde 204.
   eliminarAviso(id: string, signal?: AbortSignal): Promise<void> {
     return request<void>(`/avisos/${id}`, { method: 'DELETE', signal });
+  },
+
+  // ---- Horarios / Programación de clases (C2) ----
+  // GET /horarios?categoria_id=&sucursal_id= -> lista scoped por rol.
+  // ADMIN: todos los activos de la org; ENTRENADOR: solo los de sus sucursales.
+  horarios(
+    params: { categoriaId?: string; sucursalId?: string } = {},
+    signal?: AbortSignal,
+  ): Promise<HorarioOut[]> {
+    return request<HorarioOut[]>('/horarios', {
+      query: { categoria_id: params.categoriaId, sucursal_id: params.sucursalId },
+      signal,
+    });
+  },
+  // GET /horarios/semana?sucursal_id=&categoria_id= -> rejilla semanal (7 días, 0..6).
+  horariosSemana(
+    params: { sucursalId?: string; categoriaId?: string } = {},
+    signal?: AbortSignal,
+  ): Promise<SemanaOut> {
+    return request<SemanaOut>('/horarios/semana', {
+      query: { sucursal_id: params.sucursalId, categoria_id: params.categoriaId },
+      signal,
+    });
+  },
+  // POST /horarios (ADMIN) -> crea el horario y lo devuelve. Valida hora_fin>hora_inicio
+  // (422) y unicidad (409); el cliente refleja esos errores.
+  crearHorario(body: HorarioCreate, signal?: AbortSignal): Promise<HorarioCreated> {
+    return request<HorarioCreated>('/horarios', { method: 'POST', body, signal });
+  },
+  // PUT /horarios/{id} (ADMIN) -> edita el horario (misma validación) y lo devuelve.
+  actualizarHorario(
+    id: string,
+    body: HorarioCreate,
+    signal?: AbortSignal,
+  ): Promise<HorarioCreated> {
+    return request<HorarioCreated>(`/horarios/${id}`, { method: 'PUT', body, signal });
+  },
+  // DELETE /horarios/{id} (ADMIN) -> soft-delete (activo=false), responde 204.
+  eliminarHorario(id: string, signal?: AbortSignal): Promise<void> {
+    return request<void>(`/horarios/${id}`, { method: 'DELETE', signal });
   },
 
   // GET /reportes/asistencia?desde=&hasta=&sucursal_id=&categoria_id=

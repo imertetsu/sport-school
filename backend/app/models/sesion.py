@@ -4,11 +4,19 @@ Tabla tenant con RLS por `org_id`. La idempotencia del guardado de asistencia
 descansa en que no se dupliquen sesiones: `UNIQUE(categoria_id, fecha, hora)`
 (con `hora` NULL cuenta como una sesión por día).
 
-Columnas EXACTAS a `migrations/versions/0004_asistencia.py` (autoridad del
-esquema físico): `sesion` lleva `created_at` (timestamptz now()) pero NO
-`updated_at`, por eso NO hereda `TimestampMixin`. El default de `id` y de
-`created_at` lo pone el servidor (gen_random_uuid()/now()); aquí se replica con
-`UUIDPkMixin` (default app uuid4) + `server_default` para que coincidan.
+Columnas EXACTAS a `migrations/versions/0004_asistencia.py` + ALTER de
+`0007_horarios.py` (autoridad del esquema físico): `sesion` lleva `created_at`
+(timestamptz now()) pero NO `updated_at`, por eso NO hereda `TimestampMixin`. El
+default de `id` y de `created_at` lo pone el servidor (gen_random_uuid()/now());
+aquí se replica con `UUIDPkMixin` (default app uuid4) + `server_default` para que
+coincidan.
+
+Epic Programación de clases (C1) añade dos columnas **nullable** (no rompen
+Asistencia ni sus sesiones creadas a mano):
+- `horario_id` -> FK a `horario_clase` (ON DELETE SET NULL): las sesiones
+  generadas desde un horario lo enlazan; las creadas a mano quedan NULL.
+- `recordatorio_enviado_en` (timestamptz) -> marca de idempotencia del
+  recordatorio de clase (NULL = aún no enviado).
 """
 
 from __future__ import annotations
@@ -35,6 +43,17 @@ class Sesion(UUIDPkMixin, OrgScoped, Base):
         PG_UUID(as_uuid=True), ForeignKey("entrenador.id"), nullable=True, index=True
     )
     notas: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Enlace al horario recurrente que la generó (NULL = creada a mano). C1 (0007).
+    horario_id: Mapped[uuid.UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("horario_clase.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    # Marca de idempotencia del recordatorio de clase (NULL = aún no enviado). C1 (0007).
+    recordatorio_enviado_en: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

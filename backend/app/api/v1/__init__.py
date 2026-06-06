@@ -12,6 +12,7 @@ from app.api.v1 import (
     categorias,
     cobranza,
     egresos,
+    horarios,
     reportes,
     sucursales,
 )
@@ -27,4 +28,5 @@ api_router.include_router(asistencia.router)
 api_router.include_router(egresos.router)
 api_router.include_router(reportes.router)
 api_router.include_router(avisos.router)
+api_router.include_router(horarios.router)
 api_router.include_router(openbcb_webhook.router)

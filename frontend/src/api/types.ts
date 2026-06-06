@@ -516,3 +516,78 @@ export interface AvisoCreate {
 
 // POST/PUT /avisos devuelven el aviso (mismo shape que un item del feed).
 export type AvisoCreated = AvisoOut;
+
+// ============================================================
+// C2: Programación de clases / Horarios (espejo EXACTO del contrato C2 del
+// epic "Programación de clases"). Vista scoped por rol en el backend (ADMIN ve
+// todos los activos de la org; ENTRENADOR solo los de sus sucursales).
+// Escritura solo ADMIN (POST/PUT/DELETE soft). No inventar campos: si falta
+// algo, es hand-off a backend-dev.
+// ============================================================
+
+// 0=Lunes … 6=Domingo (= date.weekday() en el backend). dia_label lo da el backend.
+export type DiaSemana = 0 | 1 | 2 | 3 | 4 | 5 | 6;
+
+// Categoría embebida en un horario (forma reducida {id, nombre}).
+export interface HorarioCategoriaRef {
+  id: string;
+  nombre: string;
+}
+
+// Entrenador embebido en un horario (forma reducida {id, nombres}). Puede ser null.
+export interface HorarioEntrenadorRef {
+  id: string;
+  nombres: string;
+}
+
+// --- GET /horarios?categoria_id=&sucursal_id= -> item de la lista ---
+// {id, categoria:{id,nombre}, sucursal:{id,nombre}, dia_semana, dia_label,
+//  hora_inicio, hora_fin, entrenador:{id,nombres}|null, activo}
+export interface HorarioOut {
+  id: string;
+  categoria: HorarioCategoriaRef;
+  sucursal: SucursalRef;
+  dia_semana: DiaSemana;
+  dia_label: string; // "Lunes", "Martes", … (lo da el backend)
+  hora_inicio: string; // time HH:MM
+  hora_fin: string; // time HH:MM
+  entrenador: HorarioEntrenadorRef | null;
+  activo: boolean;
+}
+
+// Clase dentro de un día de la rejilla semanal (GET /horarios/semana).
+// {id, categoria, hora_inicio, hora_fin, entrenador}
+export interface ClaseSemana {
+  id: string;
+  categoria: HorarioCategoriaRef;
+  hora_inicio: string; // time HH:MM
+  hora_fin: string; // time HH:MM
+  entrenador: HorarioEntrenadorRef | null;
+}
+
+// Un día de la rejilla semanal con sus clases (siempre 7 días, 0..6).
+export interface DiaSemanaOut {
+  dia_semana: DiaSemana;
+  dia_label: string;
+  clases: ClaseSemana[];
+}
+
+// --- GET /horarios/semana?sucursal_id=&categoria_id= -> rejilla semanal ---
+// {dias:[{dia_semana, dia_label, clases:[...]}]} (7 días, 0..6).
+export interface SemanaOut {
+  dias: DiaSemanaOut[];
+}
+
+// --- POST /horarios (ADMIN) / PUT /horarios/{id} (ADMIN) (body) ---
+// {categoria_id, dia_semana, hora_inicio, hora_fin, entrenador_id?}.
+// El backend valida hora_fin > hora_inicio (422) y unicidad (409).
+export interface HorarioCreate {
+  categoria_id: string;
+  dia_semana: DiaSemana;
+  hora_inicio: string; // time HH:MM
+  hora_fin: string; // time HH:MM
+  entrenador_id?: string | null; // opcional
+}
+
+// POST/PUT /horarios devuelven el horario (mismo shape que un item de la lista).
+export type HorarioCreated = HorarioOut;

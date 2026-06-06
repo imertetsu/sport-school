@@ -50,6 +50,11 @@ class Settings(BaseSettings):
     # Celery (workers). Broker/backend Redis desde el entorno.
     redis_url: str = "redis://redis:6379/0"
 
+    # Programación de clases (C3). Ventana de generación de sesiones (días hacia
+    # adelante) y antelación del recordatorio (horas). env opcional; default seguro.
+    generar_sesiones_dias: int = 7
+    recordatorio_clase_horas: int = 2
+
     # Cobranza / OpenBCB (C8). `openbcb_sandbox` activa el adaptador simulado y el
     # endpoint `…/simular-confirmacion`. base_url/api_key se usarán con el BCB real.
     openbcb_sandbox: bool = True
@@ -71,7 +76,7 @@ class Settings(BaseSettings):
         return value
 
     @model_validator(mode="after")
-    def _guard_prod(self) -> "Settings":
+    def _guard_prod(self) -> Settings:
         """En producción, falla rápido si la config es insegura (no arranca con
         secretos de dev). Evita desplegar con `JWT_SECRET` débil o credenciales
         `devpass`. En dev/CI no aplica."""

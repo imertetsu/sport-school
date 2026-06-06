@@ -18,6 +18,7 @@ from app.models.consentimiento import Consentimiento
 from app.models.cuota import Cuota
 from app.models.egreso import Egreso
 from app.models.entrenador import Entrenador
+from app.models.horario_clase import HorarioClase
 from app.models.inscripcion import Inscripcion
 from app.models.organizacion import Organizacion
 from app.models.pago import Pago
@@ -47,4 +48,5 @@ __all__ = [
     "Asistencia",
     "Egreso",
     "Aviso",
+    "HorarioClase",
 ]

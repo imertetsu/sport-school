@@ -23,11 +23,13 @@ from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import select, text, update
 
+from app.core.config import settings
 from app.core.db import SessionLocal
 from app.models.alumno import Alumno
 from app.models.cuota import Cuota
 from app.models.inscripcion import Inscripcion
 from app.models.organizacion import Organizacion
+from app.services import horarios as horarios_svc
 from app.services.deps import get_notification_service
 from app.services.generacion import generar_cuotas_org
 from app.workers.celery_app import celery_app
@@ -118,3 +120,76 @@ def cobranza_diaria() -> dict[str, int]:
 
     logger.info("cobranza_diaria OK: orgs=%s cuotas_creadas=%s", orgs_procesadas, total_creadas)
     return {"orgs": orgs_procesadas, "cuotas_creadas": total_creadas}
+
+
+# --------------------------------------------------------------------------- #
+# Programación de clases (C3) — generación de sesiones + recordatorio
+# --------------------------------------------------------------------------- #
+@celery_app.task(name="app.workers.tasks.generar_sesiones_programadas")
+def generar_sesiones_programadas() -> dict[str, int]:
+    """Cron 1×/día: genera sesiones de la ventana por cada horario activo (C3).
+
+    Idempotente (reutiliza el get-or-create de Asistencia; UNIQUE de `sesion`).
+    Itera TODAS las orgs fijando `app.current_org` por org (RLS), como cobranza.
+    """
+    hoy = datetime.now(UTC).date()
+    db = SessionLocal()
+    total_creadas = 0
+    orgs_procesadas = 0
+    try:
+        org_ids = db.execute(select(Organizacion.id)).scalars().all()
+        for org_id in org_ids:
+            _set_org(db, org_id)
+            total_creadas += horarios_svc.generar_sesiones_programadas(
+                db, org_id, hoy=hoy, dias_ventana=settings.generar_sesiones_dias
+            )
+            orgs_procesadas += 1
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("generar_sesiones_programadas falló")
+        raise
+    finally:
+        db.close()
+
+    logger.info(
+        "generar_sesiones_programadas OK: orgs=%s sesiones_creadas=%s",
+        orgs_procesadas,
+        total_creadas,
+    )
+    return {"orgs": orgs_procesadas, "sesiones_creadas": total_creadas}
+
+
+@celery_app.task(name="app.workers.tasks.recordatorios_clase")
+def recordatorios_clase() -> dict[str, int]:
+    """Cron cada hora: recordatorio N horas antes de cada clase (C3).
+
+    Idempotente vía `sesion.recordatorio_enviado_en` (no reenvía). Itera TODAS las
+    orgs fijando `app.current_org` por org (RLS). Notifica (Noop) a los tutores.
+    """
+    ahora = datetime.now(UTC)
+    db = SessionLocal()
+    total_notificadas = 0
+    orgs_procesadas = 0
+    try:
+        org_ids = db.execute(select(Organizacion.id)).scalars().all()
+        for org_id in org_ids:
+            _set_org(db, org_id)
+            total_notificadas += horarios_svc.enviar_recordatorios_clase(
+                db, org_id, ahora=ahora, horas=settings.recordatorio_clase_horas
+            )
+            orgs_procesadas += 1
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("recordatorios_clase falló")
+        raise
+    finally:
+        db.close()
+
+    logger.info(
+        "recordatorios_clase OK: orgs=%s notificadas=%s",
+        orgs_procesadas,
+        total_notificadas,
+    )
+    return {"orgs": orgs_procesadas, "notificadas": total_notificadas}

@@ -22,7 +22,7 @@ con `MIGRATION_DATABASE_URL` (rol owner) exportado como `DATABASE_URL`.
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 
 from sqlalchemy import select, text
@@ -39,6 +39,7 @@ from app.models.consentimiento import Consentimiento
 from app.models.cuota import Cuota
 from app.models.egreso import Egreso
 from app.models.entrenador import Entrenador
+from app.models.horario_clase import HorarioClase
 from app.models.inscripcion import Inscripcion
 from app.models.organizacion import Organizacion
 from app.models.pago import Pago
@@ -420,6 +421,66 @@ def _seed_avisos(db: Session, org_id: uuid.UUID) -> dict[str, int]:
     return {"avisos": creados}
 
 
+def _seed_horarios(db: Session, org_id: uuid.UUID) -> dict[str, int]:
+    """Crea 1-2 horarios recurrentes de ejemplo (idempotente) para la rejilla.
+
+    Ej.: Sub-10 Principiante (Centro) lunes 18:00–19:30 y miércoles 18:00–19:30,
+    con el entrenador de ejemplo. Idempotente por la clave natural
+    `(categoria_id, dia_semana, hora_inicio)` (espeja el UNIQUE de BD).
+    """
+    centro = db.execute(
+        select(Sucursal).where(Sucursal.org_id == org_id, Sucursal.nombre == "Centro")
+    ).scalar_one_or_none()
+    if centro is None:
+        return {"horarios": 0}
+
+    categoria = db.execute(
+        select(Categoria).where(
+            Categoria.org_id == org_id,
+            Categoria.sucursal_id == centro.id,
+            Categoria.nombre == "Sub-10 Principiante",
+        )
+    ).scalar_one_or_none()
+    if categoria is None:
+        return {"horarios": 0}
+
+    entrenador = db.execute(
+        select(Entrenador).where(Entrenador.org_id == org_id)
+    ).scalars().first()
+    entrenador_id = entrenador.id if entrenador else None
+
+    # (dia_semana 0=Lun … 6=Dom, hora_inicio, hora_fin)
+    ejemplos: list[tuple[int, time, time]] = [
+        (0, time(18, 0), time(19, 30)),  # Lunes 18:00–19:30
+        (2, time(18, 0), time(19, 30)),  # Miércoles 18:00–19:30
+    ]
+    creados = 0
+    for dia_semana, hora_inicio, hora_fin in ejemplos:
+        existente = db.execute(
+            select(HorarioClase.id).where(
+                HorarioClase.categoria_id == categoria.id,
+                HorarioClase.dia_semana == dia_semana,
+                HorarioClase.hora_inicio == hora_inicio,
+            )
+        ).first()
+        if existente is not None:
+            continue
+        db.add(
+            HorarioClase(
+                org_id=org_id,
+                categoria_id=categoria.id,
+                dia_semana=dia_semana,
+                hora_inicio=hora_inicio,
+                hora_fin=hora_fin,
+                entrenador_id=entrenador_id,
+                activo=True,
+            )
+        )
+        creados += 1
+    db.flush()
+    return {"horarios": creados}
+
+
 def seed() -> None:
     """Ejecuta el seed idempotente. Imprime un resumen."""
     db = SessionLocal()
@@ -567,6 +628,9 @@ def seed() -> None:
         # 10) Avisos: 1-2 avisos de ejemplo para el muro (ORG + SUCURSAL).
         avs = _seed_avisos(db, org_id)
 
+        # 11) Horarios: 1-2 horarios recurrentes de ejemplo (rejilla semanal).
+        hor = _seed_horarios(db, org_id)
+
         db.commit()
         print(
             f"Seed OK: org='{ORG_NOMBRE}' ({org_id}), admin={ADMIN_EMAIL}/{ADMIN_PASS}, "
@@ -576,7 +640,8 @@ def seed() -> None:
             f"pagadas={cob['pagadas']}. "
             f"Asistencia: sesiones_creadas={asis['sesiones']}, marcas={asis['marcas']}. "
             f"Egresos: creados={egr['egresos']}. "
-            f"Avisos: creados={avs['avisos']}."
+            f"Avisos: creados={avs['avisos']}. "
+            f"Horarios: creados={hor['horarios']}."
         )
     except Exception:
         db.rollback()

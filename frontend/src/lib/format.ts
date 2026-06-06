@@ -46,6 +46,33 @@ export function formatDate(
   }).format(d);
 }
 
+// Formato de hora a partir de un "time" del backend (HH:MM o HH:MM:SS).
+// Usa el locale de la organización (RNF-04): no hardcodear el formato. Devuelve
+// p. ej. "16:30" (es-BO usa reloj de 24h por defecto).
+export function formatTime(
+  time: string | null | undefined,
+  org: OrgLocale = {},
+): string {
+  if (!time) return '—';
+  const [hStr, mStr] = time.split(':');
+  const h = Number(hStr);
+  const m = Number(mStr);
+  if (Number.isNaN(h) || Number.isNaN(m)) return '—';
+  const locale = org.locale ?? DEFAULT_LOCALE;
+  const d = new Date(2000, 0, 1, h, m);
+  try {
+    // Reloj de 24h (h23): apropiado para una rejilla de horarios y consistente
+    // entre locales; se respeta el locale para dígitos/separadores.
+    return new Intl.DateTimeFormat(locale, {
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    }).format(d);
+  } catch {
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  }
+}
+
 // Etiqueta legible del nivel de categoría (PRINCIPIANTE → Principiante).
 export function nivelLabel(nivel: string): string {
   if (!nivel) return '';
