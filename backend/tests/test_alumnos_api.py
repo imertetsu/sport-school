@@ -5,7 +5,7 @@
 - Tests marcados `db`: flujo end-to-end (login -> listar -> crear sin tutor 422 ->
   ficha médica gateada). Requieren BD migrada + seed. Skip si no hay BD.
 
-El seed se asume ejecutado (admin@cantera.bo / admin1234). Si no, hacer:
+El seed se asume ejecutado (admin@latinosport.bo / admin1234). Si no, hacer:
     .venv\\Scripts\\python -m app.seed
 """
 
@@ -70,7 +70,7 @@ def _client_or_skip():
 def _login_admin(client) -> str:
     resp = client.post(
         "/api/v1/auth/login",
-        json={"email": "admin@cantera.bo", "password": "admin1234"},
+        json={"email": "admin@latinosport.bo", "password": "admin1234"},
     )
     if resp.status_code != 200:
         pytest.skip(f"Login admin falló ({resp.status_code}); ¿seed ejecutado?")
@@ -145,7 +145,7 @@ def test_ficha_medica_gateada_por_rol() -> None:
     # Login entrenador; si su token no incluye la sucursal del alumno, ficha = null.
     coach = client.post(
         "/api/v1/auth/login",
-        json={"email": "coach@cantera.bo", "password": "coach1234"},
+        json={"email": "coach@latinosport.bo", "password": "coach1234"},
     )
     if coach.status_code != 200:
         pytest.skip("Entrenador no sembrado")

@@ -1,6 +1,6 @@
 """initial schema + RLS + app role + login_lookup
 
-Migracion INICIAL de CanteraSport, escrita A MANO (no autogenerada):
+Migracion INICIAL de LatinoSport, escrita A MANO (no autogenerada):
 - RLS / roles / funciones SECURITY DEFINER no los detecta `--autogenerate`.
 - Corre en paralelo con backend-dev (sin BD viva ni modelos importables).
 
@@ -8,7 +8,7 @@ Contratos implementados:
 - C1: esquema (tablas, columnas, tipos, FKs, constraints UNIQUE).
 - C2: RLS por `org_id` (ENABLE + FORCE + policy `org_isolation` con
   `current_setting('app.current_org', true)::uuid`), rol de app
-  `cantera_app` NOSUPERUSER NOBYPASSRLS, y funcion `public.login_lookup`
+  `latinosport_app` NOSUPERUSER NOBYPASSRLS, y funcion `public.login_lookup`
   SECURITY DEFINER para el login (huevo-gallina).
 
 Requiere la extension pgcrypto para `gen_random_uuid()` (la provee infra en
@@ -356,10 +356,10 @@ def upgrade() -> None:
         )
 
     # ------------------------------------------------------------------ #
-    # 4) Rol de app `cantera_app`: LOGIN, NOSUPERUSER, NOBYPASSRLS.
+    # 4) Rol de app `latinosport_app`: LOGIN, NOSUPERUSER, NOBYPASSRLS.
     #    Password configurable por env APP_DB_PASSWORD (default 'devpass' para dev/CI).
     #    En PRODUCCIÓN: setea APP_DB_PASSWORD fuerte y úsalo igual en DATABASE_URL
-    #    (cantera_app:<APP_DB_PASSWORD>). Idempotente (DO $$ ... IF NOT EXISTS): solo
+    #    (latinosport_app:<APP_DB_PASSWORD>). Idempotente (DO $$ ... IF NOT EXISTS): solo
     #    crea el rol si no existe; para rotar la clave luego usa ALTER ROLE a mano.
     # ------------------------------------------------------------------ #
     _app_db_pw = os.environ.get("APP_DB_PASSWORD", "devpass").replace("'", "''")
@@ -368,9 +368,9 @@ def upgrade() -> None:
         DO $$
         BEGIN
             IF NOT EXISTS (
-                SELECT FROM pg_roles WHERE rolname = 'cantera_app'
+                SELECT FROM pg_roles WHERE rolname = 'latinosport_app'
             ) THEN
-                CREATE ROLE cantera_app LOGIN PASSWORD '{_app_db_pw}'
+                CREATE ROLE latinosport_app LOGIN PASSWORD '{_app_db_pw}'
                     NOSUPERUSER NOBYPASSRLS;
             END IF;
         END
@@ -381,21 +381,21 @@ def upgrade() -> None:
     # Privilegios sobre objetos existentes en el schema public.
     op.execute(
         "GRANT SELECT, INSERT, UPDATE, DELETE "
-        "ON ALL TABLES IN SCHEMA public TO cantera_app;"
+        "ON ALL TABLES IN SCHEMA public TO latinosport_app;"
     )
     op.execute(
-        "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO cantera_app;"
+        "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO latinosport_app;"
     )
-    op.execute("GRANT USAGE ON SCHEMA public TO cantera_app;")
+    op.execute("GRANT USAGE ON SCHEMA public TO latinosport_app;")
 
     # Privilegios por defecto para objetos FUTUROS creados por el owner.
     op.execute(
         "ALTER DEFAULT PRIVILEGES IN SCHEMA public "
-        "GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO cantera_app;"
+        "GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO latinosport_app;"
     )
     op.execute(
         "ALTER DEFAULT PRIVILEGES IN SCHEMA public "
-        "GRANT USAGE, SELECT ON SEQUENCES TO cantera_app;"
+        "GRANT USAGE, SELECT ON SEQUENCES TO latinosport_app;"
     )
 
     # ------------------------------------------------------------------ #
@@ -426,12 +426,12 @@ def upgrade() -> None:
         $$;
         """
     )
-    # Bloquear EXECUTE a PUBLIC y concederlo solo a cantera_app.
+    # Bloquear EXECUTE a PUBLIC y concederlo solo a latinosport_app.
     op.execute(
         "REVOKE ALL ON FUNCTION public.login_lookup(text) FROM PUBLIC;"
     )
     op.execute(
-        "GRANT EXECUTE ON FUNCTION public.login_lookup(text) TO cantera_app;"
+        "GRANT EXECUTE ON FUNCTION public.login_lookup(text) TO latinosport_app;"
     )
 
 
@@ -447,11 +447,11 @@ def downgrade() -> None:
     # Revertir privilegios por defecto (best-effort; no falla si no existen).
     op.execute(
         "ALTER DEFAULT PRIVILEGES IN SCHEMA public "
-        "REVOKE SELECT, INSERT, UPDATE, DELETE ON TABLES FROM cantera_app;"
+        "REVOKE SELECT, INSERT, UPDATE, DELETE ON TABLES FROM latinosport_app;"
     )
     op.execute(
         "ALTER DEFAULT PRIVILEGES IN SCHEMA public "
-        "REVOKE USAGE, SELECT ON SEQUENCES FROM cantera_app;"
+        "REVOKE USAGE, SELECT ON SEQUENCES FROM latinosport_app;"
     )
 
     # Drop de tablas en orden inverso de creacion (respeta FKs).
@@ -466,15 +466,15 @@ def downgrade() -> None:
     op.drop_table("usuario")
     op.drop_table("organizacion")
 
-    # El rol cantera_app puede quedarse (compartido con la app). Se dropea
+    # El rol latinosport_app puede quedarse (compartido con la app). Se dropea
     # solo si no tiene objetos/dependencias; best-effort sin romper el down.
     op.execute(
         """
         DO $$
         BEGIN
-            IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'cantera_app') THEN
+            IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'latinosport_app') THEN
                 BEGIN
-                    DROP ROLE cantera_app;
+                    DROP ROLE latinosport_app;
                 EXCEPTION WHEN OTHERS THEN
                     -- El rol tiene dependencias (objetos/privilegios por
                     -- defecto, posiblemente en otra BD); se deja en pie.

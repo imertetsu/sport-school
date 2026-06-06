@@ -7,7 +7,7 @@
   marcas; **403 para ENTRENADOR** en ambos endpoints.
 
 Se siembra con `owner_engine` (salta RLS) y se ejercita el servicio con una
-Session sobre `app_engine` (rol `cantera_app`, NOBYPASSRLS) bajo RLS real. El
+Session sobre `app_engine` (rol `latinosport_app`, NOBYPASSRLS) bajo RLS real. El
 403 se prueba contra la API real con un token de ENTRENADOR emitido en memoria
 (el gate de rol corre antes de tocar datos). Skip si no hay BD (ver conftest).
 """

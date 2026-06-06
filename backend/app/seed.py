@@ -7,7 +7,7 @@ tutores + consentimiento + inscripción + ficha médica.
 IMPORTANTE (RLS): `organizacion` NO tiene RLS, así que se inserta directo. El
 resto son tablas tenant: antes de insertarlas se fija `app.current_org` en la
 sesión (`set_config(..., true)` por transacción). Para que esto funcione con el
-rol `cantera_app`, la migración de db-dev debe haber concedido los GRANTs (C2).
+rol `latinosport_app`, la migración de db-dev debe haber concedido los GRANTs (C2).
 
 Idempotencia: usa claves naturales (email de usuario, nombre de org/sucursal,
 CI de alumno) para no duplicar en re-ejecuciones.
@@ -51,9 +51,9 @@ from app.models.tutor import Tutor
 from app.models.usuario import Usuario
 from app.services.generacion import generar_cuotas_org
 
-ADMIN_EMAIL = "admin@cantera.bo"
+ADMIN_EMAIL = "admin@latinosport.bo"
 ADMIN_PASS = "admin1234"
-COACH_EMAIL = "coach@cantera.bo"
+COACH_EMAIL = "coach@latinosport.bo"
 COACH_PASS = "coach1234"
 ORG_NOMBRE = "Academia Andina"
 

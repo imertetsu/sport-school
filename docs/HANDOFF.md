@@ -4,7 +4,7 @@
 > cada epic**. Máx ~150 líneas; poda lo viejo. Esto NO es un changelog — es un snapshot
 > de "cómo está el mundo hoy".
 
-_Última actualización: 2026-06-06 — Fase 2: **Programación de clases** (7º) + **Auto-registro de alumno** en-sistema (8º). 8 epics en main._
+_Última actualización: 2026-06-06 — **Rename interno cantera→latinosport** + **primer deploy real** (servidor vivo en 177.222.39.139). 8 epics en main._
 
 ## Stack snapshot
 
@@ -72,20 +72,20 @@ Los puertos por defecto (5432/8000/5173) están **ocupados por otros proyectos**
 # 1) BD + redis (puerto host db = 5434 aquí)
 DB_PORT=5434 docker compose -f infra/docker-compose.yml up -d --wait db redis
 # 2) migraciones (rol OWNER):
-MIGRATION_DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5434/cantera \
+MIGRATION_DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5434/latinosport \
   backend/.venv/Scripts/alembic upgrade head
 # 3) seed (corre como OWNER, bypassa RLS para sembrar):
-cd backend && DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5434/cantera \
+cd backend && DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5434/latinosport \
   JWT_SECRET=... CORS_ORIGINS=http://localhost:5180 .venv/Scripts/python -m app.seed
-# 4) API (rol cantera_app → RLS activa) en 8010 (OPENBCB_SANDBOX habilita el "Simular pago"):
-cd backend && DATABASE_URL=postgresql+psycopg://cantera_app:devpass@localhost:5434/cantera \
+# 4) API (rol latinosport_app → RLS activa) en 8010 (OPENBCB_SANDBOX habilita el "Simular pago"):
+cd backend && DATABASE_URL=postgresql+psycopg://latinosport_app:devpass@localhost:5434/latinosport \
   JWT_SECRET=<32+ chars> CORS_ORIGINS=http://localhost:5180,http://127.0.0.1:5180 \
   OPENBCB_SANDBOX=true REDIS_URL=redis://localhost:6379/0 \
   .venv/Scripts/python -m uvicorn app.main:app --port 8010
 # 5) Frontend en 5180:
 cd frontend && VITE_API_URL=http://localhost:8010 npm run dev -- --port 5180 --strictPort
 ```
-**Credenciales de seed:** `admin@cantera.bo / admin1234` (ADMIN) · `coach@cantera.bo /
+**Credenciales de seed:** `admin@latinosport.bo / admin1234` (ADMIN) · `coach@latinosport.bo /
 coach1234` (ENTRENADOR). Org: `Academia Andina` (BO/BOB), 2 sucursales, 8 alumnos.
 
 ### Flags de negocio (configurables por organización — aún sin implementar; SRS §4.2/§7)
@@ -106,8 +106,21 @@ por el proxy TLS). Al abrir el próximo epic, `product-owner` crea `docs/specs/<
 
 ## Recent decisions
 
-- **2026-06-06 Rebrand → LATINOSPORT + acento AZUL.** Nombre oficial **LATINOSPORT** (antes
-  CanteraSport) en `APP_NAME`/`VITE_APP_NAME`, config backend/frontend, `<title>`, seed (admin) y
+- **2026-06-06 Rename interno cantera→latinosport + primer deploy real.** Por consistencia con
+  la marca se renombró TODO `cantera`→`latinosport`: **BD `latinosport`**, **rol `latinosport_app`**
+  (migración 0001 + GRANTs + función `login_lookup`; las policies `org_isolation` NO llevan `TO <rol>`
+  → aíslan vía el GUC `app.current_org`, no cambian), connection strings, imagen `latinosport-api`,
+  proyecto compose `latinosport`, `POSTGRES_DB`, emails de seed `@latinosport.bo`. Hecho por 4 agentes
+  en paralelo (sin solape de carpetas; contrato de nombres fijado por main). ⚠️ **Recrear la BD
+  (`docker compose down -v`)**: el nombre/rol se hornean al inicializar el volumen de Postgres.
+  **Primer deploy real:** `infra/bootstrap.sh` (provisioning idempotente de Ubuntu — instala Docker,
+  clona el repo **privado** vía `REPO_TOKEN`, genera `.env` de prod con secretos fuertes, corre
+  `deploy.sh`); servidor vivo en `177.222.39.139`, repo en `/opt/latinosport` (despliegue por IP:puerto,
+  sin dominio/HTTPS aún). **Fix (main):** el servicio `db` del compose tenía `POSTGRES_PASSWORD`
+  hardcodeado a `postgres` → en prod no casaba con el secreto fuerte del `.env` → `password
+  authentication failed` y la API no arrancaba; ahora `POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}`.
+  **Pendiente:** comando `create-admin` (la BD de prod arranca vacía, sin usuario para el primer login).
+- **2026-06-06 Rebrand → LATINOSPORT + acento AZUL.** Nombre oficial **LATINOSPORT** en `APP_NAME`/`VITE_APP_NAME`, config backend/frontend, `<title>`, seed (admin) y
   docstrings. **Acento por defecto = AZUL** en oklch (`--accent: oklch(0.58 0.16 250)` ≈ #2F6BD6,
   hover `0.50 0.17 252`, suave `0.95 0.03 250`, tinta `0.46 0.14 252`); verde pasa a alterno
   (`[data-accent='verde']`). Se renovaron las storage keys a `latinosport.*` para que el azul
@@ -132,8 +145,8 @@ por el proxy TLS). Al abrir el próximo epic, `product-owner` crea `docs/specs/<
   (cada hora) es idempotente vía `sesion.recordatorio_enviado_en`; ambos recorren orgs fijando
   contexto (patrón de `cobranza_diaria`). `dia_semana` 0=Lunes…6=Domingo (= `date.weekday()`).
 - **2026-06-06 Hardening de deploy.** Validado `docker compose up --build` de punta a punta
-  (db+redis+api+worker+beat+web) en proyecto/puertos aislados (`-p cantera_verify`): la imagen
-  api aplica las 6 migraciones sobre BD vacía y arranca como `cantera_app`; web sirve la SPA.
+  (db+redis+api+worker+beat+web) en proyecto/puertos aislados (`-p latinosport_verify`): la imagen
+  api aplica las 6 migraciones sobre BD vacía y arranca como `latinosport_app`; web sirve la SPA.
   **Imagen api/worker AUTOCONTENIDA**: build context = raíz, copia `backend/`+`alembic.ini`+
   `migrations/` DENTRO (antes dependía de montar volúmenes → no desplegable fuera del repo);
   `.dockerignore` (raíz) mantiene el contexto liviano. **Guard de prod** en `config.py`
@@ -146,7 +159,7 @@ por el proxy TLS). Al abrir el próximo epic, `product-owner` crea `docs/specs/<
   filtra). Verificado E2E (incl. UTF-8/acentos/emoji — el `400` en curl era artefacto del shell Windows).
 - **2026-06-06 Epic Egresos** construido en **paralelo** con Reportes (sesiones separadas).
   Aislamiento: rama `epic/egresos` en un **git worktree** hermano + stack docker propio
-  (`-p cantera_egresos`, db 5435 / redis 6380, API 8011 / web 5181). **Lección:** una rama NO
+  (`-p latinosport_egresos`, db 5435 / redis 6380, API 8011 / web 5181). **Lección:** una rama NO
   aísla el árbol de trabajo — dos sesiones en el mismo working dir se pisan; el worktree sí.
   **Fix de integración (main, trust-but-verify):** `total_monto` de `/egresos` sumaba con
   **producto cartesiano** (`SUM(Egreso.monto)` con `FROM subquery` → suma × nº filas); corregido
@@ -158,7 +171,7 @@ por el proxy TLS). Al abrir el próximo epic, `product-owner` crea `docs/specs/<
   `docs/design/design-system.md`. 4 pantallas: Panel de cobranza, Registrar pago (QR/efectivo),
   Perfil del deportista (tabs), Asistencia (entrenador). Tokens: Space Grotesk + Hanken Grotesk,
   acento verde/azul, badges verde/ámbar/rojo, modo claro plano.
-- **2026-06-05** Desarrolla **SnapCoding**. **Nombre = CanteraSport** (decidido por el
+- **2026-06-05** Desarrolla **SnapCoding**. **Nombre = LatinoSport** (decidido por el
   usuario), configurable vía `APP_NAME`/`VITE_APP_NAME`.
 - **2026-06-05** Slice construido por 4 agentes en paralelo (backend/db/frontend/infra).
   **Fixes de integración (trust-but-verify, hechos por main):**
@@ -214,7 +227,7 @@ por el proxy TLS). Al abrir el próximo epic, `product-owner` crea `docs/specs/<
   (un Django ajeno), 5173 (otro front). Usar los overrides de arriba (5434/8010/5180).
 - **`JWT_SECRET` corto** avisa (PyJWT exige ≥32 bytes para HS256). En prod usar uno largo.
 - **Seed corre como OWNER** (postgres bypassa RLS) a propósito; la **app** corre como
-  `cantera_app` (RLS activa). No conectes la app como postgres.
+  `latinosport_app` (RLS activa). No conectes la app como postgres.
 - **npm install** se cuelga con el proxy TLS del equipo (`UNABLE_TO_VERIFY_LEAF_SIGNATURE`);
   workaround dev: `npm_config_strict_ssl=false`. CI/Docker deben usar una CA/registry confiable.
 - **`Dockerfile.api` necesita** `alembic.ini` + `migrations/` (viven en la raíz, fuera del

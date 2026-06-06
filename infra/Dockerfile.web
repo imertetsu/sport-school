@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 #
-# Imagen del frontend de CanteraSport (React + Vite).
+# Imagen del frontend de LatinoSport (React + Vite).
 # Build context = ../frontend (ver docker-compose.yml: services.web.build.context).
 #
 # Multi-stage: build con node:24 -> servir el `dist/` estatico con nginx:alpine.

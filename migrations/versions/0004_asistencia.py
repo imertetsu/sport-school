@@ -1,6 +1,6 @@
 """asistencia: sesion / asistencia + RLS (NULLIF fail-closed) + GRANTs
 
-Migracion del epic Asistencia de CanteraSport, escrita A MANO (no autogenerada):
+Migracion del epic Asistencia de LatinoSport, escrita A MANO (no autogenerada):
 - RLS / GRANTs no los detecta `--autogenerate`.
 - Corre sobre la BD de los slices Alumnos (0001) + Cobranza (0002) + hardening
   RLS (0003) ya viva; main aplica el upgrade.
@@ -18,7 +18,7 @@ RLS: ambas tablas llevan ENABLE + FORCE + policy `org_isolation` con el patron
 fail-closed NUEVO de 0003: `NULLIF(current_setting('app.current_org', true),
 '')::uuid`. Asi tanto el caso "nunca seteado" (NULL) como el "reseteado a vacio"
 ('' tras SET LOCAL + commit en el pool) colapsan a NULL -> 0 filas. GRANTs DML a
-`cantera_app` + USAGE/SELECT en secuencias.
+`latinosport_app` + USAGE/SELECT en secuencias.
 
 Revision ID: 0004
 Revises: 0003
@@ -195,16 +195,16 @@ def upgrade() -> None:
         )
 
     # ------------------------------------------------------------------ #
-    # 4) GRANTs explicitos a cantera_app sobre las tablas nuevas (DML) y sus
+    # 4) GRANTs explicitos a latinosport_app sobre las tablas nuevas (DML) y sus
     #    secuencias. 0001 ya fijo ALTER DEFAULT PRIVILEGES para objetos
     #    futuros, pero los hacemos explicitos aqui para no depender de ello.
     # ------------------------------------------------------------------ #
     for table in TENANT_TABLES:
         op.execute(
-            f"GRANT SELECT, INSERT, UPDATE, DELETE ON {table} TO cantera_app;"
+            f"GRANT SELECT, INSERT, UPDATE, DELETE ON {table} TO latinosport_app;"
         )
     op.execute(
-        "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO cantera_app;"
+        "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO latinosport_app;"
     )
 
 

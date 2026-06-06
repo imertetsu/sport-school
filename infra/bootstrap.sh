@@ -143,7 +143,7 @@ fi
 # 5) Generar $DEPLOY_PATH/.env SOLO si NO existe.
 #    Idempotencia crítica: en re-runs NUNCA regeneramos secretos (la BD ya
 #    inicializó su volumen con el password actual; regenerarlo rompería el login
-#    de cantera_app y el guard de prod no es el problema, sino el desajuste de
+#    de latinosport_app y el guard de prod no es el problema, sino el desajuste de
 #    credenciales contra el volumen de Postgres existente).
 # ---------------------------------------------------------------------------
 ENV_FILE="$DEPLOY_PATH/.env"
@@ -156,14 +156,14 @@ else
   APP_DB_PASS="$(openssl rand -hex 24)"
   JWT="$(openssl rand -hex 32)"
 
-  # El password de cantera_app DENTRO de DATABASE_URL DEBE ser el mismo que
+  # El password de latinosport_app DENTRO de DATABASE_URL DEBE ser el mismo que
   # APP_DB_PASSWORD (la migración crea el rol con ese valor). De ahí $APP_DB_PASS
   # interpolado en ambos lugares. Y NO contiene 'devpass' ni 'postgres:postgres@'.
   cat > "$ENV_FILE" <<EOF
 APP_NAME=LATINOSPORT
 APP_ENV=production
-DATABASE_URL=postgresql+psycopg://cantera_app:${APP_DB_PASS}@db:5432/cantera
-MIGRATION_DATABASE_URL=postgresql+psycopg://postgres:${PG_PASS}@db:5432/cantera
+DATABASE_URL=postgresql+psycopg://latinosport_app:${APP_DB_PASS}@db:5432/latinosport
+MIGRATION_DATABASE_URL=postgresql+psycopg://postgres:${PG_PASS}@db:5432/latinosport
 POSTGRES_PASSWORD=${PG_PASS}
 APP_DB_PASSWORD=${APP_DB_PASS}
 REDIS_URL=redis://redis:6379/0

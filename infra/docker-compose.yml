@@ -1,4 +1,4 @@
-# docker-compose para el stack local de CanteraSport.
+# docker-compose para el stack local de LatinoSport.
 #
 # Orden de arranque:
 #   db (healthy) -> api (corre `alembic upgrade head` como OWNER, luego uvicorn)
@@ -7,12 +7,12 @@
 #
 # Roles de BD (contrato C2):
 #   - Alembic (en api) migra como OWNER:  MIGRATION_DATABASE_URL (rol postgres).
-#   - La app (uvicorn/worker/beat) corre como cantera_app (NOSUPERUSER,
+#   - La app (uvicorn/worker/beat) corre como latinosport_app (NOSUPERUSER,
 #     NOBYPASSRLS): DATABASE_URL. NUNCA como superusuario (rompería la RLS).
 #
 # Variables: se leen de ../.env (ver ../.env.example).
 
-name: cantera
+name: latinosport
 
 services:
   db:
@@ -25,7 +25,7 @@ services:
       # vacío; cambiarlo sobre un volumen existente NO lo actualiza (recrear con
       # `docker compose down -v`).
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      POSTGRES_DB: cantera
+      POSTGRES_DB: latinosport
     ports:
       # Puerto del host parametrizable (evita colisiones con otros Postgres en la
       # máquina de dev). Dentro de la red docker la app sigue usando db:5432.
@@ -36,7 +36,7 @@ services:
       - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
       # `pg_isready` contra usuario y base concretos.
-      test: ["CMD-SHELL", "pg_isready -U postgres -d cantera"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d latinosport"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -59,7 +59,7 @@ services:
     build:
       context: ..
       dockerfile: infra/Dockerfile.api
-    image: cantera-api
+    image: latinosport-api
     # Solo este servicio aplica migraciones (migrador único, evita carreras).
     environment:
       RUN_MIGRATIONS: "1"
@@ -77,7 +77,7 @@ services:
     build:
       context: ..
       dockerfile: infra/Dockerfile.api
-    image: cantera-api
+    image: latinosport-api
     environment:
       RUN_MIGRATIONS: "0"
     env_file:
@@ -95,7 +95,7 @@ services:
     build:
       context: ..
       dockerfile: infra/Dockerfile.api
-    image: cantera-api
+    image: latinosport-api
     environment:
       RUN_MIGRATIONS: "0"
     env_file:

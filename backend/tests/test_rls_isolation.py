@@ -1,6 +1,6 @@
 """Verifica el aislamiento RLS (criterio de aceptación del epic).
 
-Con el rol `cantera_app` (NOBYPASSRLS):
+Con el rol `latinosport_app` (NOBYPASSRLS):
   1. Sin `app.current_org` fijado -> `SELECT * FROM alumno` devuelve 0 filas (fail-closed).
   2. Con org A fijada -> se ven las filas de A pero NINGUNA de B.
 

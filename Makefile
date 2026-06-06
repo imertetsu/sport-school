@@ -1,4 +1,4 @@
-# Makefile — atajos del stack CanteraSport.
+# Makefile — atajos del stack LatinoSport.
 # Uso: `make up`, `make down`, `make migrate`, etc.
 
 COMPOSE := docker compose -f infra/docker-compose.yml

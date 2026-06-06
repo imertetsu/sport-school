@@ -4,7 +4,7 @@ Criterio de aceptación: el mismo `transaccion_id` reenviado ⇒ sin doble pago,
 doble comprobante ni doble `pago_cuota`. Skip si no hay BD.
 
 Se usa `owner_engine` para sembrar (saltando RLS) y una Session sobre `app_engine`
-(rol `cantera_app`, NOBYPASSRLS) para ejercitar el servicio bajo RLS real.
+(rol `latinosport_app`, NOBYPASSRLS) para ejercitar el servicio bajo RLS real.
 """
 
 from __future__ import annotations

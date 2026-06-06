@@ -8,7 +8,7 @@
   get-or-create de Asistencia), y recordatorio (setea la marca y no reenvía).
 
 Se usa `owner_engine` para sembrar (saltando RLS) y una Session sobre `app_engine`
-(rol `cantera_app`, NOBYPASSRLS) para ejercitar el servicio bajo RLS real. Skip si
+(rol `latinosport_app`, NOBYPASSRLS) para ejercitar el servicio bajo RLS real. Skip si
 no hay BD (ver conftest).
 """
 

@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 #
-# Imagen del worker/beat de Celery de CanteraSport.
+# Imagen del worker/beat de Celery de LatinoSport.
 #
 # Es IDENTICA a Dockerfile.api (mismo paquete `app`, mismas dependencias): el
 # worker importa `app.workers.celery_app`. Para no mantener dos imagenes en

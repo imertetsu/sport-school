@@ -6,7 +6,7 @@
   y scoping por rol (ENTRENADOR fuera de su sucursal -> CategoriaFuera = 403).
 
 Se usa `owner_engine` para sembrar (saltando RLS) y una Session sobre
-`app_engine` (rol `cantera_app`, NOBYPASSRLS) para ejercitar el servicio bajo RLS
+`app_engine` (rol `latinosport_app`, NOBYPASSRLS) para ejercitar el servicio bajo RLS
 real. Skip si no hay BD (ver conftest).
 """
 

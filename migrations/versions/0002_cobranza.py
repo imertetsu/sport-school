@@ -1,6 +1,6 @@
 """cobranza: cuota / pago / pago_cuota / conciliacion_pendiente + RLS + webhook_resolver
 
-Migracion del epic Cobranza de CanteraSport, escrita A MANO (no autogenerada):
+Migracion del epic Cobranza de LatinoSport, escrita A MANO (no autogenerada):
 - RLS / GRANTs / funciones SECURITY DEFINER no los detecta `--autogenerate`.
 - Corre sobre la BD del slice Alumnos (0001) ya viva; main aplica el upgrade.
 
@@ -14,7 +14,7 @@ Contratos implementados (docs/specs/cobranza.md):
 RLS: las tablas tenant nuevas llevan ENABLE + FORCE + policy `org_isolation`
 con `current_setting('app.current_org', true)::uuid` (fail-closed). La cola
 `conciliacion_pendiente` queda EXPLICITAMENTE exenta (ops/vendor), pero
-`cantera_app` recibe GRANT SELECT/INSERT/UPDATE sobre ella.
+`latinosport_app` recibe GRANT SELECT/INSERT/UPDATE sobre ella.
 
 Revision ID: 0002
 Revises: 0001
@@ -36,14 +36,14 @@ depends_on: Union[str, Sequence[str], None] = None
 
 # Tablas tenant (con org_id) de este epic que llevan RLS habilitada + forzada.
 # `conciliacion_pendiente` es la UNICA excepcion (cola ops/vendor: sin org_id
-# ni RLS, pero con GRANT explicito a cantera_app mas abajo).
+# ni RLS, pero con GRANT explicito a latinosport_app mas abajo).
 TENANT_TABLES: tuple[str, ...] = (
     "cuota",
     "pago",
     "pago_cuota",
 )
 
-# Tablas nuevas (tenant + cola) que necesitan GRANT de DML a cantera_app y
+# Tablas nuevas (tenant + cola) que necesitan GRANT de DML a latinosport_app y
 # USAGE/SELECT sobre sus secuencias.
 NEW_TABLES: tuple[str, ...] = (
     "cuota",
@@ -246,18 +246,18 @@ def upgrade() -> None:
         )
 
     # ------------------------------------------------------------------ #
-    # 4) GRANTs explicitos a cantera_app sobre las tablas nuevas (DML) y sus
+    # 4) GRANTs explicitos a latinosport_app sobre las tablas nuevas (DML) y sus
     #    secuencias. 0001 ya fijo ALTER DEFAULT PRIVILEGES para objetos
     #    futuros, pero los hacemos explicitos aqui para no depender de ello
     #    (y para cubrir `conciliacion_pendiente`, exenta de RLS pero operada
-    #    por la app: el webhook encola conciliaciones con cantera_app).
+    #    por la app: el webhook encola conciliaciones con latinosport_app).
     # ------------------------------------------------------------------ #
     for table in NEW_TABLES:
         op.execute(
-            f"GRANT SELECT, INSERT, UPDATE, DELETE ON {table} TO cantera_app;"
+            f"GRANT SELECT, INSERT, UPDATE, DELETE ON {table} TO latinosport_app;"
         )
     op.execute(
-        "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO cantera_app;"
+        "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO latinosport_app;"
     )
 
     # ------------------------------------------------------------------ #
@@ -285,12 +285,12 @@ def upgrade() -> None:
         $$;
         """
     )
-    # Bloquear EXECUTE a PUBLIC y concederlo solo a cantera_app.
+    # Bloquear EXECUTE a PUBLIC y concederlo solo a latinosport_app.
     op.execute(
         "REVOKE ALL ON FUNCTION public.webhook_resolver(text) FROM PUBLIC;"
     )
     op.execute(
-        "GRANT EXECUTE ON FUNCTION public.webhook_resolver(text) TO cantera_app;"
+        "GRANT EXECUTE ON FUNCTION public.webhook_resolver(text) TO latinosport_app;"
     )
 
 

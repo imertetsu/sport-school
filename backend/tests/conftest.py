@@ -1,11 +1,11 @@
 """Fixtures de tests.
 
 Los tests que tocan la BD requieren PostgreSQL **migrado** (esquema + RLS + rol
-`cantera_app` + función `login_lookup`), que levanta infra-dev con docker. Si no
+`latinosport_app` + función `login_lookup`), que levanta infra-dev con docker. Si no
 hay BD alcanzable, los tests marcados `db` se **omiten** (skip) en vez de fallar.
 
 Variables de entorno usadas:
-- `DATABASE_URL`         -> conexión de la app (rol `cantera_app`, NOBYPASSRLS).
+- `DATABASE_URL`         -> conexión de la app (rol `latinosport_app`, NOBYPASSRLS).
 - `MIGRATION_DATABASE_URL` -> conexión owner (rol postgres), para insertar datos de
   fixture saltando RLS al sembrar 2 orgs en el test de aislamiento.
 """
@@ -44,7 +44,7 @@ def _reachable(url: str | None) -> bool:
 
 @pytest.fixture(scope="session")
 def app_engine() -> Iterator[Engine]:
-    """Engine con el rol de app (`cantera_app`). Skip si no hay BD."""
+    """Engine con el rol de app (`latinosport_app`). Skip si no hay BD."""
     url = _db_url()
     if not _reachable(url):
         pytest.skip("DATABASE_URL no alcanzable; requiere Postgres migrado (infra-dev/docker)")

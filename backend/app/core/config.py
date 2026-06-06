@@ -33,9 +33,9 @@ class Settings(BaseSettings):
     # Branding (C0)
     app_name: str = "LATINOSPORT"
 
-    # Base de datos: la app corre como rol `cantera_app` (NOBYPASSRLS).
+    # Base de datos: la app corre como rol `latinosport_app` (NOBYPASSRLS).
     # Driver psycopg v3 -> postgresql+psycopg:// (C3).
-    database_url: str = "postgresql+psycopg://cantera_app:devpass@db:5432/cantera"
+    database_url: str = "postgresql+psycopg://latinosport_app:devpass@db:5432/latinosport"
 
     # Auth / JWT (C4)
     jwt_secret: str = "dev-change-me"

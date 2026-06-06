@@ -1,11 +1,11 @@
--- init.sql — provisión MÍNIMA de la base de CanteraSport.
+-- init.sql — provisión MÍNIMA de la base de LatinoSport.
 --
 -- Se monta en /docker-entrypoint-initdb.d/ y SOLO corre la PRIMERA vez que el
 -- volumen de datos de Postgres está vacío (comportamiento de la imagen oficial).
 --
 -- Alcance deliberadamente acotado (separación de responsabilidades con db-dev):
---   - La base `cantera` la crea la imagen vía POSTGRES_DB (no aquí).
---   - El rol `cantera_app` (LOGIN NOSUPERUSER NOBYPASSRLS), las tablas, la RLS,
+--   - La base `latinosport` la crea la imagen vía POSTGRES_DB (no aquí).
+--   - El rol `latinosport_app` (LOGIN NOSUPERUSER NOBYPASSRLS), las tablas, la RLS,
 --     los GRANTs y la función login_lookup SECURITY DEFINER los crea la
 --     MIGRACIÓN de db-dev (`alembic upgrade head`, como owner/postgres).
 --     NO se crean aquí.

@@ -12,7 +12,7 @@
     * 422 sin consentimiento aceptado
     * entrenador con `sucursal_sugerida_id` fuera de su alcance -> 403
 
-El seed se asume ejecutado (admin@cantera.bo / coach@cantera.bo). NO hay token ni
+El seed se asume ejecutado (admin@latinosport.bo / coach@latinosport.bo). NO hay token ni
 endpoint público: todo es autenticado con Bearer.
 """
 
@@ -91,11 +91,11 @@ def _login(client, email: str, password: str) -> str:
 
 
 def _login_admin(client) -> str:
-    return _login(client, "admin@cantera.bo", "admin1234")
+    return _login(client, "admin@latinosport.bo", "admin1234")
 
 
 def _login_coach(client) -> str:
-    return _login(client, "coach@cantera.bo", "coach1234")
+    return _login(client, "coach@latinosport.bo", "coach1234")
 
 
 def _hdr(token: str) -> dict[str, str]:

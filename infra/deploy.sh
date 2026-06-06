@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Despliegue de CanteraSport EN EL SERVIDOR (build-on-server).
+# Despliegue de LatinoSport EN EL SERVIDOR (build-on-server).
 # Lo invoca el job `deploy` de CI/CD por SSH tras `git reset --hard origin/main`,
 # pero también puedes correrlo a mano en el servidor:  bash infra/deploy.sh
 #

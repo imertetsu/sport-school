@@ -7,13 +7,13 @@ Dos capas, igual que el resto de la suite:
   `aviso_visible_para_entrenador`, `_sucursales_permitidas`) y autorización pura de
   `require_role` (ADMIN pasa / ENTRENADOR -> 403).
 - **Con BD** (`@pytest.mark.db`, requieren Postgres migrado con `0006` + RLS + rol
-  `cantera_app`): scoping por rol del feed (el entrenador NO ve un aviso de sucursal
+  `latinosport_app`): scoping por rol del feed (el entrenador NO ve un aviso de sucursal
   ajena ni vencidos, pero sí ORG y los de su sucursal/categoría), invariante 422 a
   nivel servicio (`ValueError`), y soft-delete (desaparece del feed; la fila sigue
   con `activo=false`, sin borrado físico).
 
 Se usa `owner_engine` para sembrar (saltando RLS) y una `Session` sobre `app_engine`
-(rol `cantera_app`, NOBYPASSRLS) para ejercitar el servicio bajo RLS real. Skip si
+(rol `latinosport_app`, NOBYPASSRLS) para ejercitar el servicio bajo RLS real. Skip si
 no hay BD (ver conftest). Los `@pytest.mark.db` los corre main en F4 contra Postgres.
 """
 

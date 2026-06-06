@@ -6,13 +6,13 @@ Dos capas, igual que el resto de la suite:
   `categoria_gasto` vacío -> 422) y autorización pura de `require_role` (ADMIN
   pasa / ENTRENADOR -> 403), sin tocar Postgres.
 - **Con BD** (`@pytest.mark.db`, requieren Postgres migrado con `0005` + RLS + rol
-  `cantera_app`): aislamiento RLS de `egreso` (fail-closed sin contexto, org A no
+  `latinosport_app`): aislamiento RLS de `egreso` (fail-closed sin contexto, org A no
   ve org B), `total_monto` = SUM sobre TODO el filtro (no la página), alta auditada
   (`registrado_por` = usuario del token), y el egreso a nivel org (`sucursal_id`
   NULL) excluido del filtro por sucursal y mostrado con `sucursal: null`.
 
 Se usa `owner_engine` para sembrar (saltando RLS) y una `Session` sobre
-`app_engine` (rol `cantera_app`, NOBYPASSRLS) para ejercitar el servicio bajo RLS
+`app_engine` (rol `latinosport_app`, NOBYPASSRLS) para ejercitar el servicio bajo RLS
 real. Skip si no hay BD (ver conftest). Los `@pytest.mark.db` los corre main en F4
 contra Postgres.
 """

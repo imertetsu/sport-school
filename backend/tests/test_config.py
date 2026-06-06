@@ -15,7 +15,7 @@ from pydantic import ValidationError
 def _prod(
     *,
     jwt_secret: str = "x" * 40,  # >= 32 y no está en _WEAK_SECRETS
-    database_url: str = "postgresql+psycopg://app_prod:Str0ng-Pass@db:5432/cantera",
+    database_url: str = "postgresql+psycopg://app_prod:Str0ng-Pass@db:5432/latinosport",
     openbcb_sandbox: bool = False,
 ) -> Settings:
     return Settings(
@@ -42,7 +42,7 @@ def test_produccion_rechaza_jwt_corto() -> None:
 
 def test_produccion_rechaza_credenciales_dev() -> None:
     with pytest.raises(ValidationError):
-        _prod(database_url="postgresql+psycopg://cantera_app:devpass@db:5432/cantera")
+        _prod(database_url="postgresql+psycopg://latinosport_app:devpass@db:5432/latinosport")
 
 
 def test_produccion_rechaza_sandbox_on() -> None:
@@ -54,7 +54,7 @@ def test_dev_permite_defaults_inseguros() -> None:
     s = Settings(
         app_env="dev",
         jwt_secret="dev-change-me",
-        database_url="postgresql+psycopg://cantera_app:devpass@db:5432/cantera",
+        database_url="postgresql+psycopg://latinosport_app:devpass@db:5432/latinosport",
         openbcb_sandbox=True,
     )
     assert s.app_env == "dev"

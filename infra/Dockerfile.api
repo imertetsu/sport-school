@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 #
-# Imagen del backend de CanteraSport (FastAPI + Celery).
+# Imagen del backend de LatinoSport (FastAPI + Celery).
 # Build context = RAIZ del repo (docker-compose.yml: services.api.build.context: ..).
 #
 # Imagen AUTOCONTENIDA: lleva backend/ (paquete `app`), `alembic.ini` y `migrations/`
@@ -50,7 +50,7 @@ set -euo pipefail
 # worker y beat las disparen en paralelo (carrera de Alembic). Un unico migrador.
 if [ "${RUN_MIGRATIONS:-0}" = "1" ]; then
   # La app NUNCA migra como superusuario en su rol de runtime: usamos
-  # MIGRATION_DATABASE_URL (rol postgres/owner). DATABASE_URL (cantera_app,
+  # MIGRATION_DATABASE_URL (rol postgres/owner). DATABASE_URL (latinosport_app,
   # NOBYPASSRLS) es solo para el runtime de la app.
   echo "[api-entrypoint] alembic upgrade head (owner / MIGRATION_DATABASE_URL)"
   alembic -c /app/alembic.ini upgrade head

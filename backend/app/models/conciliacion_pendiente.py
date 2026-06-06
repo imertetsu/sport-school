@@ -3,7 +3,7 @@
 A diferencia del resto de tablas tenant, esta cola NO lleva `org_id` ni RLS
 (ops/vendor): el webhook escribe aquí cuando no puede resolver la referencia o el
 monto no cuadra, de modo que **ningún pago se pierde jamás** (RNF-06). El rol
-`cantera_app` tiene GRANT explícito de DML sobre ella en la migración.
+`latinosport_app` tiene GRANT explícito de DML sobre ella en la migración.
 
 Por eso NO hereda `OrgScoped`. Columnas EXACTAS a
 `migrations/versions/0002_cobranza.py` (autoridad): lleva `created_at`.

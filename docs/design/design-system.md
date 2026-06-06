@@ -6,7 +6,7 @@
 
 ## Marca y nomenclatura
 - **Nombre oficial: LATINOSPORT** (decisión del usuario, 2026-06-06). Configurable vía
-  `APP_NAME`/`VITE_APP_NAME` (no hardcodear). Nombres previos del prototipo: CanteraSport/LATINASPORT.
+  `APP_NAME`/`VITE_APP_NAME` (no hardcodear).
 - Desarrolla: **SnapCoding**.
 
 ## Sistema de diseño (design tokens)

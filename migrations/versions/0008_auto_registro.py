@@ -1,7 +1,7 @@
 """auto_registro: tabla `solicitud_registro` + RLS (NULLIF) + GRANTs
 
 Migracion del epic Auto-registro de alumno (Fase 2, version EN SISTEMA) de
-CanteraSport. Escrita A MANO (no autogenerada): RLS / GRANTs no los detecta
+LatinoSport. Escrita A MANO (no autogenerada): RLS / GRANTs no los detecta
 `--autogenerate`. Corre sobre la BD con Alumnos (0001) + Cobranza (0002) +
 hardening RLS (0003) + Asistencia (0004) + Egresos (0005) + Avisos (0006) +
 Horarios (0007) ya viva; main aplica el upgrade en F4.
@@ -62,7 +62,7 @@ RLS: ENABLE + FORCE + policy `org_isolation` con el patron fail-closed de 0003:
 `NULLIF(current_setting('app.current_org', true), '')::uuid`. Asi tanto el caso
 "nunca seteado" (NULL) como el "reseteado a vacio" ('' tras SET LOCAL + commit en
 el pool) colapsan a NULL -> 0 filas y no pasan WITH CHECK. GRANTs DML a
-`cantera_app` + USAGE/SELECT en secuencias (replica 0007; el PK usa
+`latinosport_app` + USAGE/SELECT en secuencias (replica 0007; el PK usa
 gen_random_uuid(), no secuencia, pero mantenemos el grant por consistencia e
 idempotencia).
 
@@ -231,17 +231,17 @@ def upgrade() -> None:
         )
 
     # ------------------------------------------------------------------ #
-    # 4) GRANTs explicitos a cantera_app sobre la tabla nueva (DML) y las
+    # 4) GRANTs explicitos a latinosport_app sobre la tabla nueva (DML) y las
     #    secuencias. 0001 ya fijo ALTER DEFAULT PRIVILEGES para objetos
     #    futuros, pero los hacemos explicitos aqui para no depender de ello
     #    (replica 0007).
     # ------------------------------------------------------------------ #
     for table in TENANT_TABLES:
         op.execute(
-            f"GRANT SELECT, INSERT, UPDATE, DELETE ON {table} TO cantera_app;"
+            f"GRANT SELECT, INSERT, UPDATE, DELETE ON {table} TO latinosport_app;"
         )
     op.execute(
-        "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO cantera_app;"
+        "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO latinosport_app;"
     )
 
 

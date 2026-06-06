@@ -1,9 +1,9 @@
-"""Alembic environment para CanteraSport.
+"""Alembic environment para LatinoSport.
 
 Reglas del contrato (C2 del epic scaffolding-alumnos):
 - Alembic corre como OWNER/superusuario (rol `postgres`), NUNCA como
-  `cantera_app`. La URL de conexion sale de la variable de entorno
-  `MIGRATION_DATABASE_URL` (p.ej. postgresql+psycopg://postgres:postgres@db:5432/cantera).
+  `latinosport_app`. La URL de conexion sale de la variable de entorno
+  `MIGRATION_DATABASE_URL` (p.ej. postgresql+psycopg://postgres:postgres@db:5432/latinosport).
   No se hardcodean credenciales: se leen de os.environ.
 - `target_metadata` es `Base.metadata` del backend (contrato compartido).
   `prepend_sys_path = backend` en alembic.ini hace que `import app...` funcione.
@@ -31,7 +31,7 @@ def _get_database_url() -> str:
     """Obtiene la URL de migracion exclusivamente del entorno.
 
     Alembic corre como owner: se usa MIGRATION_DATABASE_URL (rol postgres),
-    no DATABASE_URL (rol cantera_app, que es NOBYPASSRLS y no puede gestionar
+    no DATABASE_URL (rol latinosport_app, que es NOBYPASSRLS y no puede gestionar
     roles/policies/funciones SECURITY DEFINER).
     """
     url = os.environ.get("MIGRATION_DATABASE_URL")
@@ -39,7 +39,7 @@ def _get_database_url() -> str:
         raise RuntimeError(
             "MIGRATION_DATABASE_URL no esta definida. Alembic debe correr como "
             "owner/superusuario. Ejemplo: "
-            "postgresql+psycopg://postgres:postgres@db:5432/cantera"
+            "postgresql+psycopg://postgres:postgres@db:5432/latinosport"
         )
     return url
 
