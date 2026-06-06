@@ -1,0 +1,242 @@
+/* Consola de plataforma (SUPERADMIN): layout propio, mobile-first. Reusa los
+   tokens del design-system (no introduce colores nuevos). */
+
+.plataforma {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg);
+}
+
+/* --- Topbar --- */
+.plataforma__topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.plataforma__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.plataforma__logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: #fff;
+  font-size: var(--fs-lg);
+  flex-shrink: 0;
+}
+
+.plataforma__brand-name {
+  display: block;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--fs-md);
+  line-height: 1.1;
+}
+
+.plataforma__brand-tag {
+  display: block;
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+}
+
+.plataforma__session {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.plataforma__admin {
+  font-size: var(--fs-sm);
+  color: var(--color-text-muted);
+}
+
+/* --- Tabs --- */
+.plataforma__tabs {
+  display: flex;
+  gap: var(--space-1);
+  padding: 0 var(--space-4);
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  overflow-x: auto;
+}
+
+.plataforma__tab {
+  padding: var(--space-3) var(--space-3);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+}
+
+.plataforma__tab--active {
+  color: var(--accent-text);
+  border-bottom-color: var(--accent);
+}
+
+/* --- Main --- */
+.plataforma__main {
+  flex: 1;
+  width: 100%;
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: var(--space-5) var(--space-4);
+}
+
+.plataforma-page {
+  display: flex;
+  flex-direction: column;
+}
+
+/* --- Celdas de tabla --- */
+.plataforma-cell__strong {
+  font-weight: 600;
+}
+
+.plataforma-cell__muted {
+  color: var(--color-text-subtle);
+}
+
+/* --- Modal de alta (mismo patrón que egresos) --- */
+.plataforma__modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: var(--space-6) var(--space-4);
+  overflow-y: auto;
+  z-index: 50;
+}
+
+.plataforma__modal {
+  width: 100%;
+  max-width: 520px;
+  margin-top: var(--space-6);
+}
+
+.plataforma__modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.plataforma__form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+
+@media (max-width: 480px) {
+  .plataforma__form-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.plataforma__form-section {
+  margin: var(--space-2) 0 0;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  color: var(--color-text);
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-3);
+}
+
+.plataforma__modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  padding-top: var(--space-2);
+}
+
+/* --- Login de plataforma (mismo patrón que el login de escuela) --- */
+.plataforma-login {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+  background: var(--color-bg);
+}
+
+.plataforma-login__card {
+  width: 100%;
+  max-width: 380px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-8);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.plataforma-login__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.plataforma-login__logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: #fff;
+  font-size: var(--fs-xl);
+}
+
+.plataforma-login__brand-name {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--fs-xl);
+}
+
+.plataforma-login__title {
+  font-size: var(--fs-2xl);
+  margin-top: var(--space-2);
+}
+
+.plataforma-login__subtitle {
+  margin: calc(var(--space-2) * -1) 0 var(--space-2);
+  color: var(--color-text-muted);
+  font-size: var(--fs-sm);
+}
+
+.plataforma-login__error {
+  background: var(--color-danger-bg);
+  border: 1px solid var(--color-danger-border);
+  color: var(--color-danger);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+}
+
+.plataforma-login__submit {
+  margin-top: var(--space-2);
+  width: 100%;
+  padding-top: var(--space-3);
+  padding-bottom: var(--space-3);
+}

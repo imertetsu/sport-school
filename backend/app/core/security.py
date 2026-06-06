@@ -61,6 +61,28 @@ def create_access_token(
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 
+def create_platform_token(
+    admin_id: str,
+    *,
+    expires_minutes: int | None = None,
+) -> str:
+    """Codifica un token de PLATAFORMA (Epic Super Admin).
+
+    A diferencia de `create_access_token`, NO inyecta `org_id` ni `sucursal_ids`:
+    el super admin no opera en el contexto de ninguna escuela. Claims:
+        { "sub": <plataforma_admin.id>, "role": "SUPERADMIN", "exp": <...> }
+    `get_current_user` acepta un token sin `org_id` SOLO si `role == "SUPERADMIN"`.
+    """
+    minutes = expires_minutes if expires_minutes is not None else settings.jwt_expire_minutes
+    expire = datetime.now(UTC) + timedelta(minutes=minutes)
+    payload: dict[str, Any] = {
+        "sub": str(admin_id),
+        "role": "SUPERADMIN",
+        "exp": expire,
+    }
+    return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+
+
 def decode_access_token(token: str) -> dict[str, Any]:
     """Decodifica/valida un access token. Lanza `jwt.PyJWTError` si es inválido/expirado."""
     decoded: dict[str, Any] = jwt.decode(

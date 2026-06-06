@@ -499,3 +499,205 @@ export const api = {
 export function comprobantePdfUrl(pagoId: string): string {
   return `${API_BASE_URL}${API_PREFIX}/cobranza/comprobantes/${pagoId}.pdf`;
 }
+
+// ============================================================
+// Epic A: consola de PLATAFORMA (rol SUPERADMIN). Sesión/token SEPARADOS de la de
+// escuela: el token de plataforma vive en su propia clave de storage y SOLO se
+// manda a las rutas /plataforma/*. El cliente de escuela (request<T>) nunca lo usa
+// y este cliente nunca manda el token de escuela. No se rompe el flujo existente.
+// ============================================================
+
+import {
+  PLATFORM_TOKEN_STORAGE_KEY,
+  PLATFORM_ADMIN_STORAGE_KEY,
+} from '@/config';
+import type {
+  CrearEscuelaIn,
+  CrearSuperAdminIn,
+  Escuela,
+  EscuelaCreada,
+  EscuelaEstadoOut,
+  PlatformAdmin,
+  PlatformLoginOut,
+  SuperAdmin,
+  SuperAdminActivoOut,
+  SuperAdminCreado,
+} from './types';
+
+// ---- Storage del token/admin de plataforma (claves DISTINTAS de la de escuela) ----
+export function getPlatformToken(): string | null {
+  try {
+    return localStorage.getItem(PLATFORM_TOKEN_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setPlatformToken(token: string): void {
+  try {
+    localStorage.setItem(PLATFORM_TOKEN_STORAGE_KEY, token);
+  } catch {
+    /* almacenamiento no disponible: la sesión vivirá solo en memoria */
+  }
+}
+
+export function clearPlatformToken(): void {
+  try {
+    localStorage.removeItem(PLATFORM_TOKEN_STORAGE_KEY);
+  } catch {
+    /* noop */
+  }
+}
+
+export function getPlatformAdmin(): PlatformAdmin | null {
+  try {
+    const raw = localStorage.getItem(PLATFORM_ADMIN_STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as PlatformAdmin) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setPlatformAdmin(admin: PlatformAdmin): void {
+  try {
+    localStorage.setItem(PLATFORM_ADMIN_STORAGE_KEY, JSON.stringify(admin));
+  } catch {
+    /* noop */
+  }
+}
+
+export function clearPlatformAdmin(): void {
+  try {
+    localStorage.removeItem(PLATFORM_ADMIN_STORAGE_KEY);
+  } catch {
+    /* noop */
+  }
+}
+
+// Callback que la capa de auth de plataforma registra para reaccionar a un 401.
+let onPlatformUnauthorized: (() => void) | null = null;
+export function setPlatformUnauthorizedHandler(handler: (() => void) | null): void {
+  onPlatformUnauthorized = handler;
+}
+
+// request<T> dedicado a /plataforma/*: manda el token de PLATAFORMA (no el de
+// escuela). Reusa buildUrl/parseFieldErrors/ApiError del mismo módulo.
+async function platformRequest<T>(
+  path: string,
+  options: RequestOptions = {},
+): Promise<T> {
+  const { method = 'GET', body, query, signal, auth = true } = options;
+
+  const headers: Record<string, string> = { Accept: 'application/json' };
+  if (body !== undefined) {
+    headers['Content-Type'] = 'application/json';
+  }
+  if (auth) {
+    const token = getPlatformToken();
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+  }
+
+  const res = await fetch(buildUrl(`/plataforma${path}`, query), {
+    method,
+    headers,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+    signal,
+  });
+
+  if (res.status === 401) {
+    clearPlatformToken();
+    clearPlatformAdmin();
+    if (auth && onPlatformUnauthorized) onPlatformUnauthorized();
+  }
+
+  if (res.status === 204) {
+    return undefined as T;
+  }
+
+  let payload: unknown = null;
+  const text = await res.text();
+  if (text) {
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      payload = text;
+    }
+  }
+
+  if (!res.ok) {
+    const detail =
+      payload && typeof payload === 'object' && 'detail' in payload
+        ? (payload as { detail: unknown }).detail
+        : payload;
+    const fieldErrors = parseFieldErrors(detail);
+    const message =
+      typeof detail === 'string' ? detail : fieldErrors[0]?.msg ?? `Error ${res.status}`;
+    throw new ApiError(res.status, message, detail, fieldErrors);
+  }
+
+  return payload as T;
+}
+
+// ---- Endpoints de plataforma (todos bajo /api/v1/plataforma) ----
+export const platformApi = {
+  // POST /plataforma/login (público dentro de la consola: no manda token).
+  login(
+    data: { email: string; password: string },
+    signal?: AbortSignal,
+  ): Promise<PlatformLoginOut> {
+    return platformRequest<PlatformLoginOut>('/login', {
+      method: 'POST',
+      body: data,
+      auth: false,
+      signal,
+    });
+  },
+
+  // GET /plataforma/escuelas -> lista de orgs con su estado.
+  escuelas(signal?: AbortSignal): Promise<Escuela[]> {
+    return platformRequest<Escuela[]>('/escuelas', { signal });
+  },
+  // POST /plataforma/escuelas -> 201 (org + primer admin). 409 si admin_email dup.
+  crearEscuela(body: CrearEscuelaIn, signal?: AbortSignal): Promise<EscuelaCreada> {
+    return platformRequest<EscuelaCreada>('/escuelas', { method: 'POST', body, signal });
+  },
+  // POST /plataforma/escuelas/{id}/suspender -> estado SUSPENDIDA (idempotente).
+  suspenderEscuela(id: string, signal?: AbortSignal): Promise<EscuelaEstadoOut> {
+    return platformRequest<EscuelaEstadoOut>(`/escuelas/${id}/suspender`, {
+      method: 'POST',
+      signal,
+    });
+  },
+  // POST /plataforma/escuelas/{id}/reactivar -> estado ACTIVA (idempotente).
+  reactivarEscuela(id: string, signal?: AbortSignal): Promise<EscuelaEstadoOut> {
+    return platformRequest<EscuelaEstadoOut>(`/escuelas/${id}/reactivar`, {
+      method: 'POST',
+      signal,
+    });
+  },
+
+  // GET /plataforma/admins -> lista de super admins (sin password_hash).
+  admins(signal?: AbortSignal): Promise<SuperAdmin[]> {
+    return platformRequest<SuperAdmin[]>('/admins', { signal });
+  },
+  // POST /plataforma/admins -> 201. 409 si email duplicado.
+  crearAdmin(body: CrearSuperAdminIn, signal?: AbortSignal): Promise<SuperAdminCreado> {
+    return platformRequest<SuperAdminCreado>('/admins', { method: 'POST', body, signal });
+  },
+  // POST /plataforma/admins/{id}/activar -> activo true (idempotente).
+  activarAdmin(id: string, signal?: AbortSignal): Promise<SuperAdminActivoOut> {
+    return platformRequest<SuperAdminActivoOut>(`/admins/${id}/activar`, {
+      method: 'POST',
+      signal,
+    });
+  },
+  // POST /plataforma/admins/{id}/desactivar -> activo false. 409 si dejaría 0 activos.
+  desactivarAdmin(id: string, signal?: AbortSignal): Promise<SuperAdminActivoOut> {
+    return platformRequest<SuperAdminActivoOut>(`/admins/${id}/desactivar`, {
+      method: 'POST',
+      signal,
+    });
+  },
+};

@@ -103,9 +103,7 @@ def _cargar_categoria_con_scope(
     404 si no existe (en la org del contexto); 403 si está fuera de las
     sucursales permitidas del entrenador.
     """
-    cat = db.execute(
-        select(Categoria).where(Categoria.id == categoria_id)
-    ).scalar_one_or_none()
+    cat = db.execute(select(Categoria).where(Categoria.id == categoria_id)).scalar_one_or_none()
     if cat is None:
         raise CategoriaNoEncontrada("Categoría no encontrada")
 
@@ -122,9 +120,7 @@ def _buscar_sesion(
     db: Session, *, categoria_id: uuid.UUID, fecha: date, hora: time | None
 ) -> Sesion | None:
     """Busca la sesión por (categoria, fecha, hora). `hora` None = la del día."""
-    stmt = select(Sesion).where(
-        Sesion.categoria_id == categoria_id, Sesion.fecha == fecha
-    )
+    stmt = select(Sesion).where(Sesion.categoria_id == categoria_id, Sesion.fecha == fecha)
     if hora is None:
         stmt = stmt.where(Sesion.hora.is_(None))
     else:
@@ -165,18 +161,20 @@ def obtener_roster(
     # Para el roster usamos la sesión "del día" (hora NULL es la canónica); si
     # existe alguna sesión ese día tomamos la primera por hora para reflejar lo
     # ya guardado.
-    sesion = db.execute(
-        select(Sesion)
-        .where(Sesion.categoria_id == categoria_id, Sesion.fecha == fecha)
-        .order_by(Sesion.hora.is_(None).desc(), Sesion.hora)
-    ).scalars().first()
+    sesion = (
+        db.execute(
+            select(Sesion)
+            .where(Sesion.categoria_id == categoria_id, Sesion.fecha == fecha)
+            .order_by(Sesion.hora.is_(None).desc(), Sesion.hora)
+        )
+        .scalars()
+        .first()
+    )
 
     estados: dict[uuid.UUID, str] = {}
     if sesion is not None:
         rows = db.execute(
-            select(Asistencia.alumno_id, Asistencia.estado).where(
-                Asistencia.sesion_id == sesion.id
-            )
+            select(Asistencia.alumno_id, Asistencia.estado).where(Asistencia.sesion_id == sesion.id)
         ).all()
         for al_id, est in rows:
             estados[al_id] = est
@@ -235,16 +233,12 @@ def guardar_asistencia(
     )
 
     # Alumnos válidos de la categoría (ignora ids ajenos / de otra categoría).
-    alumnos_validos = {
-        a.id for a in _alumnos_de_categoria(db, categoria_id)
-    }
+    alumnos_validos = {a.id for a in _alumnos_de_categoria(db, categoria_id)}
 
     # Asistencias ya existentes para esta sesión (upsert por alumno_id).
     existentes = {
         a.alumno_id: a
-        for a in db.execute(
-            select(Asistencia).where(Asistencia.sesion_id == sesion.id)
-        )
+        for a in db.execute(select(Asistencia).where(Asistencia.sesion_id == sesion.id))
         .scalars()
         .all()
     }
@@ -289,9 +283,7 @@ def listar_sesiones(
     Aplica scoping por rol sobre la categoría (403/404). Devuelve
     `([(sesion, presentes, ausentes, total)], total_sesiones)`.
     """
-    _cargar_categoria_con_scope(
-        db, categoria_id=categoria_id, role=role, sucursal_ids=sucursal_ids
-    )
+    _cargar_categoria_con_scope(db, categoria_id=categoria_id, role=role, sucursal_ids=sucursal_ids)
 
     base = select(Sesion).where(Sesion.categoria_id == categoria_id)
     total = db.execute(select(func.count()).select_from(base.subquery())).scalar_one()

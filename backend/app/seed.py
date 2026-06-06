@@ -148,22 +148,54 @@ def _get_or_create_categoria(
 
 # Datos de ejemplo (design-system.md): nombres bolivianos, CI "NNNNNNN LP".
 _ALUMNOS = [
-    ("Quispe", "Mamani", "Mateo", "9123451 LP", date(2012, 3, 14), "Fútbol",
-     "O+", "Penicilina", "Asma leve (inhalador)"),
-    ("Condori", "Huanca", "Valentina", "9123452 LP", date(2010, 7, 2), "Fútbol",
-     "A+", None, None),
-    ("Vargas", "Apaza", "Santiago", "9123453 LP", date(2009, 11, 20), "Básquetbol",
-     "B+", "Polen", None),
-    ("Mamani", "Ticona", "Diego", "9123454 LP", date(2013, 1, 9), "Natación",
-     "O-", None, "Miopía"),
-    ("Choque", "Calle", "Luciana", "9123455 LP", date(2011, 5, 30), "Fútbol",
-     "AB+", "Maní", None),
-    ("Gutiérrez", "Rojas", "Sebastián", "9123456 LP", date(2008, 9, 12), "Básquetbol",
-     "A-", None, None),
-    ("Aliaga", "Cuéllar", "Daniela", "9123457 LP", date(2014, 2, 25), "Natación",
-     "O+", "Lactosa", "Asma leve"),
-    ("Flores", "Nina", "Joaquín", "9123458 LP", date(2010, 12, 5), "Fútbol",
-     "B-", None, None),
+    (
+        "Quispe",
+        "Mamani",
+        "Mateo",
+        "9123451 LP",
+        date(2012, 3, 14),
+        "Fútbol",
+        "O+",
+        "Penicilina",
+        "Asma leve (inhalador)",
+    ),
+    ("Condori", "Huanca", "Valentina", "9123452 LP", date(2010, 7, 2), "Fútbol", "A+", None, None),
+    (
+        "Vargas",
+        "Apaza",
+        "Santiago",
+        "9123453 LP",
+        date(2009, 11, 20),
+        "Básquetbol",
+        "B+",
+        "Polen",
+        None,
+    ),
+    ("Mamani", "Ticona", "Diego", "9123454 LP", date(2013, 1, 9), "Natación", "O-", None, "Miopía"),
+    ("Choque", "Calle", "Luciana", "9123455 LP", date(2011, 5, 30), "Fútbol", "AB+", "Maní", None),
+    (
+        "Gutiérrez",
+        "Rojas",
+        "Sebastián",
+        "9123456 LP",
+        date(2008, 9, 12),
+        "Básquetbol",
+        "A-",
+        None,
+        None,
+    ),
+    (
+        "Aliaga",
+        "Cuéllar",
+        "Daniela",
+        "9123457 LP",
+        date(2014, 2, 25),
+        "Natación",
+        "O+",
+        "Lactosa",
+        "Asma leve",
+    ),
+    ("Flores", "Nina", "Joaquín", "9123458 LP", date(2010, 12, 5), "Fútbol", "B-", None, None),
 ]
 
 
@@ -179,9 +211,7 @@ def _seed_cobranza(db: Session, org_id: uuid.UUID) -> dict[str, int]:
     creadas = generar_cuotas_org(db, org_id=org_id, hoy=hoy)
 
     # Marcar VENCIDO las PENDIENTE ya pasadas de fecha (idempotente por estado).
-    cuotas = (
-        db.execute(select(Cuota).order_by(Cuota.vence_el)).scalars().all()
-    )
+    cuotas = db.execute(select(Cuota).order_by(Cuota.vence_el)).scalars().all()
     vencidas = 0
     for c in cuotas:
         if c.estado == "PENDIENTE" and c.vence_el < hoy:
@@ -200,9 +230,7 @@ def _seed_cobranza(db: Session, org_id: uuid.UUID) -> dict[str, int]:
         # primera cuota de la inscripción
         cuota = (
             db.execute(
-                select(Cuota)
-                .where(Cuota.inscripcion_id == insc.id)
-                .order_by(Cuota.periodo_inicio)
+                select(Cuota).where(Cuota.inscripcion_id == insc.id).order_by(Cuota.periodo_inicio)
             )
             .scalars()
             .first()
@@ -210,9 +238,7 @@ def _seed_cobranza(db: Session, org_id: uuid.UUID) -> dict[str, int]:
         if cuota is None or cuota.estado == "PAGADO":
             continue
         # ¿ya tiene un pago aplicado? (idempotencia)
-        ya = db.execute(
-            select(PagoCuota.id).where(PagoCuota.cuota_id == cuota.id)
-        ).first()
+        ya = db.execute(select(PagoCuota.id).where(PagoCuota.cuota_id == cuota.id)).first()
         if ya is not None:
             continue
         pago = Pago(
@@ -289,9 +315,7 @@ def _seed_asistencia(db: Session, org_id: uuid.UUID) -> dict[str, int]:
 
     existentes = {
         a.alumno_id
-        for a in db.execute(
-            select(Asistencia).where(Asistencia.sesion_id == sesion.id)
-        )
+        for a in db.execute(select(Asistencia).where(Asistencia.sesion_id == sesion.id))
         .scalars()
         .all()
     }
@@ -445,9 +469,7 @@ def _seed_horarios(db: Session, org_id: uuid.UUID) -> dict[str, int]:
     if categoria is None:
         return {"horarios": 0}
 
-    entrenador = db.execute(
-        select(Entrenador).where(Entrenador.org_id == org_id)
-    ).scalars().first()
+    entrenador = db.execute(select(Entrenador).where(Entrenador.org_id == org_id)).scalars().first()
     entrenador_id = entrenador.id if entrenador else None
 
     # (dia_semana 0=Lun … 6=Dom, hora_inicio, hora_fin)
@@ -489,19 +511,19 @@ def _seed_solicitudes(db: Session, org_id: uuid.UUID) -> dict[str, int]:
     de sucursal Centro + su primera categoría. Idempotente por clave natural
     (org + CI del alumno propuesto). NO hay token/link público.
     """
-    coach = db.execute(
-        select(Usuario).where(Usuario.email == COACH_EMAIL)
-    ).scalar_one_or_none()
+    coach = db.execute(select(Usuario).where(Usuario.email == COACH_EMAIL)).scalar_one_or_none()
     centro = db.execute(
         select(Sucursal).where(Sucursal.org_id == org_id, Sucursal.nombre == "Centro")
     ).scalar_one_or_none()
     if centro is None:
         return {"solicitudes": 0}
-    categoria = db.execute(
-        select(Categoria).where(
-            Categoria.org_id == org_id, Categoria.sucursal_id == centro.id
+    categoria = (
+        db.execute(
+            select(Categoria).where(Categoria.org_id == org_id, Categoria.sucursal_id == centro.id)
         )
-    ).scalars().first()
+        .scalars()
+        .first()
+    )
 
     ci_propuesto = "9200001 LP"
     existente = db.execute(
@@ -553,11 +575,19 @@ def seed() -> None:
 
         # 3) Usuarios (ADMIN + ENTRENADOR) y entrenador.
         _get_or_create_usuario(
-            db, org_id, email=ADMIN_EMAIL, password=ADMIN_PASS, role="ADMIN",
+            db,
+            org_id,
+            email=ADMIN_EMAIL,
+            password=ADMIN_PASS,
+            role="ADMIN",
             nombre="Admin LATINOSPORT",
         )
         coach_user = _get_or_create_usuario(
-            db, org_id, email=COACH_EMAIL, password=COACH_PASS, role="ENTRENADOR",
+            db,
+            org_id,
+            email=COACH_EMAIL,
+            password=COACH_PASS,
+            role="ENTRENADOR",
             nombre="Carlos Coach",
         )
         existing_coach = db.execute(
@@ -586,25 +616,35 @@ def seed() -> None:
         cats = {}
         for suc in (centro, cala_cala):
             cats[(suc.id, "Sub-10 Principiante")] = _get_or_create_categoria(
-                db, org_id, sucursal_id=suc.id, nombre="Sub-10 Principiante",
-                nivel="PRINCIPIANTE", rango_edad="Sub-10",
+                db,
+                org_id,
+                sucursal_id=suc.id,
+                nombre="Sub-10 Principiante",
+                nivel="PRINCIPIANTE",
+                rango_edad="Sub-10",
             )
             cats[(suc.id, "Sub-14 Intermedio")] = _get_or_create_categoria(
-                db, org_id, sucursal_id=suc.id, nombre="Sub-14 Intermedio",
-                nivel="INTERMEDIO", rango_edad="Sub-14",
+                db,
+                org_id,
+                sucursal_id=suc.id,
+                nombre="Sub-14 Intermedio",
+                nivel="INTERMEDIO",
+                rango_edad="Sub-14",
             )
             cats[(suc.id, "Sub-17 Avanzado")] = _get_or_create_categoria(
-                db, org_id, sucursal_id=suc.id, nombre="Sub-17 Avanzado",
-                nivel="AVANZADO", rango_edad="Sub-17",
+                db,
+                org_id,
+                sucursal_id=suc.id,
+                nombre="Sub-17 Avanzado",
+                nivel="AVANZADO",
+                rango_edad="Sub-17",
             )
 
         # 6) Alumnos + tutores + consentimiento + inscripción + ficha médica.
         sucursales = [centro, cala_cala]
         cat_nombres = ["Sub-10 Principiante", "Sub-14 Intermedio", "Sub-17 Avanzado"]
         created = 0
-        for i, (ap_pat, ap_mat, nom, ci, fnac, disc, sangre, alergias, cond) in enumerate(
-            _ALUMNOS
-        ):
+        for i, (ap_pat, ap_mat, nom, ci, fnac, disc, sangre, alergias, cond) in enumerate(_ALUMNOS):
             existing = db.execute(
                 select(Alumno).where(Alumno.org_id == org_id, Alumno.ci == ci)
             ).scalar_one_or_none()

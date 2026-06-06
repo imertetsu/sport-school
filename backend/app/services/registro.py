@@ -213,8 +213,7 @@ def obtener(
 
     permitidas = _sucursales_permitidas(role, sucursal_ids)
     if permitidas is not None and (
-        solicitud.sucursal_sugerida_id is None
-        or solicitud.sucursal_sugerida_id not in permitidas
+        solicitud.sucursal_sugerida_id is None or solicitud.sucursal_sugerida_id not in permitidas
     ):
         raise SolicitudNoEncontrada("Solicitud no encontrada")
     return solicitud
@@ -246,9 +245,7 @@ def aprobar(
         raise SolicitudYaResuelta(f"La solicitud ya está {solicitud.estado}")
 
     # Reconstruir el body de creación de alumno desde la solicitud + decisiones del admin.
-    ficha = (
-        FichaMedica(**solicitud.ficha_medica) if solicitud.ficha_medica else None
-    )
+    ficha = FichaMedica(**solicitud.ficha_medica) if solicitud.ficha_medica else None
     inscripcion = None
     if body.monto_mensual is not None:
         inscripcion = InscripcionIn(
@@ -347,9 +344,7 @@ def to_out(db: Session, solicitudes: list[SolicitudRegistro]) -> list[SolicitudO
     sucursales = (
         {
             s.id: s
-            for s in db.execute(select(Sucursal).where(Sucursal.id.in_(suc_ids)))
-            .scalars()
-            .all()
+            for s in db.execute(select(Sucursal).where(Sucursal.id.in_(suc_ids))).scalars().all()
         }
         if suc_ids
         else {}
@@ -357,9 +352,7 @@ def to_out(db: Session, solicitudes: list[SolicitudRegistro]) -> list[SolicitudO
     categorias = (
         {
             c.id: c
-            for c in db.execute(select(Categoria).where(Categoria.id.in_(cat_ids)))
-            .scalars()
-            .all()
+            for c in db.execute(select(Categoria).where(Categoria.id.in_(cat_ids))).scalars().all()
         }
         if cat_ids
         else {}
@@ -367,9 +360,7 @@ def to_out(db: Session, solicitudes: list[SolicitudRegistro]) -> list[SolicitudO
     nombres_usuario = (
         {
             u.id: u.nombre
-            for u in db.execute(select(Usuario).where(Usuario.id.in_(user_ids)))
-            .scalars()
-            .all()
+            for u in db.execute(select(Usuario).where(Usuario.id.in_(user_ids))).scalars().all()
         }
         if user_ids
         else {}
@@ -403,17 +394,11 @@ def to_out(db: Session, solicitudes: list[SolicitudRegistro]) -> list[SolicitudO
                     canal=s.consent_canal,
                     aceptado_en=s.consent_aceptado_en,
                 ),
-                sucursal_sugerida=(
-                    SucursalRef(id=suc.id, nombre=suc.nombre) if suc else None
-                ),
+                sucursal_sugerida=(SucursalRef(id=suc.id, nombre=suc.nombre) if suc else None),
                 categoria_sugerida=(
-                    CategoriaRef(id=cat.id, nombre=cat.nombre, nivel=cat.nivel)
-                    if cat
-                    else None
+                    CategoriaRef(id=cat.id, nombre=cat.nombre, nivel=cat.nivel) if cat else None
                 ),
-                creado_por_nombre=(
-                    nombres_usuario.get(s.creado_por) if s.creado_por else None
-                ),
+                creado_por_nombre=(nombres_usuario.get(s.creado_por) if s.creado_por else None),
                 alumno_id=s.alumno_id,
                 motivo_rechazo=s.motivo_rechazo,
                 created_at=s.created_at,

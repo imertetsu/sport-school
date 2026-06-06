@@ -60,6 +60,19 @@ def get_current_user(
     user_id = payload.get("sub")
     org_id = payload.get("org_id")
     role = payload.get("role")
+    # El token de PLATAFORMA (SUPERADMIN) viene SIN `org_id` a propósito (no opera
+    # en ninguna escuela). Para ese rol, `org_id` queda en "" (cadena vacía: NUNCA
+    # se usa como contexto, y RLS fail-closed con NULLIF da 0 filas). Para cualquier
+    # otro rol, la ausencia de `org_id` sigue siendo 401 (sin regresión en escuela).
+    if role == "SUPERADMIN":
+        if not user_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token incompleto",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return CurrentUser(user_id=str(user_id), org_id="", role="SUPERADMIN")
+
     if not user_id or not org_id or not role:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -112,3 +125,25 @@ def require_role(*roles: str):
         return user
 
     return _checker
+
+
+def require_superadmin(
+    user: CurrentUser = Depends(get_current_user),
+) -> CurrentUser:
+    """Dependencia de PLATAFORMA (Epic Super Admin): exige `role == "SUPERADMIN"`.
+
+    Diferencia CLAVE con `require_role`: **NO** se encadena sobre `set_tenant_context`
+    y por tanto **NUNCA** fija el GUC `app.current_org`. Así el super admin queda
+    fail-closed sobre TODA tabla tenant (RLS con NULLIF → 0 filas), aunque consulte
+    una por error. Las tablas de plataforma (`plataforma_admin`, `plataforma_auditoria`)
+    y `organizacion` no tienen RLS, así que se leen/escriben sin contexto.
+
+    403 si el rol no es SUPERADMIN (un token de escuela válido); 401 (en
+    `get_current_user`) si falta o es inválido.
+    """
+    if user.role != "SUPERADMIN":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Requiere super administrador de plataforma",
+        )
+    return user

@@ -86,8 +86,13 @@ def cobranza_diaria() -> dict[str, int]:
     total_creadas = 0
     orgs_procesadas = 0
     try:
-        # organizacion no tiene RLS -> se listan sin contexto.
-        org_ids = db.execute(select(Organizacion.id)).scalars().all()
+        # organizacion no tiene RLS -> se listan sin contexto. El cron PAUSA las
+        # escuelas SUSPENDIDA (Epic Super Admin): solo se procesan las ACTIVA.
+        org_ids = (
+            db.execute(select(Organizacion.id).where(Organizacion.estado == "ACTIVA"))
+            .scalars()
+            .all()
+        )
         for org_id in org_ids:
             _set_org(db, org_id)
             total_creadas += _procesar_org(db, org_id=org_id, hoy=hoy)
@@ -119,7 +124,12 @@ def generar_sesiones_programadas() -> dict[str, int]:
     total_creadas = 0
     orgs_procesadas = 0
     try:
-        org_ids = db.execute(select(Organizacion.id)).scalars().all()
+        # Pausa escuelas SUSPENDIDA (Epic Super Admin): solo orgs ACTIVA.
+        org_ids = (
+            db.execute(select(Organizacion.id).where(Organizacion.estado == "ACTIVA"))
+            .scalars()
+            .all()
+        )
         for org_id in org_ids:
             _set_org(db, org_id)
             total_creadas += horarios_svc.generar_sesiones_programadas(
@@ -154,7 +164,12 @@ def recordatorios_clase() -> dict[str, int]:
     total_notificadas = 0
     orgs_procesadas = 0
     try:
-        org_ids = db.execute(select(Organizacion.id)).scalars().all()
+        # Pausa escuelas SUSPENDIDA (Epic Super Admin): solo orgs ACTIVA.
+        org_ids = (
+            db.execute(select(Organizacion.id).where(Organizacion.estado == "ACTIVA"))
+            .scalars()
+            .all()
+        )
         for org_id in org_ids:
             _set_org(db, org_id)
             total_notificadas += horarios_svc.enviar_recordatorios_clase(

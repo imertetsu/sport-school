@@ -57,9 +57,7 @@ def _calc_edad(fecha_nac: date | None) -> int | None:
     if fecha_nac is None:
         return None
     hoy = datetime.now(UTC).date()
-    edad = hoy.year - fecha_nac.year - (
-        (hoy.month, hoy.day) < (fecha_nac.month, fecha_nac.day)
-    )
+    edad = hoy.year - fecha_nac.year - ((hoy.month, hoy.day) < (fecha_nac.month, fecha_nac.day))
     return edad
 
 
@@ -103,9 +101,7 @@ def list_alumnos(
             )
         )
 
-    total = db.execute(
-        select(func.count()).select_from(base.subquery())
-    ).scalar_one()
+    total = db.execute(select(func.count()).select_from(base.subquery())).scalar_one()
 
     rows = (
         db.execute(
@@ -120,14 +116,22 @@ def list_alumnos(
     # Precarga sucursales y categorías referenciadas (evita N+1).
     suc_ids = {a.sucursal_id for a in rows}
     cat_ids = {a.categoria_id for a in rows if a.categoria_id is not None}
-    sucursales = {
-        s.id: s
-        for s in db.execute(select(Sucursal).where(Sucursal.id.in_(suc_ids))).scalars().all()
-    } if suc_ids else {}
-    categorias = {
-        c.id: c
-        for c in db.execute(select(Categoria).where(Categoria.id.in_(cat_ids))).scalars().all()
-    } if cat_ids else {}
+    sucursales = (
+        {
+            s.id: s
+            for s in db.execute(select(Sucursal).where(Sucursal.id.in_(suc_ids))).scalars().all()
+        }
+        if suc_ids
+        else {}
+    )
+    categorias = (
+        {
+            c.id: c
+            for c in db.execute(select(Categoria).where(Categoria.id.in_(cat_ids))).scalars().all()
+        }
+        if cat_ids
+        else {}
+    )
 
     items: list[AlumnoListItem] = []
     for a in rows:
@@ -166,9 +170,7 @@ def get_alumno(
     if alumno is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Alumno no encontrado")
 
-    suc = db.execute(
-        select(Sucursal).where(Sucursal.id == alumno.sucursal_id)
-    ).scalar_one_or_none()
+    suc = db.execute(select(Sucursal).where(Sucursal.id == alumno.sucursal_id)).scalar_one_or_none()
     cat = None
     if alumno.categoria_id is not None:
         cat = db.execute(

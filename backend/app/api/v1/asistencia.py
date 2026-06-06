@@ -62,9 +62,7 @@ def list_categorias(
     sucursales = (
         {
             s.id: s
-            for s in db.execute(select(Sucursal).where(Sucursal.id.in_(suc_ids)))
-            .scalars()
-            .all()
+            for s in db.execute(select(Sucursal).where(Sucursal.id.in_(suc_ids))).scalars().all()
         }
         if suc_ids
         else {}

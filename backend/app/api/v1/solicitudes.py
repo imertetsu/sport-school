@@ -101,9 +101,7 @@ def listar_solicitudes(
         page=page,
         page_size=page_size,
     )
-    return SolicitudesPage(
-        items=svc.to_out(db, rows), total=total, page=page, page_size=page_size
-    )
+    return SolicitudesPage(items=svc.to_out(db, rows), total=total, page=page, page_size=page_size)
 
 
 # --------------------------------------------------------------------------- #
@@ -117,9 +115,7 @@ def get_solicitud(
 ) -> SolicitudOut:
     """Detalle de una solicitud (C3). 404 si está fuera del alcance del entrenador."""
     try:
-        solicitud = svc.obtener(
-            db, solicitud_id, role=user.role, sucursal_ids=user.sucursal_ids
-        )
+        solicitud = svc.obtener(db, solicitud_id, role=user.role, sucursal_ids=user.sucursal_ids)
     except svc.RegistroError as exc:
         raise _http_error(exc) from exc
     return svc.to_out(db, [solicitud])[0]
@@ -165,9 +161,7 @@ def rechazar_solicitud(
 ) -> SolicitudOut:
     """Rechaza la solicitud con motivo (C3, solo ADMIN). 409 si ya está resuelta."""
     try:
-        solicitud = svc.rechazar(
-            db, solicitud_id, body, revisado_por=uuid.UUID(user.user_id)
-        )
+        solicitud = svc.rechazar(db, solicitud_id, body, revisado_por=uuid.UUID(user.user_id))
     except svc.RegistroError as exc:
         raise _http_error(exc) from exc
     return svc.to_out(db, [solicitud])[0]

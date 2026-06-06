@@ -738,3 +738,94 @@ export type SolicitudAlumnoCreado = AlumnoDetail;
 export interface RechazarBody {
   motivo: string;
 }
+
+// ============================================================
+// Epic A: Super Admin / consola de plataforma (rol SUPERADMIN, token SIN org_id).
+// App SEPARADA del panel de escuela: su token vive en otra clave de storage y el
+// cliente lo manda solo a /plataforma/*. Espejo EXACTO del contrato de la spec
+// docs/specs/super-admin.md; no inventar campos: si falta algo, es hand-off a
+// backend-dev.
+// ============================================================
+
+// Identidad de plataforma (sin org_id, sin RLS). Devuelta por el login.
+export interface PlatformAdmin {
+  id: string;
+  nombre: string;
+  email: string;
+}
+
+// --- POST /plataforma/login ---
+// req {email,password} -> token SUPERADMIN (sin org_id) + datos del admin.
+export interface PlatformLoginOut {
+  access_token: string;
+  admin: PlatformAdmin;
+}
+
+// Estado de una escuela (organización) gestionada desde la consola.
+export type EstadoEscuela = 'ACTIVA' | 'SUSPENDIDA';
+
+// --- GET /plataforma/escuelas -> item de lista ---
+export interface Escuela {
+  id: string;
+  nombre: string;
+  pais: string | null;
+  moneda: string | null;
+  estado: EstadoEscuela;
+  created_at: string; // timestamptz
+}
+
+// --- POST /plataforma/escuelas (body) ---
+// Crea la organización ACTIVA + su primer usuario ADMIN. 409 si admin_email existe.
+export interface CrearEscuelaIn {
+  nombre: string;
+  pais?: string | null;
+  moneda?: string | null;
+  admin_nombre: string;
+  admin_email: string;
+  admin_password: string;
+}
+
+// --- POST /plataforma/escuelas -> 201 ---
+export interface EscuelaCreada {
+  id: string;
+  nombre: string;
+  estado: EstadoEscuela;
+  admin: { id: string; email: string };
+}
+
+// --- POST /plataforma/escuelas/{id}/suspender|reactivar -> estado nuevo ---
+export interface EscuelaEstadoOut {
+  id: string;
+  estado: EstadoEscuela;
+}
+
+// --- GET /plataforma/admins -> item de lista (nunca expone password_hash) ---
+export interface SuperAdmin {
+  id: string;
+  nombre: string;
+  email: string;
+  activo: boolean;
+  created_at: string; // timestamptz
+}
+
+// --- POST /plataforma/admins (body) -> 201. 409 si email duplicado. ---
+export interface CrearSuperAdminIn {
+  nombre: string;
+  email: string;
+  password: string;
+}
+
+// --- POST /plataforma/admins -> 201 (sin password_hash) ---
+export interface SuperAdminCreado {
+  id: string;
+  nombre: string;
+  email: string;
+  activo: boolean;
+}
+
+// --- POST /plataforma/admins/{id}/activar|desactivar -> activo nuevo ---
+// 409 si desactivar dejaría 0 super admins activos (siempre debe quedar >=1).
+export interface SuperAdminActivoOut {
+  id: string;
+  activo: boolean;
+}

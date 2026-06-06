@@ -103,9 +103,7 @@ def test_crear_alumno_sin_tutor_422() -> None:
     client = _client_or_skip()
     token = _login_admin(client)
     # tomamos una sucursal real
-    suc = client.get(
-        "/api/v1/sucursales", headers={"Authorization": f"Bearer {token}"}
-    ).json()
+    suc = client.get("/api/v1/sucursales", headers={"Authorization": f"Bearer {token}"}).json()
     sucursal_id = suc[0]["id"] if suc else "11111111-1111-1111-1111-111111111111"
     resp = client.post(
         "/api/v1/alumnos",

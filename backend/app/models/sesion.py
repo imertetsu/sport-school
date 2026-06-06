@@ -59,8 +59,6 @@ class Sesion(UUIDPkMixin, OrgScoped, Base):
     )
 
     __table_args__ = (
-        UniqueConstraint(
-            "categoria_id", "fecha", "hora", name="uq_sesion_categoria_fecha_hora"
-        ),
+        UniqueConstraint("categoria_id", "fecha", "hora", name="uq_sesion_categoria_fecha_hora"),
         Index("ix_sesion_org_categoria_fecha", "org_id", "categoria_id", "fecha"),
     )

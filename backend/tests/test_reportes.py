@@ -235,9 +235,7 @@ def test_asistencia_pct_coherente(app_engine: Engine, rep_fixture: dict) -> None
     org = rep_fixture["org"]
     with Session(app_engine) as db:
         _set_org(db, org)
-        rep = svc.asistencia_reporte(
-            db, desde=date(2026, 3, 1), hasta=date(2026, 3, 31)
-        )
+        rep = svc.asistencia_reporte(db, desde=date(2026, 3, 1), hasta=date(2026, 3, 31))
 
     assert rep.global_.total_marcas == 2
     assert rep.global_.presentes == 1
@@ -260,9 +258,7 @@ def test_asistencia_fuera_de_rango_vacia(app_engine: Engine, rep_fixture: dict) 
     org = rep_fixture["org"]
     with Session(app_engine) as db:
         _set_org(db, org)
-        rep = svc.asistencia_reporte(
-            db, desde=date(2026, 1, 1), hasta=date(2026, 1, 31)
-        )
+        rep = svc.asistencia_reporte(db, desde=date(2026, 1, 1), hasta=date(2026, 1, 31))
     assert rep.global_.total_marcas == 0
     assert rep.global_.pct_presente == 0.0
     assert rep.por_categoria == []

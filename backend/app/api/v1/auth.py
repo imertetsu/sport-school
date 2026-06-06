@@ -27,13 +27,17 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 @router.post("/login", response_model=TokenOut)
 def login(body: LoginIn, db: Session = Depends(get_db)) -> TokenOut:
     """Autentica por email+clave y devuelve JWT + datos del usuario (C4)."""
-    row = db.execute(
-        text(
-            "SELECT id, org_id, password_hash, role, activo, nombre, email "
-            "FROM login_lookup(:email)"
-        ),
-        {"email": body.email},
-    ).mappings().first()
+    row = (
+        db.execute(
+            text(
+                "SELECT id, org_id, password_hash, role, activo, nombre, email "
+                "FROM login_lookup(:email)"
+            ),
+            {"email": body.email},
+        )
+        .mappings()
+        .first()
+    )
 
     invalid = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -45,6 +49,19 @@ def login(body: LoginIn, db: Session = Depends(get_db)) -> TokenOut:
         raise invalid
 
     org_id = str(row["org_id"])
+
+    # Escuela suspendida (Epic Super Admin): se rechaza el login con 403 antes de
+    # emitir token. `organizacion` no tiene RLS → se consulta `estado` por org_id
+    # directo (sin tocar el contrato de `login_lookup`, que pertenece a db).
+    estado = db.execute(
+        text("SELECT estado FROM organizacion WHERE id = :org"),
+        {"org": org_id},
+    ).scalar_one_or_none()
+    if estado == "SUSPENDIDA":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Escuela suspendida, contacta al administrador",
+        )
 
     # sucursal_ids para el claim: si es ENTRENADOR podría limitarse a sus
     # categorías en un epic posterior; en este slice damos todas las sucursales

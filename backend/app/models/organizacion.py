@@ -19,6 +19,8 @@ class Organizacion(UUIDPkMixin, TimestampMixin, Base):
         String, nullable=False, default="ANIVERSARIO"
     )  # FIJO | ANIVERSARIO
     dia_corte_fijo: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    prorratea_primer_periodo: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=True
-    )
+    prorratea_primer_periodo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Estado de la escuela (Epic Super Admin): ACTIVA | SUSPENDIDA (CHECK en BD).
+    # SUSPENDIDA bloquea el login de la escuela y pausa su cron. La autoridad del
+    # esquema es la migración 0012 (db-dev); modelo↔migración deben coincidir.
+    estado: Mapped[str] = mapped_column(String, nullable=False, default="ACTIVA")

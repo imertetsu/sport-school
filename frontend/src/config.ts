@@ -10,8 +10,13 @@ export const API_BASE_URL: string = (
 
 export const API_PREFIX = '/api/v1';
 
-// Clave de almacenamiento del token JWT.
+// Clave de almacenamiento del token JWT (sesión de ESCUELA, roles ADMIN/ENTRENADOR).
 export const TOKEN_STORAGE_KEY = 'latinosport.token';
+
+// Consola de PLATAFORMA (rol SUPERADMIN, token SIN org_id). Sesión SEPARADA de la
+// de escuela: vive en claves de storage DISTINTAS para no pisarse mutuamente.
+export const PLATFORM_TOKEN_STORAGE_KEY = 'latinosport.platform.token';
+export const PLATFORM_ADMIN_STORAGE_KEY = 'latinosport.platform.admin';
 
 // Acento por defecto del tema (AZUL) y alterno (verde). Intercambiable vía data-accent.
 export type Accent = 'verde' | 'azul';

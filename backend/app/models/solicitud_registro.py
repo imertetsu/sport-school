@@ -48,9 +48,7 @@ class SolicitudRegistro(UUIDPkMixin, OrgScoped, Base):
     # --- Consentimiento (aceptado en la captura) ---
     consent_version: Mapped[str] = mapped_column(Text, nullable=False)
     consent_canal: Mapped[str] = mapped_column(Text, nullable=False, default="SISTEMA")
-    consent_aceptado_en: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
+    consent_aceptado_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     # --- Sugerencias del capturador (administrativo lo decide el admin al aprobar) ---
     sucursal_sugerida_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -73,9 +71,7 @@ class SolicitudRegistro(UUIDPkMixin, OrgScoped, Base):
     revisado_por: Mapped[uuid.UUID | None] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("usuario.id"), nullable=True
     )
-    revisado_en: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    revisado_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Solo created_at (sin updated_at), consistente con egreso/aviso y la migración 0008.
     created_at: Mapped[datetime] = mapped_column(

@@ -24,6 +24,8 @@ from app.models.inscripcion import Inscripcion
 from app.models.organizacion import Organizacion
 from app.models.pago import Pago
 from app.models.pago_cuota import PagoCuota
+from app.models.plataforma_admin import PlataformaAdmin
+from app.models.plataforma_auditoria import PlataformaAuditoria
 from app.models.recibo_contador import ReciboContador
 from app.models.recordatorio_pago import RecordatorioPago
 from app.models.sesion import Sesion
@@ -57,4 +59,6 @@ __all__ = [
     "HorarioClase",
     "SolicitudRegistro",
     "RecordatorioPago",
+    "PlataformaAdmin",
+    "PlataformaAuditoria",
 ]

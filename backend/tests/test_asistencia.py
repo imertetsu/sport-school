@@ -27,9 +27,7 @@ from sqlalchemy.orm import Session
 # Lógica pura (sin BD)
 # --------------------------------------------------------------------------- #
 def test_contar_resumen_cuenta_estados() -> None:
-    presentes, ausentes, total = svc.contar_resumen(
-        ["PRESENTE", "AUSENTE", "PRESENTE", None]
-    )
+    presentes, ausentes, total = svc.contar_resumen(["PRESENTE", "AUSENTE", "PRESENTE", None])
     assert presentes == 2
     assert ausentes == 1
     assert total == 4  # total = filas (incluye sin marcar)
@@ -264,9 +262,7 @@ def test_guardar_y_reguardar_idempotente(app_engine: Engine, asis_fixture: dict)
             text("SELECT count(*) FROM asistencia WHERE sesion_id=:s"), {"s": str(sesion_id)}
         ).scalar_one()
         presentes = conn.execute(
-            text(
-                "SELECT count(*) FROM asistencia WHERE sesion_id=:s AND estado='PRESENTE'"
-            ),
+            text("SELECT count(*) FROM asistencia WHERE sesion_id=:s AND estado='PRESENTE'"),
             {"s": str(sesion_id)},
         ).scalar_one()
     assert n_ses == 1, "No debe duplicar la sesión"

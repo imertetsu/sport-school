@@ -121,9 +121,7 @@ def _cargar_categoria_con_scope(
     db: Session, *, categoria_id: uuid.UUID, role: str, sucursal_ids: list[str]
 ) -> Categoria:
     """Carga la categoría aplicando el scoping por rol (404 / 403)."""
-    cat = db.execute(
-        select(Categoria).where(Categoria.id == categoria_id)
-    ).scalar_one_or_none()
+    cat = db.execute(select(Categoria).where(Categoria.id == categoria_id)).scalar_one_or_none()
     if cat is None:
         raise CategoriaNoEncontrada("Categoría no encontrada")
     permitidas = _sucursales_permitidas(role, sucursal_ids)
@@ -148,16 +146,12 @@ def _to_out(
     return HorarioOut(
         id=horario.id,
         categoria=CategoriaRefHorario(id=cat.id, nombre=cat.nombre),
-        sucursal=SucursalRefHorario(
-            id=cat.sucursal_id, nombre=suc.nombre if suc else ""
-        ),
+        sucursal=SucursalRefHorario(id=cat.sucursal_id, nombre=suc.nombre if suc else ""),
         dia_semana=horario.dia_semana,
         dia_label=dia_label(horario.dia_semana),
         hora_inicio=horario.hora_inicio,
         hora_fin=horario.hora_fin,
-        entrenador=(
-            EntrenadorRefHorario(id=ent.id, nombres=ent.nombres) if ent else None
-        ),
+        entrenador=(EntrenadorRefHorario(id=ent.id, nombres=ent.nombres) if ent else None),
         activo=horario.activo,
     )
 
@@ -174,11 +168,7 @@ def _precargar_refs(
     categorias: dict[uuid.UUID, Categoria] = (
         {
             c.id: c
-            for c in db.execute(
-                select(Categoria).where(Categoria.id.in_(cat_ids))
-            )
-            .scalars()
-            .all()
+            for c in db.execute(select(Categoria).where(Categoria.id.in_(cat_ids))).scalars().all()
         }
         if cat_ids
         else {}
@@ -187,9 +177,7 @@ def _precargar_refs(
     sucursales: dict[uuid.UUID, Sucursal] = (
         {
             s.id: s
-            for s in db.execute(select(Sucursal).where(Sucursal.id.in_(suc_ids)))
-            .scalars()
-            .all()
+            for s in db.execute(select(Sucursal).where(Sucursal.id.in_(suc_ids))).scalars().all()
         }
         if suc_ids
         else {}
@@ -306,9 +294,7 @@ def vista_semana(
                 categoria=CategoriaRefHorario(id=cat.id, nombre=cat.nombre),
                 hora_inicio=h.hora_inicio,
                 hora_fin=h.hora_fin,
-                entrenador=(
-                    EntrenadorRefHorario(id=ent.id, nombres=ent.nombres) if ent else None
-                ),
+                entrenador=(EntrenadorRefHorario(id=ent.id, nombres=ent.nombres) if ent else None),
             )
         )
     # Orden interno por hora_inicio (el WHERE ya ordena, pero el agrupado lo asegura).
@@ -382,9 +368,7 @@ def crear(
         dia_semana=data.dia_semana,
         hora_inicio=data.hora_inicio,
     ):
-        raise HorarioDuplicado(
-            "Ya existe un horario para esa categoría, día y hora de inicio"
-        )
+        raise HorarioDuplicado("Ya existe un horario para esa categoría, día y hora de inicio")
 
     horario = HorarioClase(
         org_id=org_id,
@@ -410,9 +394,7 @@ def crear(
 def _cargar_horario_activo(db: Session, horario_id: uuid.UUID) -> HorarioClase:
     """Carga un horario activo de la org del contexto. 404 si no existe/inactivo."""
     horario = db.execute(
-        select(HorarioClase).where(
-            HorarioClase.id == horario_id, HorarioClase.activo.is_(True)
-        )
+        select(HorarioClase).where(HorarioClase.id == horario_id, HorarioClase.activo.is_(True))
     ).scalar_one_or_none()
     if horario is None:
         raise HorarioNoEncontrado("Horario no encontrado")
@@ -445,9 +427,7 @@ def editar(
         hora_inicio=data.hora_inicio,
         excluir_id=horario.id,
     ):
-        raise HorarioDuplicado(
-            "Ya existe un horario para esa categoría, día y hora de inicio"
-        )
+        raise HorarioDuplicado("Ya existe un horario para esa categoría, día y hora de inicio")
 
     horario.categoria_id = data.categoria_id
     horario.dia_semana = data.dia_semana
@@ -498,9 +478,7 @@ def generar_sesiones_programadas(
         hoy = datetime.now(UTC).date()
 
     horarios = list(
-        db.execute(select(HorarioClase).where(HorarioClase.activo.is_(True)))
-        .scalars()
-        .all()
+        db.execute(select(HorarioClase).where(HorarioClase.activo.is_(True))).scalars().all()
     )
 
     creadas = 0

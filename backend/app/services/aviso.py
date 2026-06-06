@@ -192,15 +192,11 @@ def feed(
         hoy=hoy,
     )
 
-    total_count = int(
-        db.execute(select(func.count()).select_from(base.subquery())).scalar_one()
-    )
+    total_count = int(db.execute(select(func.count()).select_from(base.subquery())).scalar_one())
 
     avisos = list(
         db.execute(
-            base.order_by(Aviso.publicado_en.desc())
-            .offset((page - 1) * page_size)
-            .limit(page_size)
+            base.order_by(Aviso.publicado_en.desc()).offset((page - 1) * page_size).limit(page_size)
         )
         .scalars()
         .all()

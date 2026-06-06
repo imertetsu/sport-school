@@ -77,6 +77,12 @@ class Settings(BaseSettings):
     # Días antes del vencimiento en que el recordatorio adjunta el QR de cobro.
     recordatorio_qr_dias_antes: int = 3
 
+    # Bootstrap del primer super admin de plataforma (Epic Super Admin). Las consume
+    # `python -m app.seed_plataforma` (idempotente por email). En prod se inyectan vía
+    # `.env` (infra-dev) y NUNCA se commitean secretos. Sin ellas, el seed no crea nada.
+    platform_admin_email: str | None = None
+    platform_admin_password: str | None = None
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def _split_cors(cls, value: object) -> object:

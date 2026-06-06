@@ -108,20 +108,28 @@ def test_aviso_visible_para_entrenador() -> None:
     )
     # SUCURSAL propia / ajena.
     assert svc.aviso_visible_para_entrenador(
-        alcance="SUCURSAL", sucursal_id=suc_propia, categoria_sucursal_id=None,
+        alcance="SUCURSAL",
+        sucursal_id=suc_propia,
+        categoria_sucursal_id=None,
         permitidas=permitidas,
     )
     assert not svc.aviso_visible_para_entrenador(
-        alcance="SUCURSAL", sucursal_id=suc_ajena, categoria_sucursal_id=None,
+        alcance="SUCURSAL",
+        sucursal_id=suc_ajena,
+        categoria_sucursal_id=None,
         permitidas=permitidas,
     )
     # CATEGORIA cuya sucursal es propia / ajena.
     assert svc.aviso_visible_para_entrenador(
-        alcance="CATEGORIA", sucursal_id=None, categoria_sucursal_id=suc_propia,
+        alcance="CATEGORIA",
+        sucursal_id=None,
+        categoria_sucursal_id=suc_propia,
         permitidas=permitidas,
     )
     assert not svc.aviso_visible_para_entrenador(
-        alcance="CATEGORIA", sucursal_id=None, categoria_sucursal_id=suc_ajena,
+        alcance="CATEGORIA",
+        sucursal_id=None,
+        categoria_sucursal_id=suc_ajena,
         permitidas=permitidas,
     )
 
@@ -288,9 +296,7 @@ def test_admin_ve_todos_los_activos(app_engine: Engine, aviso_fixture: dict) -> 
 
 
 @pytest.mark.db
-def test_entrenador_no_ve_aviso_de_sucursal_ajena(
-    app_engine: Engine, aviso_fixture: dict
-) -> None:
+def test_entrenador_no_ve_aviso_de_sucursal_ajena(app_engine: Engine, aviso_fixture: dict) -> None:
     """ENTRENADOR de Suc A: ve ORG + Suc A; NO ve Suc B ni la categoría de B ni vencidos."""
     org = aviso_fixture["org"]
     coach_sucs = [str(aviso_fixture["suc_a"])]
@@ -308,9 +314,7 @@ def test_entrenador_no_ve_aviso_de_sucursal_ajena(
 
 
 @pytest.mark.db
-def test_entrenador_ve_categoria_de_su_sucursal(
-    app_engine: Engine, aviso_fixture: dict
-) -> None:
+def test_entrenador_ve_categoria_de_su_sucursal(app_engine: Engine, aviso_fixture: dict) -> None:
     """ENTRENADOR de Suc B ve la CATEGORIA cuya sucursal (B) está en su alcance."""
     org = aviso_fixture["org"]
     coach_sucs = [str(aviso_fixture["suc_b"])]
@@ -330,9 +334,7 @@ def test_entrenador_ve_categoria_de_su_sucursal(
 # Invariante 422 a nivel servicio (con BD; el servicio re-valida)
 # --------------------------------------------------------------------------- #
 @pytest.mark.db
-def test_crear_invariante_sucursal_sin_id_falla(
-    app_engine: Engine, aviso_fixture: dict
-) -> None:
+def test_crear_invariante_sucursal_sin_id_falla(app_engine: Engine, aviso_fixture: dict) -> None:
     """El servicio re-valida la invariante: SUCURSAL sin sucursal_id -> ValueError (=> 422).
 
     Se construye `AvisoCreate` con `model_construct` para saltar el validator del
@@ -341,7 +343,11 @@ def test_crear_invariante_sucursal_sin_id_falla(
     org = aviso_fixture["org"]
     usuario = aviso_fixture["usuario"]
     invalido = AvisoCreate.model_construct(
-        titulo="T", cuerpo="C", alcance="SUCURSAL", sucursal_id=None, categoria_id=None,
+        titulo="T",
+        cuerpo="C",
+        alcance="SUCURSAL",
+        sucursal_id=None,
+        categoria_id=None,
         vigente_hasta=None,
     )
     with Session(app_engine) as db:

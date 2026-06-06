@@ -62,9 +62,7 @@ class Aviso(UUIDPkMixin, OrgScoped, Base):
     publicado_en: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
-    vigente_hasta: Mapped[date | None] = mapped_column(
-        Date, nullable=True
-    )  # NULL = sin caducidad
+    vigente_hasta: Mapped[date | None] = mapped_column(Date, nullable=True)  # NULL = sin caducidad
     creado_por: Mapped[uuid.UUID | None] = mapped_column(
         PG_UUID(as_uuid=True),
         ForeignKey("usuario.id", ondelete="SET NULL"),

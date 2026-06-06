@@ -82,9 +82,7 @@ def _client_or_skip():
 
 
 def _login(client, email: str, password: str) -> str:
-    resp = client.post(
-        "/api/v1/auth/login", json={"email": email, "password": password}
-    )
+    resp = client.post("/api/v1/auth/login", json={"email": email, "password": password})
     if resp.status_code != 200:
         pytest.skip(f"Login {email} falló ({resp.status_code}); ¿seed ejecutado?")
     return resp.json()["access_token"]
@@ -196,9 +194,7 @@ def test_aprobar_crea_alumno_y_marca_aprobada() -> None:
     assert alumno["nombres"]
 
     # La solicitud queda APROBADA con alumno_id
-    detalle = client.get(
-        f"/api/v1/solicitudes/{solicitud_id}", headers=_hdr(admin)
-    ).json()
+    detalle = client.get(f"/api/v1/solicitudes/{solicitud_id}", headers=_hdr(admin)).json()
     assert detalle["estado"] == "APROBADA"
     assert detalle["alumno_id"] == alumno_id
 

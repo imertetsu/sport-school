@@ -13,9 +13,7 @@ from app.models.base import Base, OrgScoped, TimestampMixin, UUIDPkMixin
 
 class AlumnoTutor(UUIDPkMixin, OrgScoped, TimestampMixin, Base):
     __tablename__ = "alumno_tutor"
-    __table_args__ = (
-        UniqueConstraint("alumno_id", "tutor_id", name="uq_alumno_tutor"),
-    )
+    __table_args__ = (UniqueConstraint("alumno_id", "tutor_id", name="uq_alumno_tutor"),)
 
     alumno_id: Mapped[uuid.UUID] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("alumno.id"), nullable=False, index=True

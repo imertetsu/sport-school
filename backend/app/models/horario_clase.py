@@ -54,9 +54,7 @@ class HorarioClase(UUIDPkMixin, OrgScoped, Base):
     )
 
     __table_args__ = (
-        CheckConstraint(
-            "dia_semana >= 0 AND dia_semana <= 6", name="ck_horario_dia_semana"
-        ),
+        CheckConstraint("dia_semana >= 0 AND dia_semana <= 6", name="ck_horario_dia_semana"),
         UniqueConstraint(
             "categoria_id", "dia_semana", "hora_inicio", name="uq_horario_categoria_dia_hora"
         ),

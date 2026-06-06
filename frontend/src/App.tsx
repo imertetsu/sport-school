@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router-dom';
 import { AuthProvider } from '@/auth/AuthContext';
 import { ProtectedRoute, RoleRoute } from '@/auth/ProtectedRoute';
 import { Login } from '@/auth/Login';
@@ -15,6 +15,13 @@ import { Muro } from '@/features/avisos/Muro';
 import { Egresos } from '@/features/egresos/Egresos';
 import { Reportes } from '@/features/reportes/Reportes';
 import { NoAutorizado } from '@/features/reportes/NoAutorizado';
+// Consola de PLATAFORMA (Epic A, rol SUPERADMIN). App separada del panel de
+// escuela: su propio provider de sesión, guard y layout (sin el Sidebar de escuela).
+import { PlatformAuthProvider } from '@/features/plataforma/PlataformaAuth';
+import { PlataformaGuard, PlataformaShell } from '@/features/plataforma/PlataformaShell';
+import { PlataformaLogin } from '@/features/plataforma/PlataformaLogin';
+import { Escuelas } from '@/features/plataforma/Escuelas';
+import { SuperAdmins } from '@/features/plataforma/SuperAdmins';
 
 export default function App() {
   return (
@@ -69,6 +76,28 @@ export default function App() {
             />
             <Route path="/no-autorizado" element={<NoAutorizado />} />
           </Route>
+
+          {/* Consola de PLATAFORMA (SUPERADMIN). Árbol separado: su propio provider
+              de sesión (token en otra clave de storage) y su propio guard. NO usa
+              ProtectedRoute/RoleRoute (sesión de escuela). */}
+          <Route
+            path="/plataforma"
+            element={
+              <PlatformAuthProvider>
+                <Outlet />
+              </PlatformAuthProvider>
+            }
+          >
+            <Route index element={<Navigate to="/plataforma/escuelas" replace />} />
+            <Route path="login" element={<PlataformaLogin />} />
+            <Route element={<PlataformaGuard />}>
+              <Route element={<PlataformaShell />}>
+                <Route path="escuelas" element={<Escuelas />} />
+                <Route path="admins" element={<SuperAdmins />} />
+              </Route>
+            </Route>
+          </Route>
+
           <Route path="*" element={<Navigate to="/panel" replace />} />
         </Routes>
       </BrowserRouter>
