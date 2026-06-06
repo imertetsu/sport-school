@@ -78,6 +78,74 @@
   color: var(--accent-text);
 }
 
+/* Acciones por fila (recordatorio + registrar pago) alineadas a la derecha. */
+.cuota-cell__acciones {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+@media (max-width: 560px) {
+  .cuota-cell__acciones {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+/* --- Aviso transitorio del recordatorio de cobro (sin sistema de toasts) --- */
+.cobro-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md, 8px);
+  border: 1px solid var(--color-border);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.cobro-notice--success {
+  background: var(--state-paid-bg);
+  border-color: var(--state-paid-border);
+  color: var(--state-paid-text);
+}
+
+.cobro-notice--info {
+  background: var(--accent-soft);
+  border-color: var(--accent-soft-border);
+  color: var(--accent-text);
+}
+
+.cobro-notice--warning {
+  background: var(--state-pending-bg);
+  border-color: var(--state-pending-border);
+  color: var(--state-pending-text);
+}
+
+.cobro-notice--error {
+  background: var(--color-danger-bg);
+  border-color: var(--color-danger-border);
+  color: var(--color-danger);
+}
+
+.cobro-notice__close {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: inherit;
+  font-size: var(--fs-sm);
+  line-height: 1;
+  opacity: 0.7;
+}
+
+.cobro-notice__close:hover {
+  opacity: 1;
+}
+
 /* --- Celda de alumno en la tabla de cuotas --- */
 .cuota-cell {
   display: flex;

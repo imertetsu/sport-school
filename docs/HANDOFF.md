@@ -4,7 +4,7 @@
 > cada epic**. Máx ~150 líneas; poda lo viejo. Esto NO es un changelog — es un snapshot
 > de "cómo está el mundo hoy".
 
-_Última actualización: 2026-06-06 — epic **Recibo** (comprobante con marca + nº correlativo, 10º) entregado en rama `epic/recibo` (pendiente de FF a main). Abonos ya en main. Migraciones 0001→0010._
+_Última actualización: 2026-06-06 — epic **WhatsApp Cobro (saliente)** (recordatorio de cuota + QR por WhatsApp, 11º) entregado en rama `epic/whatsapp-cobro`. Recibo (10º) y Abonos (9º) ya en main. Migraciones 0001→0011._
 
 ## Stack snapshot
 
@@ -66,10 +66,21 @@ up --build` valida el stack desde cero. Ver "Recent decisions".
    retrocompat). Cabecera **"SnapCoding - LatinoSport"** + nombre de la escuela, **N° correlativo por org**
    `REC-NNNNNN` (asignado al confirmar, idempotente, atómico vía contador, en ambos caminos efectivo+QR),
    leyenda **"no válido como factura"** (conserva Aplicado/Saldo/crédito de Abonos). UI muestra el N°.
-   Verificado E2E (140 tests + smoke API que valida el contenido del PDF). En rama `epic/recibo`.
+   Verificado E2E (140 tests + smoke API que valida el contenido del PDF). **En `main`.**
+11. **WhatsApp Cobro (saliente)** (recordatorio de cuota con QR de pago por WhatsApp): migración `0011`
+   (tabla `recordatorio_pago` RLS NULLIF, `UNIQUE(cuota_id,tipo,ciclo)` = idempotencia). Puerto
+   `WhatsAppPort` + adaptadores **mock** (default) y **Meta Cloud API** (esqueleto, detrás de
+   `whatsapp_provider=meta` + credenciales). El cron `_procesar_org` envía `PROXIMO_VENCIMIENTO`
+   (N días antes, `settings.recordatorio_qr_dias_antes`) y `MOROSIDAD` (1×/mes por cuota); reusa
+   `crear_pago_qr` (QR reconciliable, **NO toca** la conciliación: sigue por webhook OpenBCB). Endpoint
+   `POST /cobranza/cuotas/{id}/recordatorio` (ADMIN, `forzar` opcional) + botón en Panel de Cobranza.
+   Webhook `GET/POST /webhooks/whatsapp` (verify + ACK de estados; **no** concilia pagos). **Mock-first,
+   número único de plataforma.** Verificado E2E (158 tests incl. idempotencia/RLS @db + smoke HTTP del
+   endpoint). En rama `epic/whatsapp-cobro`.
 
-Próximos candidatos: resto de **Fase 2** (portal passwordless OTP/WhatsApp, chatbot cobros, factura SIN,
-**OpenBCB real** con onboarding BCB). Fase 3: rendimiento, voz, analítica.
+Próximos candidatos: resto de **Fase 2** (portal passwordless OTP/WhatsApp, **chatbot WhatsApp conversacional/entrante**,
+factura SIN, **OpenBCB real** con onboarding BCB; credenciales reales de Meta + plantillas aprobadas para activar el
+envío WhatsApp). Fase 3: rendimiento, voz, analítica.
 **Deuda menor:** `GET /entrenadores` (selector de entrenador en Horarios usa campo de texto hoy);
 nombre del UNIQUE de `horario_clase` difiere modelo↔migración (cosmético); cosmético categoría duplicada;
 `JUSTIFICADO` en asistencia; gating fino por categoría; podar este HANDOFF.
@@ -106,19 +117,37 @@ coach1234` (ENTRENADOR). Org: `Academia Andina` (BO/BOB), 2 sucursales, 8 alumno
 - Recordatorio de pago: `N días antes`; toggles de notificación por organización (RNF-07)
 - Env reales hoy: `APP_NAME, DATABASE_URL, MIGRATION_DATABASE_URL, JWT_SECRET,
   JWT_EXPIRE_MINUTES, CORS_ORIGINS, REDIS_URL, VITE_API_URL` (ver `.env.example`).
-  Futuras: `OPENBCB_*`, `WHATSAPP_*`. **Nunca commitear secretos.**
+  **WhatsApp (epic 11):** `WHATSAPP_PROVIDER` (noop|mock|meta, default noop), `WHATSAPP_PHONE_NUMBER_ID`,
+  `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_WABA_ID`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET`,
+  `WHATSAPP_GRAPH_VERSION` (v21.0), `RECORDATORIO_QR_DIAS_ANTES` (3). Sin credenciales ⇒ cae al **mock**
+  (nunca rompe). Para enviar de verdad: `WHATSAPP_PROVIDER=meta` + credenciales Meta + 2 plantillas
+  aprobadas (`recordatorio_cuota_qr`, `morosidad_cuota_qr`). Futuras: `OPENBCB_*`. **Nunca commitear secretos.**
 
 ## In-flight work
 
-**Recibo** (10º epic) entregado en rama `epic/recibo` — **pendiente de FF a `main`** (su commit de cierre
-borra `docs/specs/recibo.md`). Abonos (9º) ya en `main`.
-Migraciones `0001→0010` (Egresos=0005, Muro=0006, Horarios=0007, Auto-registro=0008, Abonos=0009, Recibo=0010; Reportes sin migración).
+**WhatsApp Cobro (saliente)** (11º epic) entregado en rama `epic/whatsapp-cobro` — **pendiente de FF a `main`**
+(su commit de cierre borra `docs/specs/whatsapp-cobro.md`). Recibo (10º) y Abonos (9º) ya en `main`.
+Migraciones `0001→0011` (Egresos=0005, Muro=0006, Horarios=0007, Auto-registro=0008, Abonos=0009, Recibo=0010, WhatsApp/recordatorio_pago=0011; Reportes sin migración).
 Gateo por rol unificado: `nav.ts` usa `roles?: Role[]` + `navGroupsForRole`; rutas solo-ADMIN usan
 `RoleRoute allow={['ADMIN']}`. Remoto `imertetsu/sport-school` (push vía `http.sslBackend=schannel`
 por el proxy TLS). Al abrir el próximo epic, `product-owner` crea `docs/specs/<epic>.md`.
 
 ## Recent decisions
 
+- **2026-06-06 Epic WhatsApp Cobro (saliente).** Diseño por platform-architect. Producto: recordatorio de
+  cuota con **QR de pago** por WhatsApp; proveedor **Meta Cloud API directo**, **número único de plataforma**,
+  **mock-first** (sin credenciales ⇒ adaptador mock; nunca rompe), **solo saliente**. Ambos avisos activos:
+  `PROXIMO_VENCIMIENTO` (N días antes) y `MOROSIDAD` (1×/mes por cuota). **Idempotencia** = tabla
+  `recordatorio_pago` con `UNIQUE(cuota_id,tipo,ciclo)` (ciclo = `vence_el.isoformat()` o `YYYY-MM`); INSERT
+  `ON CONFLICT DO NOTHING` ⇒ no reenvía. **QR como LINK de texto** en el body de la plantilla (el base64 de
+  OpenBCB no es enviable sin subir media/URL pública); el puerto deja `header_image` opcional para migrar a
+  imagen sin re-romper contrato. **NO toca la conciliación de pago**: reusa `crear_pago_qr` (QR reconciliable)
+  y el pago sigue por `POST /webhooks/openbcb` (idempotente por `transaccion_id`). Webhook `whatsapp` solo
+  loguea estados (ACK 200). **Fixes de integración (main, trust-but-verify):** (1) el modelo `RecordatorioPago`
+  traía `tipo IN ('PROXIMA','VENCIDA','MOROSIDAD')` y columnas `String`, desalineado con la migración 0011
+  (`PROXIMO_VENCIMIENTO`/`MOROSIDAD`, `Text`) → alineado el modelo a la migración (autoridad del esquema). (2)
+  el handler `POST /webhooks/whatsapp` declaraba retorno `Response | dict` → `FastAPIError` al cargar el router
+  (rompía `app.main` y 17 tests TestClient) → `response_model=None`.
 - **2026-06-06 Epic Recibo.** Comprobante → recibo no-fiscal: cabecera "SnapCoding - LatinoSport" (const
   `settings.recibo_emisor`), **N° correlativo por org** `REC-NNNNNN` vía tabla `recibo_contador` (incremento
   atómico `INSERT … ON CONFLICT DO UPDATE … RETURNING`), asignado al confirmar en **ambos** caminos (efectivo

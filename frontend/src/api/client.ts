@@ -32,6 +32,7 @@ import type {
   PagoOut,
   PanelCobranza,
   QrResponse,
+  RecordatorioOut,
   RegistrarPagoEfectivoBody,
   RegistrarPagoQrBody,
   RosterOut,
@@ -279,6 +280,20 @@ export const api = {
   simularConfirmacionQr(id: string, signal?: AbortSignal): Promise<PagoOut> {
     return request<PagoOut>(`/cobranza/pagos/qr/${id}/simular-confirmacion`, {
       method: 'POST',
+      signal,
+    });
+  },
+  // POST /cobranza/cuotas/{cuota_id}/recordatorio (ADMIN) -> envía el recordatorio
+  // de cobro por WhatsApp. forzar=true reenvía uno ya enviado (default false).
+  // El backend impone idempotencia y los toggles de notificaciones (RNF-07).
+  enviarRecordatorio(
+    cuotaId: string,
+    forzar = false,
+    signal?: AbortSignal,
+  ): Promise<RecordatorioOut> {
+    return request<RecordatorioOut>(`/cobranza/cuotas/${cuotaId}/recordatorio`, {
+      method: 'POST',
+      body: { forzar },
       signal,
     });
   },

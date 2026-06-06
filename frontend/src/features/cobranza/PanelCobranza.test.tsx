@@ -7,10 +7,12 @@ import type { CuotasListResponse, PanelCobranza as PanelData } from '@/api/types
 // Mock del cliente API: los tests usan mocks, no la API real.
 const panelMock = vi.fn();
 const cuotasMock = vi.fn();
+const recordatorioMock = vi.fn();
 vi.mock('@/api/client', () => ({
   api: {
     panelCobranza: (...args: unknown[]) => panelMock(...args),
     cuotas: (...args: unknown[]) => cuotasMock(...args),
+    enviarRecordatorio: (...args: unknown[]) => recordatorioMock(...args),
   },
   ApiError: class ApiError extends Error {},
 }));
@@ -24,6 +26,13 @@ vi.mock('@/components/shell/SucursalContext', () => ({
     selected: '',
     setSelected: vi.fn(),
   }),
+}));
+
+// Rol de la vista. Por defecto ADMIN (ve la acción de recordatorio). Los tests
+// que necesiten ENTRENADOR sobrescriben este valor.
+let viewRoleMock: 'ADMIN' | 'ENTRENADOR' = 'ADMIN';
+vi.mock('@/auth/useAuth', () => ({
+  useAuth: () => ({ viewRole: viewRoleMock }),
 }));
 
 // El modal de pago tiene su propio fetch; lo stubeamos para aislar el panel.
@@ -96,6 +105,8 @@ describe('PanelCobranza', () => {
   beforeEach(() => {
     panelMock.mockReset();
     cuotasMock.mockReset();
+    recordatorioMock.mockReset();
+    viewRoleMock = 'ADMIN';
     panelMock.mockResolvedValue(PANEL);
     cuotasMock.mockResolvedValue(CUOTAS);
   });
@@ -176,5 +187,70 @@ describe('PanelCobranza', () => {
     await screen.findAllByText('Mateo Quispe Mamani');
     await user.click(screen.getAllByRole('button', { name: 'Registrar pago' })[0]);
     expect(screen.getByTestId('registrar-pago-modal')).toBeInTheDocument();
+  });
+
+  it('ADMIN ve "Enviar recordatorio" solo en cuotas no pagadas', async () => {
+    renderPanel();
+    await screen.findAllByText('Mateo Quispe Mamani');
+    // q1 (VENCIDO) tiene el botón; q2 (PAGADO) no -> exactamente 1.
+    expect(
+      screen.getAllByRole('button', { name: 'Enviar recordatorio' }),
+    ).toHaveLength(1);
+  });
+
+  it('ENTRENADOR no ve la acción de recordatorio', async () => {
+    viewRoleMock = 'ENTRENADOR';
+    renderPanel();
+    await screen.findAllByText('Mateo Quispe Mamani');
+    expect(
+      screen.queryByRole('button', { name: 'Enviar recordatorio' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('envía el recordatorio y muestra el aviso de éxito (motivo ok)', async () => {
+    recordatorioMock.mockResolvedValue({
+      enviado: true,
+      cuota_id: 'q1',
+      provider_message_id: 'wamid.1',
+      motivo: 'ok',
+    });
+    const user = userEvent.setup();
+    renderPanel();
+    await screen.findAllByText('Mateo Quispe Mamani');
+    await user.click(screen.getByRole('button', { name: 'Enviar recordatorio' }));
+    await waitFor(() => expect(recordatorioMock).toHaveBeenCalledWith('q1'));
+    expect(await screen.findByText(/Recordatorio enviado\./)).toBeInTheDocument();
+  });
+
+  it('refleja motivo "sin_telefono" como advertencia', async () => {
+    recordatorioMock.mockResolvedValue({
+      enviado: false,
+      cuota_id: 'q1',
+      provider_message_id: null,
+      motivo: 'sin_telefono',
+    });
+    const user = userEvent.setup();
+    renderPanel();
+    await screen.findAllByText('Mateo Quispe Mamani');
+    await user.click(screen.getByRole('button', { name: 'Enviar recordatorio' }));
+    expect(
+      await screen.findByText(/El tutor no tiene teléfono registrado\./),
+    ).toBeInTheDocument();
+  });
+
+  it('refleja motivo "ya_enviado" como info', async () => {
+    recordatorioMock.mockResolvedValue({
+      enviado: false,
+      cuota_id: 'q1',
+      provider_message_id: null,
+      motivo: 'ya_enviado',
+    });
+    const user = userEvent.setup();
+    renderPanel();
+    await screen.findAllByText('Mateo Quispe Mamani');
+    await user.click(screen.getByRole('button', { name: 'Enviar recordatorio' }));
+    expect(
+      await screen.findByText(/Ya se había enviado este recordatorio\./),
+    ).toBeInTheDocument();
   });
 });

@@ -65,6 +65,18 @@ class Settings(BaseSettings):
     openbcb_api_key: str | None = None
     whatsapp_provider: str = "noop"
 
+    # WhatsApp Cloud API (Meta) — epic WhatsApp Cobro. Credenciales y verificación
+    # del webhook; el adaptador real las consume (`MetaCloudWhatsAppAdapter`). En
+    # dev/CI quedan en None y se usa el adaptador mock (`whatsapp_provider=noop`).
+    whatsapp_phone_number_id: str | None = None
+    whatsapp_access_token: str | None = None
+    whatsapp_waba_id: str | None = None
+    whatsapp_verify_token: str | None = None
+    whatsapp_app_secret: str | None = None
+    whatsapp_graph_version: str = "v21.0"
+    # Días antes del vencimiento en que el recordatorio adjunta el QR de cobro.
+    recordatorio_qr_dias_antes: int = 3
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def _split_cors(cls, value: object) -> object:

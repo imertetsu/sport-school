@@ -14,7 +14,7 @@ Endpoints:
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -50,6 +50,8 @@ from app.schemas.cobranza import (
     PagoQrIn,
     PanelOut,
     QrOut,
+    RecordatorioIn,
+    RecordatorioOut,
     SucursalNombre,
 )
 from app.services import pagos as pagos_svc
@@ -57,8 +59,10 @@ from app.services.deps import (
     get_comprobante_service,
     get_notification_service,
     get_payment_provider,
+    get_whatsapp_port,
 )
 from app.services.generacion import generar_cuotas_org
+from app.services.recordatorios import enviar_recordatorio_cuota
 
 router = APIRouter(prefix="/cobranza", tags=["cobranza"])
 
@@ -428,6 +432,52 @@ def simular_confirmacion(
     db.flush()
     pago = db.execute(select(Pago).where(Pago.id == pago_id)).scalar_one()
     return PagoOut.model_validate(pago)
+
+
+# --------------------------------------------------------------------------- #
+# POST /cobranza/cuotas/{cuota_id}/recordatorio  (enviar ahora, WhatsApp)
+# --------------------------------------------------------------------------- #
+@router.post("/cuotas/{cuota_id}/recordatorio", response_model=RecordatorioOut)
+def enviar_recordatorio(
+    cuota_id: uuid.UUID,
+    body: RecordatorioIn | None = None,
+    _user: CurrentUser = Depends(require_role("ADMIN")),
+    db: Session = Depends(get_db),
+) -> RecordatorioOut:
+    """Envía AHORA un recordatorio de cobro de la cuota por WhatsApp (admin).
+
+    El `tipo` se deriva del estado de la cuota: VENCIDO o `vence_el < hoy` ⇒
+    MOROSIDAD; en otro caso PROXIMO_VENCIMIENTO. Adjunta un QR de cobro
+    reconciliable (el pago se confirma por el webhook OpenBCB existente). Idempotente
+    por `(cuota_id, tipo, ciclo)`: repetir sin `forzar` ⇒ `motivo="ya_enviado"`.
+    RLS limita la cuota al tenant; 404 si no existe.
+    """
+    forzar = body.forzar if body is not None else False
+    cuota = db.execute(select(Cuota).where(Cuota.id == cuota_id)).scalar_one_or_none()
+    if cuota is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Cuota no encontrada")
+
+    hoy = date.today()
+    tipo = (
+        "MOROSIDAD"
+        if (cuota.estado == "VENCIDO" or cuota.vence_el < hoy)
+        else "PROXIMO_VENCIMIENTO"
+    )
+
+    result = enviar_recordatorio_cuota(
+        db,
+        cuota=cuota,
+        tipo=tipo,
+        hoy=hoy,
+        port=get_whatsapp_port(),
+        forzar=forzar,
+    )
+    return RecordatorioOut(
+        enviado=result.enviado,
+        cuota_id=cuota_id,
+        provider_message_id=result.provider_message_id,
+        motivo=result.motivo,
+    )
 
 
 # --------------------------------------------------------------------------- #

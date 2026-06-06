@@ -3,13 +3,15 @@
 `cobranza_diaria` (1×/día, idempotente):
 1. Genera la siguiente cuota de cada inscripción ACTIVA cuyo período venció (motor C2).
 2. Marca VENCIDO las PENDIENTE con `vence_el < hoy`.
-3. Recordatorio N días antes de `vence_el` (NotificationService Noop).
-4. Alerta de morosidad para vencidas (NotificationService Noop).
+3. Recordatorio PROXIMO_VENCIMIENTO N días antes de `vence_el` (WhatsApp + QR de cobro).
+4. Recordatorio de MOROSIDAD para vencidas (WhatsApp + QR de cobro).
 
 Idempotencia:
 - (1) por `UNIQUE(inscripcion_id, periodo_inicio)` (no duplica cuotas).
 - (2) por marca de estado (solo PENDIENTE -> VENCIDO; re-correr no cambia nada).
-- (3)/(4) son Noop hoy; el adaptador real deberá deduplicar por (cuota, tipo, día).
+- (3)/(4) deduplican en `recordatorio_pago` por `UNIQUE(cuota_id, tipo, ciclo)`
+  (ciclo = `vence_el` para próximo vencimiento, `YYYY-MM` para morosidad): re-correr
+  el cron el mismo día/mes NO reenvía ni genera un segundo QR.
 
 El worker no tiene "request con org": itera TODAS las orgs y fija
 `app.current_org` por org en su transacción (RLS), igual que el seed.
@@ -25,19 +27,15 @@ from sqlalchemy import select, text, update
 
 from app.core.config import settings
 from app.core.db import SessionLocal
-from app.models.alumno import Alumno
 from app.models.cuota import Cuota
-from app.models.inscripcion import Inscripcion
 from app.models.organizacion import Organizacion
 from app.services import horarios as horarios_svc
-from app.services.deps import get_notification_service
+from app.services.deps import get_whatsapp_port
 from app.services.generacion import generar_cuotas_org
+from app.services.recordatorios import enviar_recordatorio_cuota
 from app.workers.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
-
-# Días antes del vencimiento para el recordatorio (C6).
-RECORDATORIO_DIAS_ANTES = 3
 
 
 def _set_org(db, org_id: uuid.UUID) -> None:
@@ -46,8 +44,6 @@ def _set_org(db, org_id: uuid.UUID) -> None:
 
 def _procesar_org(db, *, org_id: uuid.UUID, hoy: date) -> int:
     """Procesa una org (contexto ya fijado). Devuelve cuántas cuotas creó."""
-    notifier = get_notification_service()
-
     # 1) Generación incremental idempotente.
     creadas = generar_cuotas_org(db, org_id=org_id, hoy=hoy)
 
@@ -60,41 +56,26 @@ def _procesar_org(db, *, org_id: uuid.UUID, hoy: date) -> int:
     )
     db.flush()
 
-    # 3) Recordatorio N días antes (Noop). PENDIENTE que vence en exactamente N días.
-    objetivo = hoy + timedelta(days=RECORDATORIO_DIAS_ANTES)
+    # 3) Recordatorio PROXIMO_VENCIMIENTO: PENDIENTE que vence en exactamente N días
+    #    (`recordatorio_qr_dias_antes`). El envío adjunta un QR de cobro reconciliable
+    #    y se deduplica en `recordatorio_pago` (cuota,tipo,ciclo): re-correr no reenvía.
+    port = get_whatsapp_port()
+    objetivo = hoy + timedelta(days=settings.recordatorio_qr_dias_antes)
     por_recordar = (
         db.execute(select(Cuota).where(Cuota.estado == "PENDIENTE", Cuota.vence_el == objetivo))
         .scalars()
         .all()
     )
     for cuota in por_recordar:
-        alumno = _alumno_de_cuota(db, cuota)
-        notifier.send(
-            to=str(alumno.id) if alumno else str(cuota.id),
-            template="recordatorio_cuota",
-            variables={"cuota_id": str(cuota.id), "vence_el": cuota.vence_el.isoformat()},
-        )
+        enviar_recordatorio_cuota(db, cuota=cuota, tipo="PROXIMO_VENCIMIENTO", hoy=hoy, port=port)
 
-    # 4) Alerta de morosidad para vencidas (Noop).
+    # 4) Recordatorio de MOROSIDAD para vencidas (máx. 1 por cuota por mes — dedup en
+    #    `recordatorio_pago` con ciclo=YYYY-MM). También adjunta QR reconciliable.
     vencidas = db.execute(select(Cuota).where(Cuota.estado == "VENCIDO")).scalars().all()
     for cuota in vencidas:
-        alumno = _alumno_de_cuota(db, cuota)
-        notifier.send(
-            to=str(alumno.id) if alumno else str(cuota.id),
-            template="alerta_morosidad",
-            variables={"cuota_id": str(cuota.id), "vence_el": cuota.vence_el.isoformat()},
-        )
+        enviar_recordatorio_cuota(db, cuota=cuota, tipo="MOROSIDAD", hoy=hoy, port=port)
 
     return creadas
-
-
-def _alumno_de_cuota(db, cuota: Cuota) -> Alumno | None:
-    insc = db.execute(
-        select(Inscripcion).where(Inscripcion.id == cuota.inscripcion_id)
-    ).scalar_one_or_none()
-    if insc is None:
-        return None
-    return db.execute(select(Alumno).where(Alumno.id == insc.alumno_id)).scalar_one_or_none()
 
 
 @celery_app.task(name="app.workers.tasks.cobranza_diaria")

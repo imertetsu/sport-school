@@ -316,6 +316,25 @@ export interface GenerarCuotasResponse {
   creadas: number;
 }
 
+// --- POST /cobranza/cuotas/{cuota_id}/recordatorio (ADMIN) ---
+// Dispara el recordatorio de cobro por WhatsApp para una cuota (RNF-07: tiene
+// costo; el backend respeta toggles e idempotencia). Body opcional: { forzar }
+// (default false) para reenviar uno ya enviado.
+export interface RecordatorioIn {
+  forzar?: boolean;
+}
+
+// motivo describe el resultado: "ok" (enviado), "ya_enviado" (idempotencia),
+// "sin_telefono" (tutor sin teléfono), "error_envio" (falló el proveedor).
+export type MotivoRecordatorio = 'ok' | 'ya_enviado' | 'sin_telefono' | 'error_envio';
+
+export interface RecordatorioOut {
+  enviado: boolean;
+  cuota_id: string; // uuid
+  provider_message_id: string | null;
+  motivo: MotivoRecordatorio | null;
+}
+
 // ============================================================
 // C2: Asistencia (espejo EXACTO de los contratos del epic Asistencia)
 // No inventar campos. Si falta algo, es hand-off a backend-dev.

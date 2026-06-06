@@ -4,6 +4,7 @@ import type {
   CuotaListItem,
   EstadoCuota,
   MetodoPago,
+  MotivoRecordatorio,
   PanelCobranza as PanelCobranzaData,
 } from '@/api/types';
 import {
@@ -16,6 +17,7 @@ import {
   type Column,
 } from '@/components/ui';
 import { useSucursales } from '@/components/shell/SucursalContext';
+import { useAuth } from '@/auth/useAuth';
 import { formatDate, formatMoney } from '@/lib/format';
 import { KPICard } from './KPICard';
 import { RegistrarPago } from './RegistrarPago';
@@ -36,8 +38,38 @@ const METODO_LABEL: Record<MetodoPago, string> = {
   QR: 'QR',
 };
 
+// Aviso transitorio del recordatorio de cobro (no hay sistema de toasts: usamos
+// una nota inline arriba de la tabla, con tono según el resultado del backend).
+type NoticeTone = 'success' | 'info' | 'warning' | 'error';
+interface Notice {
+  tone: NoticeTone;
+  text: string;
+}
+
+// Mapea el `motivo` que devuelve el backend a (tono visual + mensaje en español).
+function recordatorioNotice(motivo: MotivoRecordatorio | null, enviado: boolean): Notice {
+  switch (motivo) {
+    case 'ok':
+      return { tone: 'success', text: 'Recordatorio enviado.' };
+    case 'ya_enviado':
+      return { tone: 'info', text: 'Ya se había enviado este recordatorio.' };
+    case 'sin_telefono':
+      return { tone: 'warning', text: 'El tutor no tiene teléfono registrado.' };
+    case 'error_envio':
+      return { tone: 'error', text: 'No se pudo enviar el recordatorio.' };
+    default:
+      // Sin motivo conocido: nos guiamos por `enviado`.
+      return enviado
+        ? { tone: 'success', text: 'Recordatorio enviado.' }
+        : { tone: 'error', text: 'No se pudo enviar el recordatorio.' };
+  }
+}
+
 export function PanelCobranza() {
   const { selected: sucursalId } = useSucursales();
+  // viewRole es la verdad de la UI; el backend impone el permiso real (ADMIN).
+  const { viewRole } = useAuth();
+  const isAdmin = viewRole === 'ADMIN';
 
   const [panel, setPanel] = useState<PanelCobranzaData | null>(null);
   const [panelError, setPanelError] = useState<string | null>(null);
@@ -54,6 +86,11 @@ export function PanelCobranza() {
 
   // Token para forzar refresco tras registrar un pago.
   const [refreshKey, setRefreshKey] = useState(0);
+
+  // Recordatorio de cobro por WhatsApp: id de la cuota en vuelo (deshabilita su
+  // botón) + aviso transitorio del resultado.
+  const [recordatorioEnvio, setRecordatorioEnvio] = useState<string | null>(null);
+  const [recordatorioNota, setRecordatorioNota] = useState<Notice | null>(null);
 
   // --- Panel (KPIs + morosidad) ---
   useEffect(() => {
@@ -125,6 +162,39 @@ export function PanelCobranza() {
     setRefreshKey((k) => k + 1);
   }, []);
 
+  // Dispara el recordatorio de cobro por WhatsApp de UNA cuota (RNF-07: tiene
+  // costo; el backend impone idempotencia y toggles). No reintentamos en bucle:
+  // el botón queda deshabilitado mientras va la petición.
+  const enviarRecordatorio = useCallback(
+    async (cuota: CuotaListItem) => {
+      if (recordatorioEnvio) return; // ya hay uno en vuelo
+      setRecordatorioEnvio(cuota.id);
+      setRecordatorioNota(null);
+      try {
+        const res = await api.enviarRecordatorio(cuota.id);
+        const base = recordatorioNotice(res.motivo, res.enviado);
+        setRecordatorioNota({
+          ...base,
+          text: `${cuota.alumno.nombre_completo}: ${base.text}`,
+        });
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        const text =
+          err instanceof ApiError
+            ? err.isForbidden
+              ? 'No tienes permiso para enviar recordatorios.'
+              : err.status === 404
+                ? 'La cuota ya no existe.'
+                : err.message
+            : 'No se pudo enviar el recordatorio.';
+        setRecordatorioNota({ tone: 'error', text });
+      } finally {
+        setRecordatorioEnvio(null);
+      }
+    },
+    [recordatorioEnvio],
+  );
+
   const columns = useMemo<Column<CuotaListItem>[]>(
     () => [
       {
@@ -195,20 +265,36 @@ export function PanelCobranza() {
           c.estado === 'PAGADO' ? (
             <span className="cuota-cell__metodo cuota-cell__metodo--empty">—</span>
           ) : (
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={(e) => {
-                e.stopPropagation();
-                openPago(c);
-              }}
-            >
-              Registrar pago
-            </Button>
+            <div className="cuota-cell__acciones">
+              {/* Recordatorio de cobro por WhatsApp — solo ADMIN (el backend lo exige). */}
+              {isAdmin && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={recordatorioEnvio === c.id}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void enviarRecordatorio(c);
+                  }}
+                >
+                  {recordatorioEnvio === c.id ? 'Enviando…' : 'Enviar recordatorio'}
+                </Button>
+              )}
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openPago(c);
+                }}
+              >
+                Registrar pago
+              </Button>
+            </div>
           ),
       },
     ],
-    [openPago],
+    [openPago, isAdmin, enviarRecordatorio, recordatorioEnvio],
   );
 
   const ingresos = panel?.ingresos_mes.monto;
@@ -300,6 +386,23 @@ export function PanelCobranza() {
           {cuotasError && (
             <div className="page-error" role="alert">
               {cuotasError}
+            </div>
+          )}
+
+          {recordatorioNota && (
+            <div
+              className={`cobro-notice cobro-notice--${recordatorioNota.tone}`}
+              role="status"
+            >
+              <span>{recordatorioNota.text}</span>
+              <button
+                type="button"
+                className="cobro-notice__close"
+                aria-label="Cerrar aviso"
+                onClick={() => setRecordatorioNota(null)}
+              >
+                ✕
+              </button>
             </div>
           )}
 

@@ -18,6 +18,7 @@ from app.api.v1 import (
     sucursales,
 )
 from app.api.v1.webhooks import openbcb as openbcb_webhook
+from app.api.v1.webhooks import whatsapp as whatsapp_webhook
 
 api_router = APIRouter()
 api_router.include_router(auth.router)
@@ -32,3 +33,4 @@ api_router.include_router(avisos.router)
 api_router.include_router(horarios.router)
 api_router.include_router(solicitudes.router)
 api_router.include_router(openbcb_webhook.router)
+api_router.include_router(whatsapp_webhook.router)
