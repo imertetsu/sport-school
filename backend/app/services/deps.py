@@ -7,12 +7,20 @@ dominio nunca importa estos adaptadores (import-linter); este módulo de aplicac
 
 from __future__ import annotations
 
+import logging
+
 from app.adapters.comprobante.pdf import PdfComprobanteService
 from app.adapters.notifications.noop import NoopNotificationService
 from app.adapters.openbcb.provider import OpenBcbSandboxProvider
+from app.adapters.whatsapp.meta import MetaCloudWhatsAppAdapter
+from app.adapters.whatsapp.mock import MockWhatsAppAdapter
+from app.core.config import settings
 from app.domain.ports.invoice import ComprobanteService
 from app.domain.ports.notification import NotificationService
 from app.domain.ports.payment import PaymentProvider
+from app.domain.ports.whatsapp import WhatsAppPort
+
+logger = logging.getLogger(__name__)
 
 
 def get_comprobante_service() -> ComprobanteService:
@@ -28,3 +36,26 @@ def get_notification_service() -> NotificationService:
 def get_payment_provider() -> PaymentProvider:
     """Proveedor de cobro QR: sandbox OpenBCB (real requiere onboarding BCB)."""
     return OpenBcbSandboxProvider()
+
+
+def get_whatsapp_port() -> WhatsAppPort:
+    """Adaptador de WhatsApp, seleccionado por configuración (no hardcodeado).
+
+    `whatsapp_provider == "meta"` **con** credenciales presentes
+    (`whatsapp_phone_number_id` y `whatsapp_access_token` no vacíos) ⇒ adaptador
+    real (`MetaCloudWhatsAppAdapter`). Cualquier otro caso (`noop`/`mock`, o `meta`
+    sin credenciales) ⇒ `MockWhatsAppAdapter`. Si era `meta` pero faltan
+    credenciales, loguea WARNING. **Fail-safe:** nunca lanza en arranque; ante
+    config incompleta degrada al mock para no tumbar el worker/API.
+    """
+    provider = (settings.whatsapp_provider or "").strip().lower()
+    if provider == "meta":
+        phone_id = (settings.whatsapp_phone_number_id or "").strip()
+        token = (settings.whatsapp_access_token or "").strip()
+        if phone_id and token:
+            return MetaCloudWhatsAppAdapter()
+        logger.warning(
+            "whatsapp_provider=meta pero faltan credenciales "
+            "(whatsapp_phone_number_id/whatsapp_access_token); usando MockWhatsAppAdapter"
+        )
+    return MockWhatsAppAdapter()

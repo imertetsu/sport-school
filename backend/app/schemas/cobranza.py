@@ -175,3 +175,27 @@ class WebhookIn(BaseModel):
     transaccion_id: str
     referencia: str
     monto: Decimal
+
+
+# --------------------------------------------------------------------------- #
+# Recordatorios WhatsApp (epic WhatsApp Cobro)
+# --------------------------------------------------------------------------- #
+class RecordatorioIn(BaseModel):
+    """Body opcional de `POST /cobranza/cuotas/{cuota_id}/recordatorio`.
+
+    `forzar=True` reenvía aunque ya exista un recordatorio de ese tipo/ciclo.
+    """
+
+    forzar: bool = False
+
+
+class RecordatorioOut(BaseModel):
+    """Respuesta de `POST /cobranza/cuotas/{cuota_id}/recordatorio`.
+
+    `motivo` ∈ {"ok", "ya_enviado", "sin_telefono", "error_envio"}.
+    """
+
+    enviado: bool
+    cuota_id: uuid.UUID
+    provider_message_id: str | None = None
+    motivo: str | None = None
