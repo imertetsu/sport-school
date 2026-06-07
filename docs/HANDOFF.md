@@ -4,7 +4,7 @@
 > cada epic**. Máx ~150 líneas; poda lo viejo. Esto NO es un changelog — es un snapshot
 > de "cómo está el mundo hoy".
 
-_Última actualización: 2026-06-07 — epic **personas-y-disciplinas** (S1–S4 + componente OCR) integrado en `main` (migraciones **0015→0018**): rename alumno→deportista, catálogo GLOBAL de disciplinas (superadmin), CI único por org + recuperar-por-CI (deportista/tutor/entrenador), entrenador multi-disciplina, y escaneo OCR on-device de cédula. Migraciones **0001→0018**._
+_Última actualización: 2026-06-07 — epic **personas-y-disciplinas** (S1–S4 + componente OCR) integrado en `main` (migraciones **0015→0018**): rename alumno→deportista, catálogo GLOBAL de disciplinas (superadmin), CI único por org + recuperar-por-CI (deportista/tutor/entrenador), entrenador multi-disciplina, y escaneo OCR on-device de cédula. Migraciones **0001→0018**. · **Fixes UX entrenador** (`6d5b9c2`, sin migración): el ENTRENADOR ahora ve **solo sus disciplinas asignadas** (deportistas + asistencia), Horarios muestra la sucursal de cada clase y los nombres ya no se cortan._
 
 ## Stack snapshot
 
@@ -24,7 +24,7 @@ tenant), **ADMIN** (escuela/org), **ENTRENADOR**. (Tutor = passwordless, fase 2;
 **MVP fase 1 COMPLETO** y verificado E2E: **Deportistas** (login, lista, perfil con ficha médica por rol, RLS),
 **Cobranza** (cuotas FIJO/ANIVERSARIO, pago efectivo + QR sandbox OpenBCB con webhook idempotente + cola
 `conciliacion_pendiente`, recibo PDF, cron diario, Panel KPIs/morosidad), **Asistencia** (`sesion`/`asistencia`,
-roster get-or-create, guardar idempotente por `(sesion_id,deportista_id)`; entrenador ve solo sus sucursales),
+roster get-or-create, guardar idempotente por `(sesion_id,deportista_id)`; entrenador ve solo las categorías de sus disciplinas asignadas, ver fixes 2026-06-07),
 **Reportes** (solo ADMIN, sin migración: ingresos/mes + % asistencia), **Egresos** (0005, ADMIN), **Muro de
 avisos** (0006, feed scoped por rol, CRUD ADMIN con soft-delete).
 
@@ -61,8 +61,9 @@ Sucursales/Recibo sin migración).
 
 Próximos candidatos: resto de **Fase 2** (portal passwordless OTP/WhatsApp, chatbot WhatsApp entrante, factura
 SIN, OpenBCB real; credenciales Meta reales + plantillas aprobadas). Fase 3: rendimiento, voz, analítica.
-**Deuda menor:** `JUSTIFICADO` en asistencia; gating fino por categoría (hoy a nivel sucursal); cosmético
-categoría duplicada ("Sub-10 Principiante Principiante").
+**Deuda menor:** `JUSTIFICADO` en asistencia; **Horarios aún muestra todas las clases de la org al entrenador**
+(deportistas + asistencia ya se acotan por disciplina, ver fixes 2026-06-07); cosmético categoría duplicada
+("Sub-10 Principiante Principiante").
 
 ## Active flags / config
 
@@ -128,6 +129,15 @@ Remoto `imertetsu/sport-school` (push vía `http.sslBackend=schannel` por el pro
 
 ## Recent decisions
 
+- **2026-06-07 Fixes UX + visibilidad del entrenador por DISCIPLINA** (`6d5b9c2`, sin migración). El ENTRENADOR
+  queda acotado a las disciplinas de **`entrenador_disciplina`**: lista y detalle de deportistas (detalle → **404
+  no-revelador** si es de otra disciplina) y categorías/roster/sesiones de asistencia (categoría ajena → **403**).
+  Resuelto **server-side por request** (helper `disciplina_ids_de_usuario`; NO en el JWT, que sigue dando todas las
+  sucursales); **aditivo** al filtro de sucursal existente. **Sin disciplinas asignadas ⇒ no ve nada** (el admin
+  debe asignárselas). Esto **amplía** la decisión de epic-15 (que solo tocaba el recordatorio por sucursal): ahora la
+  **disciplina** sí acota la vista de deportistas+asistencia (Horarios sigue mostrando todo). UX: nombre del
+  deportista legible en Asistencia (envuelve) y Horarios muestra la sucursal de cada clase + chip de entrenador sin
+  desbordar. **"Voleibol" es grafía correcta (RAE)**; lo que se ve en pantalla es dato de la escuela, no texto del código.
 - **2026-06-07 Personas y Disciplinas (S1–S4 + OCR).** Decisiones de producto clave (detalle técnico en
   "Estado actual"): (1) catálogo de disciplinas es **GLOBAL** (gestionado por SUPERADMIN, no por tenant) — las
   orgs lo leen y referencian por FK `disciplina_id` (canónico). (2) **CI único por org** (no global) vía índices
