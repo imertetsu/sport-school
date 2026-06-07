@@ -22,12 +22,16 @@ dependencies = [
     "python-dateutil>=2.9",
     "fpdf2>=2.7",
     "qrcode[pil]>=7.4",
+    # Cliente HTTP del adaptador real de WhatsApp (app/adapters/whatsapp/meta.py).
+    # Es dependencia de RUNTIME: debe ir en deps base, no solo en [dev], o la imagen
+    # (pip install -e .) arranca sin httpx -> ModuleNotFoundError. En CI viene transitivo
+    # por el TestClient, por eso CI pasaba aunque producción crasheara.
+    "httpx>=0.27",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
-    "httpx>=0.27",
     "ruff>=0.3",
     "mypy>=1.9",
     "import-linter>=2.0",
