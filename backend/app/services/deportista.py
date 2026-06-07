@@ -144,6 +144,8 @@ def crear_deportista(db: Session, body: DeportistaCreate, *, org_id: uuid.UUID) 
         disciplina=body.disciplina,
         disciplina_id=body.disciplina_id,
         contacto_emergencia=body.contacto_emergencia,
+        domicilio=body.domicilio,
+        lugar_nacimiento=body.lugar_nacimiento,
         ficha_medica=(body.ficha_medica.model_dump() if body.ficha_medica else None),
     )
     db.add(deportista)

@@ -41,6 +41,23 @@ export interface CedulaFields {
   fechaNacimiento?: string;
   /** Fecha de nacimiento tal como apareció en el documento (sin normalizar). */
   fechaNacimientoRaw?: string;
+  /**
+   * Domicilio (OPCIONAL). Solo se rellena desde una línea CLARAMENTE etiquetada
+   * "DOMICILIO" del reverso. Conservador: ante duda, vacío (el reverso suele salir
+   * basura por OCR, así que lo normal es que quede `undefined`).
+   */
+  domicilio?: string;
+  /**
+   * Lugar de nacimiento (OPCIONAL). Solo desde una línea etiquetada "LUGAR DE
+   * NACIMIENTO". Conservador: ante duda, vacío.
+   */
+  lugarNacimiento?: string;
+  /**
+   * Grupo sanguíneo (OPCIONAL), p.ej. "O+", "A-", "AB+". Solo desde una línea
+   * etiquetada "GRUPO SANGUINEO"/"RH" con un grupo plausible. Conservador: ante
+   * duda, vacío.
+   */
+  grupoSanguineo?: string;
 }
 
 const MESES: Record<string, number> = {
@@ -540,6 +557,96 @@ function extraerNombreAntiguo(reverso: string): Partial<CedulaFields> {
 }
 
 /**
+ * Toma el valor que sigue a una etiqueta dentro de una línea. Acepta que el OCR
+ * pierda los dos puntos (busca etiqueta + valor en la misma línea). Si la etiqueta
+ * queda sola, devuelve el valor de la línea siguiente. Devuelve `''` si no hay
+ * valor claro.
+ */
+function valorTrasEtiqueta(
+  lineas: string[],
+  i: number,
+  etiquetaRe: RegExp,
+): string {
+  const m = lineas[i].match(etiquetaRe);
+  if (!m) return '';
+  // Lo que sigue a la etiqueta en la misma línea.
+  let valor = limpiarValor(lineas[i].slice(m.index! + m[0].length));
+  // Etiqueta sola → toma la siguiente línea (si existe).
+  if (!valor && lineas[i + 1]) valor = limpiarValor(lineas[i + 1]);
+  return valor;
+}
+
+/**
+ * Extrae DOMICILIO y LUGAR DE NACIMIENTO del reverso SOLO desde líneas claramente
+ * etiquetadas. CONSERVADOR: si no hay etiqueta + valor con pinta razonable, deja
+ * el campo vacío (mejor vacío que basura). El reverso suele salir ruidoso, así que
+ * lo normal es que queden `undefined`.
+ */
+function extraerDatosReverso(reverso: string): Partial<CedulaFields> {
+  const out: Partial<CedulaFields> = {};
+  if (!reverso) return out;
+
+  const lineas = reverso
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+
+  for (let i = 0; i < lineas.length; i++) {
+    const norm = deburr(lineas[i]).toLowerCase();
+
+    // LUGAR DE NACIMIENTO — comprobar ANTES que "domicilio" no aplica aquí; ojo:
+    // debe ir antes de un posible match de "nacimiento" en otros caminos.
+    if (out.lugarNacimiento == null && /\blugar de nacimiento\b/.test(norm)) {
+      const valor = valorTrasEtiqueta(lineas, i, /lugar de nacimiento\s*:?\s*/i);
+      // Conservador: al menos 2 letras reales (descarta ":" suelto o ruido).
+      if (valor && /[A-Za-zÁÉÍÓÚÑÜáéíóúñü]{2,}/.test(valor)) {
+        out.lugarNacimiento = valor;
+      }
+      continue;
+    }
+
+    if (out.domicilio == null && /\bdomicilio\b/.test(norm)) {
+      const valor = valorTrasEtiqueta(lineas, i, /domicilio\s*:?\s*/i);
+      // Conservador: al menos 2 letras reales (un domicilio plausible tiene texto).
+      if (valor && /[A-Za-zÁÉÍÓÚÑÜáéíóúñü]{2,}/.test(valor)) {
+        out.domicilio = valor;
+      }
+      continue;
+    }
+  }
+
+  return out;
+}
+
+/**
+ * Extrae el GRUPO SANGUÍNEO del reverso SOLO desde una línea etiquetada
+ * ("GRUPO SANGUINEO" o "RH") con un grupo plausible (A|B|AB|O) + factor (+/-/RH).
+ * CONSERVADOR: si no hay etiqueta + grupo claro, deja vacío. Normaliza a la forma
+ * "<grupo><signo>" (p.ej. "O+", "A-", "AB+"); si solo hay grupo sin signo, devuelve
+ * el grupo a secas.
+ */
+function extraerGrupoSanguineo(reverso: string): string | undefined {
+  if (!reverso) return undefined;
+
+  const lineas = reverso
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+
+  for (const linea of lineas) {
+    const norm = deburr(linea).toLowerCase();
+    if (!/\bgrupo sanguineo\b|\brh\b|\bgrupo sanguinio\b/.test(norm)) continue;
+    // Grupo (A|B|AB|O) seguido opcionalmente del factor (+, -, "rh+", "positivo"…).
+    const m = linea.match(/\b(AB|A|B|O)\s*(?:RH)?\s*([+-])?/i);
+    if (!m) continue;
+    const grupo = m[1].toUpperCase();
+    const signo = m[2] ?? '';
+    return `${grupo}${signo}`;
+  }
+  return undefined;
+}
+
+/**
  * Parser del CI ANTIGUO combinando anverso (número+complemento) y reverso
  * (nombre + fecha de nacimiento). Best-effort; nunca lanza.
  */
@@ -550,6 +657,11 @@ export function parseAntiguo(anverso: string, reverso: string): Partial<CedulaFi
   if (ci) out.numeroCi = ci;
 
   Object.assign(out, extraerNombreAntiguo(reverso));
+
+  // Campos OPCIONALES del reverso (CONSERVADOR: solo si vienen etiquetados claro).
+  Object.assign(out, extraerDatosReverso(reverso));
+  const grupo = extraerGrupoSanguineo(reverso);
+  if (grupo) out.grupoSanguineo = grupo;
 
   // Fecha de nacimiento — CONSERVADOR: SOLO desde una línea etiquetada como
   // nacimiento ("nacid[oa]"/"nacimiento"/"f. nac"). En el CI antiguo abundan
@@ -586,6 +698,21 @@ function rellenarVacios(dst: CedulaFields, src: Partial<CedulaFields>): void {
 }
 
 /**
+ * Campos OPCIONALES etiquetados del reverso (domicilio, lugar de nacimiento, grupo
+ * sanguíneo). CONSERVADOR: solo desde etiquetas claras. Se prueba el reverso y,
+ * por si el usuario invirtió las capturas, también el anverso. Independiente del
+ * formato (nuevo/antiguo/desconocido). Ante duda, los campos quedan `undefined`.
+ */
+function rellenarOpcionalesReverso(out: CedulaFields, r: string, a: string): void {
+  rellenarVacios(out, extraerDatosReverso(r));
+  rellenarVacios(out, extraerDatosReverso(a));
+  if (out.grupoSanguineo == null) {
+    const grupo = extraerGrupoSanguineo(r) ?? extraerGrupoSanguineo(a);
+    if (grupo) out.grupoSanguineo = grupo;
+  }
+}
+
+/**
  * Orquesta la detección de formato y el merge de ambos lados. Es la entrada que
  * usa `DocumentScanner`. Reglas:
  *  - CI NUEVO: MRZ-first (más fiable por sus check digits); el anverso/etiquetas
@@ -613,6 +740,8 @@ export function mergeLados(anverso: string, reverso: string): CedulaFields {
     rellenarVacios(out, parseCedula(a));
     // Como último recurso, cualquier campo del texto combinado.
     rellenarVacios(out, parseCedula(combinado));
+    // Opcionales etiquetados del reverso (conservador).
+    rellenarOpcionalesReverso(out, r, a);
     return out;
   }
 
@@ -622,10 +751,12 @@ export function mergeLados(anverso: string, reverso: string): CedulaFields {
     // anverso, número en el reverso si el usuario invirtió las capturas).
     rellenarVacios(out, parseAntiguo(r, a));
     rellenarVacios(out, parseCedula(combinado));
+    rellenarOpcionalesReverso(out, r, a);
     return out;
   }
 
   // Desconocido: parser genérico sobre el texto combinado.
   rellenarVacios(out, parseCedula(combinado));
+  rellenarOpcionalesReverso(out, r, a);
   return out;
 }

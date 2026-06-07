@@ -25,7 +25,7 @@ import uuid
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app.core.db import SessionLocal
@@ -37,8 +37,10 @@ from app.models.consentimiento import Consentimiento
 from app.models.cuota import Cuota
 from app.models.deportista import Deportista
 from app.models.deportista_tutor import DeportistaTutor
+from app.models.disciplina import Disciplina
 from app.models.egreso import Egreso
 from app.models.entrenador import Entrenador
+from app.models.entrenador_disciplina import EntrenadorDisciplina
 from app.models.horario_clase import HorarioClase
 from app.models.inscripcion import Inscripcion
 from app.models.organizacion import Organizacion
@@ -144,6 +146,72 @@ def _get_or_create_categoria(
     db.add(c)
     db.flush()
     return c
+
+
+def _get_or_create_disciplina(db: Session, *, nombre: str) -> Disciplina:
+    """Get-or-create de una disciplina del catálogo GLOBAL (sin org_id/RLS).
+
+    Idempotente case-insensitive (espeja `uq_disciplina_nombre_lower`). No fija el GUC:
+    `disciplina` es global como `organizacion`.
+    """
+    disc = db.execute(
+        select(Disciplina).where(func.lower(Disciplina.nombre) == nombre.lower())
+    ).scalar_one_or_none()
+    if disc is not None:
+        return disc
+    disc = Disciplina(nombre=nombre, activo=True)
+    db.add(disc)
+    db.flush()
+    return disc
+
+
+def _asignar_disciplina_entrenador(
+    db: Session, *, org_id: uuid.UUID, entrenador_id: uuid.UUID, disciplina_id: uuid.UUID
+) -> bool:
+    """Asigna una disciplina al entrenador vía `entrenador_disciplina` (idempotente).
+
+    Tabla tenant con RLS: corre con `app.current_org` ya fijado. Idempotente por
+    `UNIQUE(entrenador_id, disciplina_id)`. Devuelve True si creó la fila.
+    """
+    existente = db.execute(
+        select(EntrenadorDisciplina.id).where(
+            EntrenadorDisciplina.entrenador_id == entrenador_id,
+            EntrenadorDisciplina.disciplina_id == disciplina_id,
+        )
+    ).first()
+    if existente is not None:
+        return False
+    db.add(
+        EntrenadorDisciplina(
+            org_id=org_id, entrenador_id=entrenador_id, disciplina_id=disciplina_id
+        )
+    )
+    db.flush()
+    return True
+
+
+def _reparto_disciplinas(futbol_id: uuid.UUID, voley_id: uuid.UUID) -> list[uuid.UUID | None]:
+    """Patrón determinista de `disciplina_id` por índice de `_DEPORTISTAS` (8 filas).
+
+    Garantiza el escenario de scoping del coach (Fútbol): mayoría Fútbol, algunos
+    Voleibol y AL MENOS UNO NULL (red de seguridad NULL-visible). Resultado esperado:
+    el coach ve los de Fútbol + el/los NULL, NO los de Voleibol.
+    """
+    # 0,1,2,4 -> Fútbol · 3,5 -> Voleibol · 6,7 -> NULL (sin disciplina).
+    patron: list[uuid.UUID | None] = [
+        futbol_id,  # 0
+        futbol_id,  # 1
+        futbol_id,  # 2
+        voley_id,  # 3
+        futbol_id,  # 4
+        voley_id,  # 5
+        None,  # 6  (red de seguridad: visible para el coach pese a no tener disciplina)
+        None,  # 7
+    ]
+    # Si algún día crece _DEPORTISTAS, rellena los extra con NULL (siguen visibles).
+    while len(patron) < len(_DEPORTISTAS):
+        patron.append(None)
+    return patron[: len(_DEPORTISTAS)]
 
 
 # Datos de ejemplo (design-system.md): nombres bolivianos, CI "NNNNNNN LP".
@@ -590,19 +658,28 @@ def seed() -> None:
             role="ENTRENADOR",
             nombre="Carlos Coach",
         )
-        existing_coach = db.execute(
+        coach = db.execute(
             select(Entrenador).where(Entrenador.usuario_id == coach_user.id)
         ).scalar_one_or_none()
-        if existing_coach is None:
-            db.add(
-                Entrenador(
-                    org_id=org_id,
-                    usuario_id=coach_user.id,
-                    nombres="Carlos Coach",
-                    especialidad="Fútbol",
-                )
+        if coach is None:
+            coach = Entrenador(
+                org_id=org_id,
+                usuario_id=coach_user.id,
+                nombres="Carlos Coach",
+                especialidad="Fútbol",
             )
+            db.add(coach)
             db.flush()
+
+        # 3b) Disciplinas del catálogo GLOBAL (S2) + asignación al coach (S4).
+        # El catálogo es global (sin RLS); la puente `entrenador_disciplina` es tenant.
+        # El coach queda con "Fútbol": ve deportistas/categorías de Fútbol + los de
+        # disciplina NULL (red de seguridad), NO los de Voleibol.
+        disc_futbol = _get_or_create_disciplina(db, nombre="Fútbol")
+        disc_voley = _get_or_create_disciplina(db, nombre="Voleibol")
+        _asignar_disciplina_entrenador(
+            db, org_id=org_id, entrenador_id=coach.id, disciplina_id=disc_futbol.id
+        )
 
         # 4) Sucursales.
         centro = _get_or_create_sucursal(
@@ -641,8 +718,12 @@ def seed() -> None:
             )
 
         # 6) Deportistas + tutores + consentimiento + inscripción + ficha médica.
+        # Reparto de `disciplina_id` para ejercitar el scoping del coach (Fútbol):
+        # varios Fútbol, algunos Voleibol y AL MENOS UNO NULL (red de seguridad).
+        # Determinista por índice (estable también para el backfill idempotente abajo).
         sucursales = [centro, cala_cala]
         cat_nombres = ["Sub-10 Principiante", "Sub-14 Intermedio", "Sub-17 Avanzado"]
+        disc_por_indice = _reparto_disciplinas(disc_futbol.id, disc_voley.id)
         created = 0
         for i, (ap_pat, ap_mat, nom, ci, fnac, disc, sangre, alergias, cond) in enumerate(
             _DEPORTISTAS
@@ -665,6 +746,7 @@ def seed() -> None:
                 ci=ci,
                 fecha_nac=fnac,
                 disciplina=disc,
+                disciplina_id=disc_por_indice[i],
                 contacto_emergencia=f"Tutor de {nom} · +591 7{i}123456",
                 ficha_medica={
                     "tipo_sangre": sangre,
@@ -716,6 +798,22 @@ def seed() -> None:
             )
             created += 1
 
+        # 6b) Backfill idempotente de `disciplina_id` por CI (orden estable = índice del
+        # reparto). Cubre BD ya sembradas por versiones previas (donde los deportistas
+        # existían con disciplina_id NULL y el loop de arriba los saltó). Solo escribe si
+        # difiere del patrón deseado -> idempotente.
+        backfilled = 0
+        for i, fila in enumerate(_DEPORTISTAS):
+            ci = fila[3]
+            deseada = disc_por_indice[i]
+            dep = db.execute(
+                select(Deportista).where(Deportista.org_id == org_id, Deportista.ci == ci)
+            ).scalar_one_or_none()
+            if dep is not None and dep.disciplina_id != deseada:
+                dep.disciplina_id = deseada
+                backfilled += 1
+        db.flush()
+
         # 7) Cobranza: cuotas + estados variados para el Panel.
         db.flush()
         cob = _seed_cobranza(db, org_id)
@@ -738,8 +836,9 @@ def seed() -> None:
         db.commit()
         print(
             f"Seed OK: org='{ORG_NOMBRE}' ({org_id}), admin={ADMIN_EMAIL}/{ADMIN_PASS}, "
-            f"entrenador={COACH_EMAIL}/{COACH_PASS}, sucursales=2, "
-            f"deportistas nuevos={created} (de {len(_DEPORTISTAS)}). "
+            f"entrenador={COACH_EMAIL}/{COACH_PASS} (disciplina=Fútbol), sucursales=2, "
+            f"deportistas nuevos={created} (de {len(_DEPORTISTAS)}), "
+            f"disciplina_id backfill={backfilled}. "
             f"Cobranza: cuotas_creadas={cob['creadas']}, vencidas={cob['vencidas']}, "
             f"pagadas={cob['pagadas']}. "
             f"Asistencia: sesiones_creadas={asis['sesiones']}, marcas={asis['marcas']}. "

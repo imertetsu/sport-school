@@ -4,7 +4,7 @@
 > cada epic**. Máx ~150 líneas; poda lo viejo. Esto NO es un changelog — es un snapshot
 > de "cómo está el mundo hoy".
 
-_Última actualización: 2026-06-07 — epic **personas-y-disciplinas** (S1–S4 + componente OCR) integrado en `main` (migraciones **0015→0018**): rename alumno→deportista, catálogo GLOBAL de disciplinas (superadmin), CI único por org + recuperar-por-CI (deportista/tutor/entrenador), entrenador multi-disciplina, y escaneo OCR on-device de cédula. Migraciones **0001→0018**. · **Fixes UX entrenador** (`6d5b9c2`, sin migración): el ENTRENADOR ahora ve **solo sus disciplinas asignadas** (deportistas + asistencia), Horarios muestra la sucursal de cada clase y los nombres ya no se cortan. · **OCR cédula a 2 fotos + 2 formatos (MRZ)** (sin migración, solo frontend), **validado con cédulas reales**: CI nuevo se lee (MRZ); CI antiguo NO es OCR-able on-device → manual; parser conservador (no mete basura)._
+_Última actualización: 2026-06-07 — epic **personas-y-disciplinas** (S1–S4 + componente OCR) integrado en `main` (migraciones **0015→0018**): rename alumno→deportista, catálogo GLOBAL de disciplinas (superadmin), CI único por org + recuperar-por-CI (deportista/tutor/entrenador), entrenador multi-disciplina, y escaneo OCR on-device de cédula. Migraciones **0001→0018**. · **Fixes UX entrenador** (`6d5b9c2`, sin migración): el ENTRENADOR ahora ve **solo sus disciplinas asignadas** (deportistas + asistencia), Horarios muestra la sucursal de cada clase y los nombres ya no se cortan. · **OCR cédula a 2 fotos + 2 formatos (MRZ)** (sin migración, solo frontend), **validado con cédulas reales**: CI nuevo se lee (MRZ); CI antiguo NO es OCR-able on-device → manual; parser conservador (no mete basura). · **Campos opcionales deportista** (migración **0019**): `domicilio` + `lugar_nacimiento` (grupo sanguíneo ya en ficha médica) + **red de seguridad** en el scoping del entrenador (sin disciplinas → ve por sucursal; NULL visible). Migraciones **0001→0019**._
 
 ## Stack snapshot
 
@@ -62,14 +62,16 @@ enlace HMAC stateless), Recordatorio de deudores al entrenador (0014, `entrenado
 
 **Migraciones:** `0001→0018` (Egresos=0005, Muro=0006, Horarios=0007, Auto-registro=0008, Abonos=0009,
 Recibo=0010, WhatsApp=0011, SuperAdmin=0012, Entrenadores=0013, Deudores=0014, **rename deportista=0015**,
-**catálogo disciplinas=0016**, **CI deportista/tutor=0017**, **entrenador CI+disciplinas=0018**; Reportes y
-Sucursales/Recibo sin migración).
+**catálogo disciplinas=0016**, **CI deportista/tutor=0017**, **entrenador CI+disciplinas=0018**,
+**deportista.domicilio+lugar_nacimiento=0019**; Reportes y Sucursales/Recibo sin migración).
 
 Próximos candidatos: resto de **Fase 2** (portal passwordless OTP/WhatsApp, chatbot WhatsApp entrante, factura
 SIN, OpenBCB real; credenciales Meta reales + plantillas aprobadas). Fase 3: rendimiento, voz, analítica.
 **Deuda menor:** `JUSTIFICADO` en asistencia; **Horarios aún muestra todas las clases de la org al entrenador**
-(deportistas + asistencia ya se acotan por disciplina, ver fixes 2026-06-07); cosmético categoría duplicada
-("Sub-10 Principiante Principiante").
+(deportistas + asistencia se acotan por disciplina CON **red de seguridad**: entrenador sin disciplinas asignadas
+ve por sucursal, no vacío, y deportista/categoría con disciplina NULL es visible); el gating fino de ficha médica
+por sucursal es no-op hoy (el JWT del entrenador trae TODAS las sucursales — limitar el token es épica futura);
+cosmético categoría duplicada ("Sub-10 Principiante Principiante").
 
 ## Active flags / config
 
@@ -139,6 +141,13 @@ Remoto `imertetsu/sport-school` (push vía `http.sslBackend=schannel` por el pro
 
 ## Recent decisions
 
+- **2026-06-07 Campos opcionales deportista + red de seguridad de scoping** (migración **0019**). Se añaden
+  `domicilio` y `lugar_nacimiento` (columnas TEXT nullable; grupo sanguíneo ya vivía en `ficha_medica.tipo_sangre`);
+  OCR best-effort conservador (reverso; casi siempre manual). **Red de seguridad** en la visibilidad del ENTRENADOR
+  (refina la decisión estricta previa): si NO tiene disciplinas asignadas ve por **sucursal** (no vacío), y un
+  deportista/categoría con `disciplina_id` **NULL** es **visible** (el filtro por disciplina solo aplica cuando el
+  entrenador tiene disciplinas Y el registro tiene disciplina). El seed asigna Fútbol al coach y reparte disciplinas
+  a los deportistas (Fútbol/Voleibol/NULL) para ejercitarlo. Verificado E2E con seed (271 passed).
 - **2026-06-07 OCR cédula: 2 fotos + 2 formatos** (epic `ocr-cedula`, sin migración, solo `frontend/`). Motor
   **on-device** (Tesseract.js; la imagen nunca sale del navegador, RNF-02 — descartado cloud OCR). `DocumentScanner`
   captura **anverso + reverso** con preprocesado (grises/contraste/autorrotación OSD/banda MRZ). Parser por formato:
