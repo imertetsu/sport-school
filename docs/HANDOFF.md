@@ -45,12 +45,15 @@ enlace HMAC stateless), Recordatorio de deudores al entrenador (0014, `entrenado
   texto→ref. **`disciplina_id` (FK al catálogo) es lo canónico**; `deportista.disciplina` (texto) se conserva.
 - **Componente OCR on-device** (Tesseract.js, `DocumentScanner` + parser `parseCedula`/`mrz.ts`, spike `/dev/ocr`):
   **la imagen NO se sube ni se guarda** (privacidad RNF-02). **2 fotos (anverso+reverso) + 2 formatos**.
-  **VALIDADO con cédulas reales (2026-06-07):** el **CI nuevo SÍ** se lee (MRZ TD1 con check digits → apellidos,
-  nombres, CI, fecha). El **CI antiguo NO es OCR-able on-device** (tinta roja + fondo de microimpresión laminado;
-  Tesseract no lee CI/nombre/fecha ni con preprocesado) → **se ingresa a mano**. Parser **conservador**: ante baja
-  confianza deja el campo VACÍO en vez de rellenar basura (lista negra de palabras institucionales, fecha plausible
-  1900..hoy, CI = dígitos contiguos 6–8, NUNCA el serial "NNNNNNN NN-XX"). Solo se guarda el **número** de CI
-  (sin extensión). El escáner avisa "ingrésalos a mano" si no extrajo nada.
+  **VALIDADO con cédulas reales (foto de celular) vía MCP de navegador:** el **CI nuevo se extrae COMPLETO** —
+  CI, nombres (completos, del anverso; el MRZ trunca el 2º nombre), apellidos, fecha, y los opcionales
+  domicilio/lugar de nacimiento/grupo sanguíneo cuando están en el carnet. **Preprocesado clave:** upscale +
+  grises SIN estiramiento de contraste (el contraste garbleaba el texto fino). Parser: etiqueta + valor en línea
+  siguiente, captura multilínea (domicilio/lugar), grupo en línea siguiente, MRZ-first para número/fecha con
+  fallback al anverso. Hay **guía de captura** (📷, colapsable) en el escáner. El **CI antiguo NO es OCR-able
+  on-device** (tinta roja + fondo de seguridad) → **manual**. Parser **conservador**: ante baja confianza deja el
+  campo VACÍO (lista negra institucional, fecha plausible 1900..hoy, CI contiguo 6–8, nunca el serial). Solo se
+  guarda el **número** de CI. El escáner avisa "ingrésalos a mano" si no extrajo nada.
 - **S3 — CI único por org + recuperar-por-CI** (0017, deportista y tutor): índices únicos **PARCIALES**
   `(org_id, ci) WHERE ci IS NOT NULL`; `GET /deportistas|tutores/por-ci/{ci}` (200|404); **409** al dar de alta
   con CI duplicado; tutor recuperar→actualizar teléfono. `NuevoDeportista` cablea OCR + recuperar + select de
