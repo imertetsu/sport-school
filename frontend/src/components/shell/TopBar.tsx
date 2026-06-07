@@ -18,17 +18,15 @@ export interface TopBarProps {
 }
 
 export function TopBar({ onToggleSidebar }: TopBarProps) {
-  const { user, viewRole, setViewRole, logout } = useAuth();
+  const { user, viewRole, logout } = useAuth();
   const { accent, toggle: toggleAccent } = useAccent();
   const { sucursales, selected, setSelected } = useSucursales();
   const { query, setQuery } = useSearch();
   const navigate = useNavigate();
 
+  // Rol real del usuario (no modificable desde la UI). Se retiró el toggle de
+  // prototipo que permitía a un ENTRENADOR ponerse en vista ADMIN.
   const role: Role = viewRole ?? 'ADMIN';
-
-  function handleRoleToggle() {
-    setViewRole(role === 'ADMIN' ? 'ENTRENADOR' : 'ADMIN');
-  }
 
   function handleSearchKey(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'Enter') navigate('/alumnos');
@@ -105,18 +103,13 @@ export function TopBar({ onToggleSidebar }: TopBarProps) {
           <span aria-hidden="true">🔔</span>
         </button>
 
-        <button
-          type="button"
-          className="topbar__user"
-          onClick={handleRoleToggle}
-          title="Cambiar vista de rol (Administrador ⇄ Entrenador)"
-        >
+        <div className="topbar__user" title={`${user?.nombre ?? 'Usuario'} · ${ROLE_LABEL[role]}`}>
           <Avatar name={user?.nombre ?? 'Usuario'} size="sm" />
           <span className="topbar__user-text">
             <span className="topbar__user-name">{user?.nombre ?? 'Usuario'}</span>
             <span className="topbar__user-role">{ROLE_LABEL[role]}</span>
           </span>
-        </button>
+        </div>
 
         <button
           type="button"

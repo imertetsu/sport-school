@@ -57,10 +57,12 @@ export interface AuthState {
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
-  // Toggle visual de rol del prototipo (Administrador ⇄ Entrenador). No cambia permisos
-  // reales del backend; solo adapta la vista localmente para demo/diseño.
+  // Rol efectivo para la UI. SIEMPRE refleja el rol real del usuario autenticado
+  // (`user.role`); NO es modificable. Antes existía un toggle de prototipo
+  // (Administrador ⇄ Entrenador) que se retiró: dejaba que un ENTRENADOR se
+  // pusiera en vista ADMIN y viera ítems de menú solo-ADMIN. La verdad de
+  // permisos la impone el backend; aquí solo evitamos exponer la UI equivocada.
   viewRole: Role | null;
-  setViewRole: (role: Role) => void;
 }
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -76,7 +78,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return t;
   });
   const [user, setUser] = useState<UserOut | null>(null);
-  const [viewRole, setViewRoleState] = useState<Role | null>(null);
   const [loading, setLoading] = useState<boolean>(!!token);
 
   const claims = useMemo(() => (token ? decodeJwt(token) : null), [token]);
@@ -85,7 +86,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearToken();
     setTokenState(null);
     setUser(null);
-    setViewRoleState(null);
   }, []);
 
   // Reaccionar a 401 global desde el cliente API.
@@ -108,7 +108,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .then((u) => {
         if (!active) return;
         setUser(u);
-        setViewRoleState((prev) => prev ?? u.role);
       })
       .catch((err) => {
         if (!active) return;
@@ -131,10 +130,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(res.access_token);
     setTokenState(res.access_token);
     setUser(res.user);
-    setViewRoleState(res.user.role);
   }, []);
-
-  const setViewRole = useCallback((role: Role) => setViewRoleState(role), []);
 
   const value: AuthState = useMemo(
     () => ({
@@ -146,10 +142,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       login,
       logout,
-      viewRole: viewRole ?? user?.role ?? null,
-      setViewRole,
+      viewRole: user?.role ?? null,
     }),
-    [user, claims, token, loading, login, logout, viewRole, setViewRole],
+    [user, claims, token, loading, login, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

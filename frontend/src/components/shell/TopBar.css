@@ -152,10 +152,6 @@
   padding: 3px var(--space-3) 3px 3px;
 }
 
-.topbar__user:hover {
-  background: var(--color-surface-2);
-}
-
 .topbar__user-text {
   display: flex;
   flex-direction: column;

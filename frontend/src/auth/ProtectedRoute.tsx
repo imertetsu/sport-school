@@ -22,9 +22,10 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
-// Gate de rol para rutas gerenciales (p. ej. /reportes, solo ADMIN). Usa el
-// `viewRole` activo (respeta el toggle del prototipo). Si el rol no está
-// permitido, redirige a una pantalla "no autorizado" en vez de mostrar datos.
+// Gate de rol para rutas gerenciales (p. ej. /reportes, solo ADMIN). Gatea
+// sobre el rol REAL del usuario autenticado (`role`), no sobre una vista
+// modificable. Si el rol no está permitido, redirige a "no autorizado" en
+// vez de montar la pantalla.
 export function RoleRoute({
   allow,
   children,
@@ -32,7 +33,7 @@ export function RoleRoute({
   allow: Role[];
   children: ReactNode;
 }) {
-  const { viewRole, loading } = useAuth();
+  const { role, loading } = useAuth();
 
   if (loading) {
     return (
@@ -42,7 +43,7 @@ export function RoleRoute({
     );
   }
 
-  if (!viewRole || !allow.includes(viewRole)) {
+  if (!role || !allow.includes(role)) {
     return <Navigate to="/no-autorizado" replace />;
   }
 
