@@ -24,6 +24,9 @@ import { PlataformaGuard, PlataformaShell } from '@/features/plataforma/Platafor
 import { PlataformaLogin } from '@/features/plataforma/PlataformaLogin';
 import { Escuelas } from '@/features/plataforma/Escuelas';
 import { SuperAdmins } from '@/features/plataforma/SuperAdmins';
+// Herramienta de DEV (spike OCR de cédula, STANDALONE): ruta suelta sin sesión
+// ni nav. No forma parte del producto; sirve para validar precisión del OCR.
+import { OcrSpike } from '@/features/dev/OcrSpike';
 
 export default function App() {
   return (
@@ -119,6 +122,9 @@ export default function App() {
               </Route>
             </Route>
           </Route>
+
+          {/* DEV: spike OCR standalone. Sin guard/nav; herramienta de validación. */}
+          <Route path="/dev/ocr" element={<OcrSpike />} />
 
           <Route path="*" element={<Navigate to="/panel" replace />} />
         </Routes>

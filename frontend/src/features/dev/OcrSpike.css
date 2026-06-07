@@ -1,0 +1,110 @@
+.ocr-spike {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.ocr-spike__head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.ocr-spike__title {
+  font-size: var(--fs-2xl);
+}
+
+.ocr-spike__subtitle {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--fs-sm);
+}
+
+.ocr-spike__scanner {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+}
+
+.ocr-spike__cols {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.ocr-spike__panel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.ocr-spike__panel-title {
+  font-size: var(--fs-lg);
+}
+
+.ocr-spike__hint {
+  margin: 0;
+  color: var(--color-text-subtle);
+  font-size: var(--fs-sm);
+}
+
+.ocr-spike__fields {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.ocr-spike__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.ocr-spike__field dt {
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.ocr-spike__field dd {
+  margin: 0;
+  font-size: var(--fs-md);
+  font-weight: 600;
+}
+
+.ocr-spike__empty {
+  color: var(--color-text-subtle);
+  font-weight: 400;
+}
+
+.ocr-spike__raw {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  font-size: var(--fs-xs);
+  line-height: 1.6;
+  color: var(--color-text);
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  max-height: 420px;
+  overflow: auto;
+}
+
+@media (max-width: 720px) {
+  .ocr-spike__cols {
+    grid-template-columns: 1fr;
+  }
+}
