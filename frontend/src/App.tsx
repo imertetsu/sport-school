@@ -24,6 +24,7 @@ import { PlataformaGuard, PlataformaShell } from '@/features/plataforma/Platafor
 import { PlataformaLogin } from '@/features/plataforma/PlataformaLogin';
 import { Escuelas } from '@/features/plataforma/Escuelas';
 import { SuperAdmins } from '@/features/plataforma/SuperAdmins';
+import { Disciplinas } from '@/features/plataforma/Disciplinas';
 
 export default function App() {
   return (
@@ -116,6 +117,7 @@ export default function App() {
               <Route element={<PlataformaShell />}>
                 <Route path="escuelas" element={<Escuelas />} />
                 <Route path="admins" element={<SuperAdmins />} />
+                <Route path="disciplinas" element={<Disciplinas />} />
               </Route>
             </Route>
           </Route>

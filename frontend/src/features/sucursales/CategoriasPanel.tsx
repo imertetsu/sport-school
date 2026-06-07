@@ -75,6 +75,9 @@ export function CategoriasPanel({ sucursal }: CategoriasPanelProps) {
       nombre: c.nombre,
       nivel: c.nivel,
       rango_edad: c.rango_edad,
+      // Precarga la disciplina (S2): prefiere disciplina_id; si solo viene la ref
+      // embebida, usa su id. null/undefined => "— Sin disciplina —".
+      disciplina_id: c.disciplina_id ?? c.disciplina?.id ?? null,
     });
     setModalOpen(true);
   }

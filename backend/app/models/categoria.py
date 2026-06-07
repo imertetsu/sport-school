@@ -20,3 +20,10 @@ class Categoria(UUIDPkMixin, OrgScoped, TimestampMixin, Base):
     nombre: Mapped[str] = mapped_column(String, nullable=False)
     nivel: Mapped[str] = mapped_column(String, nullable=False)  # PRINCIPIANTE|INTERMEDIO|AVANZADO
     rango_edad: Mapped[str | None] = mapped_column(String, nullable=True)  # ej "Sub-14"
+    # FK al catálogo GLOBAL de disciplinas (epic Disciplinas, S2). NULL = sin asignar.
+    # ON DELETE RESTRICT (default): una disciplina con categorías no se hard-deletea
+    # (el retiro es soft, `activo=false`). El índice `ix_categoria_disciplina_id` lo
+    # crea la migración 0016.
+    disciplina_id: Mapped[uuid.UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("disciplina.id"), nullable=True, index=True
+    )

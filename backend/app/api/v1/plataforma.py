@@ -21,6 +21,11 @@ from sqlalchemy.orm import Session
 from app.core.db import get_db
 from app.core.security import create_platform_token
 from app.core.tenant import CurrentUser, require_superadmin
+from app.schemas.disciplina import (
+    DisciplinaAdminOut,
+    DisciplinaCreate,
+    DisciplinaUpdate,
+)
 from app.schemas.plataforma import (
     AdminRef,
     CrearEscuelaIn,
@@ -35,6 +40,7 @@ from app.schemas.plataforma import (
     SuperAdminEstadoOut,
     SuperAdminItem,
 )
+from app.services import disciplina as disciplina_svc
 from app.services import plataforma as svc
 
 router = APIRouter(prefix="/plataforma", tags=["plataforma"])
@@ -158,3 +164,46 @@ def desactivar_admin(
     """Desactiva un super admin (idempotente). 404 si no existe; 409 si dejaría 0 activos."""
     admin = svc.desactivar_admin(db, admin_id=admin_id)
     return SuperAdminEstadoOut(id=admin.id, activo=admin.activo)
+
+
+# --------------------------------------------------------------------------- #
+# Catálogo GLOBAL de disciplinas (epic Disciplinas, S2)
+#
+# Tabla `disciplina` SIN RLS (global): el CRUD lo ejerce el superadmin. El retiro es
+# soft-delete (`PUT activo=false`), nunca hard delete (FK RESTRICT desde categoría).
+# --------------------------------------------------------------------------- #
+@router.get("/disciplinas", response_model=list[DisciplinaAdminOut])
+def listar_disciplinas(
+    _user: CurrentUser = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> list[DisciplinaAdminOut]:
+    """Lista TODAS las disciplinas (activas + inactivas), ordenadas por nombre."""
+    return [DisciplinaAdminOut.model_validate(d) for d in disciplina_svc.listar_disciplinas(db)]
+
+
+@router.post("/disciplinas", response_model=DisciplinaAdminOut, status_code=status.HTTP_201_CREATED)
+def crear_disciplina(
+    body: DisciplinaCreate,
+    _user: CurrentUser = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> DisciplinaAdminOut:
+    """Crea una disciplina. 409 si `lower(nombre)` ya existe (case-insensitive)."""
+    disc = disciplina_svc.crear_disciplina(db, nombre=body.nombre)
+    return DisciplinaAdminOut.model_validate(disc)
+
+
+@router.put("/disciplinas/{disciplina_id}", response_model=DisciplinaAdminOut)
+def actualizar_disciplina(
+    disciplina_id: uuid.UUID,
+    body: DisciplinaUpdate,
+    _user: CurrentUser = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> DisciplinaAdminOut:
+    """Renombra y/o (des)activa una disciplina. 404 si no existe; 409 colisión de nombre.
+
+    Retiro = soft-delete (`activo=false`); NO hay hard delete.
+    """
+    disc = disciplina_svc.actualizar_disciplina(
+        db, disciplina_id=disciplina_id, nombre=body.nombre, activo=body.activo
+    )
+    return DisciplinaAdminOut.model_validate(disc)

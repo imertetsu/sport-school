@@ -8,6 +8,7 @@ from app.api.v1 import (
     asistencia,
     auth,
     avisos,
+    catalogo,
     categorias,
     cobranza,
     deportistas,
@@ -26,6 +27,7 @@ from app.api.v1.webhooks import whatsapp as whatsapp_webhook
 api_router = APIRouter()
 api_router.include_router(auth.router)
 api_router.include_router(sucursales.router)
+api_router.include_router(catalogo.router)
 api_router.include_router(categorias.router)
 api_router.include_router(deportistas.router)
 api_router.include_router(cobranza.router)

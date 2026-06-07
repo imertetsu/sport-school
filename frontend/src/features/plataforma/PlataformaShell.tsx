@@ -15,8 +15,8 @@ export function PlataformaGuard() {
   return <Outlet />;
 }
 
-// Layout mínimo de la consola: cabecera con marca + tabs Escuelas/Super Admins +
-// botón salir. No usa el Sidebar de escuela (son aplicaciones separadas).
+// Layout mínimo de la consola: cabecera con marca + tabs Escuelas/Super Admins/
+// Disciplinas + botón salir. No usa el Sidebar de escuela (son apps separadas).
 export function PlataformaShell() {
   const { admin, logout } = usePlatformAuth();
 
@@ -56,6 +56,14 @@ export function PlataformaShell() {
           }
         >
           Super Admins
+        </NavLink>
+        <NavLink
+          to="/plataforma/disciplinas"
+          className={({ isActive }) =>
+            `plataforma__tab${isActive ? ' plataforma__tab--active' : ''}`
+          }
+        >
+          Disciplinas
         </NavLink>
       </nav>
 

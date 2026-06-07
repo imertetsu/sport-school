@@ -39,6 +39,11 @@ export interface Categoria {
   nivel: Nivel;
   rango_edad: string;
   sucursal_id: string;
+  // Disciplinas (S2): FK opcional al catálogo global + ref embebida {id,nombre}.
+  // El backend la sirve al leer la categoría; null si la categoría no tiene
+  // disciplina asignada.
+  disciplina_id?: string | null;
+  disciplina?: DisciplinaRef | null;
 }
 
 // Forma reducida de categoría embebida en deportista (sin rango_edad/sucursal_id).
@@ -831,6 +836,42 @@ export interface SuperAdminActivoOut {
 }
 
 // ============================================================
+// S2 · Disciplinas (catálogo GLOBAL, sin org_id). CRUD por SUPERADMIN desde la
+// consola /plataforma (platformApi). Lectura para escuela (admin/entrenador):
+// solo catálogo, cero datos de tenant. Espejo EXACTO del CONTRATO 2 de
+// docs/specs/disciplinas.md; no inventar campos: si falta algo, es hand-off a
+// backend-dev.
+// ============================================================
+
+// Forma reducida para selects de escuela (GET /catalogo/disciplinas) y como ref
+// embebida en Categoria/Deportista. Cero datos de tenant.
+export interface DisciplinaRef {
+  id: string;
+  nombre: string;
+}
+
+// --- GET /plataforma/disciplinas -> item de lista (activas + inactivas) ---
+export interface Disciplina {
+  id: string;
+  nombre: string;
+  activo: boolean;
+  created_at: string; // timestamptz
+}
+
+// --- POST /plataforma/disciplinas (body) -> 201. 409 si lower(nombre) ya existe. ---
+export interface DisciplinaCreate {
+  nombre: string;
+}
+
+// --- PUT /plataforma/disciplinas/{id} (body) ---
+// Renombrar y/o cambiar activo (soft-delete = activo:false). 409 colisión,
+// 404 no existe. Ambos opcionales.
+export interface DisciplinaUpdate {
+  nombre?: string;
+  activo?: boolean;
+}
+
+// ============================================================
 // Epic B · Gestión de Entrenadores (espejo EXACTO del contrato fijado por main).
 // Listar: cualquier rol autenticado (pobla selectores). Alta/edición: SOLO ADMIN
 // (el backend responde 403 a ENTRENADOR). No inventar campos: si falta algo, es
@@ -933,6 +974,9 @@ export interface CategoriaCreate {
   nivel: Nivel;
   rango_edad?: string | null;
   sucursal_id: string;
+  // Disciplinas (S2): opcional. El backend valida que exista y esté activa
+  // (404/422). null/omitido => categoría sin disciplina.
+  disciplina_id?: string | null;
 }
 
 // --- PUT /categorias/{id} (ADMIN) -> CategoriaOut ---
@@ -941,4 +985,7 @@ export interface CategoriaUpdate {
   nombre: string;
   nivel: Nivel;
   rango_edad?: string | null;
+  // Disciplinas (S2): opcional. null limpia la disciplina; omitirlo NO la toca
+  // según el contrato del backend (validar existencia/activa => 404/422).
+  disciplina_id?: string | null;
 }
