@@ -24,6 +24,9 @@ const CAMPOS: { key: keyof CedulaFields; label: string }[] = [
   { key: 'apellidoMaterno', label: 'Apellido materno' },
   { key: 'fechaNacimiento', label: 'Fecha de nacimiento (ISO)' },
   { key: 'fechaNacimientoRaw', label: 'Fecha de nacimiento (cruda)' },
+  { key: 'grupoSanguineo', label: 'Grupo sanguíneo (opcional)' },
+  { key: 'lugarNacimiento', label: 'Lugar de nacimiento (opcional)' },
+  { key: 'domicilio', label: 'Domicilio (opcional)' },
 ];
 
 export function OcrSpike() {

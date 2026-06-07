@@ -556,24 +556,50 @@ function extraerNombreAntiguo(reverso: string): Partial<CedulaFields> {
   return out;
 }
 
+/** Quita iconos/basura OCR del borde izquierdo (del QR/huella del reverso) y recorta. */
+function limpiarReverso(s: string): string {
+  return s
+    .replace(/^(?:\s*\[[^\]]*\]\s*)+/, '') // iconos tipo "[m] [m]"
+    .replace(/^[\s|\]>}*."'`,;:.-]+/, '') // signos sueltos al inicio
+    .trim();
+}
+
+/** ¿Tiene al menos una palabra de letras reales (no solo dígitos/puntuación)? */
+function tieneLetras(s: string): boolean {
+  return /[A-Za-zÁÉÍÓÚÑÜáéíóúñü]{2,}/.test(s);
+}
+
+// Palabras que marcan el INICIO de OTRO campo del reverso: paran la captura
+// multilínea para no tragarse el valor del campo siguiente.
+// Substrings distintivos del inicio de OTRO campo del reverso (sin \b: son
+// prefijos como "ocupaci"/"grupo sangu" dentro de palabras más largas).
+const OTRO_CAMPO_REVERSO =
+  /(domicilio|ocupaci|profesi|estado civil|grupo sangu|nacionalidad|firma del|fecha de|expira|emisi)/i;
+
 /**
- * Toma el valor que sigue a una etiqueta dentro de una línea. Acepta que el OCR
- * pierda los dos puntos (busca etiqueta + valor en la misma línea). Si la etiqueta
- * queda sola, devuelve el valor de la línea siguiente. Devuelve `''` si no hay
- * valor claro.
+ * Valor etiquetado que puede ocupar VARIAS líneas (p.ej. domicilio o lugar de
+ * nacimiento van en 2 renglones). Junta el resto de la línea de la etiqueta + hasta
+ * `max` líneas de continuación, parando ante una MRZ o el inicio de otro campo.
  */
-function valorTrasEtiqueta(
-  lineas: string[],
-  i: number,
-  etiquetaRe: RegExp,
-): string {
+function valorMultilinea(lineas: string[], i: number, etiquetaRe: RegExp, max = 2): string {
   const m = lineas[i].match(etiquetaRe);
   if (!m) return '';
-  // Lo que sigue a la etiqueta en la misma línea.
-  let valor = limpiarValor(lineas[i].slice(m.index! + m[0].length));
-  // Etiqueta sola → toma la siguiente línea (si existe).
-  if (!valor && lineas[i + 1]) valor = limpiarValor(lineas[i + 1]);
-  return valor;
+  const partes: string[] = [];
+  const resto = limpiarReverso(lineas[i].slice(m.index! + m[0].length));
+  if (tieneLetras(resto)) partes.push(resto);
+  for (let k = 1; k <= max + 1 && partes.length < max; k++) {
+    const ln = lineas[i + k];
+    if (!ln) break;
+    if (/<<|<{3,}/.test(ln) || /^[I<][<A-Z0-9]{6,}/.test(ln.replace(/\s/g, ''))) break; // MRZ
+    if (OTRO_CAMPO_REVERSO.test(deburr(ln))) break; // empezó otro campo
+    const v = limpiarReverso(ln);
+    if (tieneLetras(v)) partes.push(v);
+    else if (partes.length) break;
+  }
+  return partes
+    .join(' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
 }
 
 /**
@@ -594,23 +620,19 @@ function extraerDatosReverso(reverso: string): Partial<CedulaFields> {
   for (let i = 0; i < lineas.length; i++) {
     const norm = deburr(lineas[i]).toLowerCase();
 
-    // LUGAR DE NACIMIENTO — comprobar ANTES que "domicilio" no aplica aquí; ojo:
-    // debe ir antes de un posible match de "nacimiento" en otros caminos.
-    if (out.lugarNacimiento == null && /\blugar de nacimiento\b/.test(norm)) {
-      const valor = valorTrasEtiqueta(lineas, i, /lugar de nacimiento\s*:?\s*/i);
-      // Conservador: al menos 2 letras reales (descarta ":" suelto o ruido).
-      if (valor && /[A-Za-zÁÉÍÓÚÑÜáéíóúñü]{2,}/.test(valor)) {
-        out.lugarNacimiento = valor;
-      }
+    // LUGAR DE NACIMIENTO — la etiqueta suele garblearse en foto real ("lugar de"
+    // se pierde y queda "...NACIMIENTO"). Aceptamos "nacimiento" salvo que sea la
+    // línea de FECHA de nacimiento (esa no lleva un lugar). El valor (depto-prov-mun)
+    // puede ocupar 2 renglones.
+    if (out.lugarNacimiento == null && /\bnacimiento\b/.test(norm) && !/fecha/.test(norm)) {
+      const valor = valorMultilinea(lineas, i, /(?:lugar de\s+)?nac\w*\s*:?\s*/i, 2);
+      if (tieneLetras(valor)) out.lugarNacimiento = valor;
       continue;
     }
 
     if (out.domicilio == null && /\bdomicilio\b/.test(norm)) {
-      const valor = valorTrasEtiqueta(lineas, i, /domicilio\s*:?\s*/i);
-      // Conservador: al menos 2 letras reales (un domicilio plausible tiene texto).
-      if (valor && /[A-Za-zÁÉÍÓÚÑÜáéíóúñü]{2,}/.test(valor)) {
-        out.domicilio = valor;
-      }
+      const valor = valorMultilinea(lineas, i, /domicilio\s*:?\s*/i, 2);
+      if (tieneLetras(valor)) out.domicilio = valor;
       continue;
     }
   }
@@ -633,15 +655,16 @@ function extraerGrupoSanguineo(reverso: string): string | undefined {
     .map((l) => l.trim())
     .filter(Boolean);
 
-  for (const linea of lineas) {
-    const norm = deburr(linea).toLowerCase();
+  for (let i = 0; i < lineas.length; i++) {
+    const norm = deburr(lineas[i]).toLowerCase();
     if (!/\bgrupo sanguineo\b|\brh\b|\bgrupo sanguinio\b/.test(norm)) continue;
-    // Grupo (A|B|AB|O) seguido opcionalmente del factor (+, -, "rh+", "positivo"…).
-    const m = linea.match(/\b(AB|A|B|O)\s*(?:RH)?\s*([+-])?/i);
-    if (!m) continue;
-    const grupo = m[1].toUpperCase();
-    const signo = m[2] ?? '';
-    return `${grupo}${signo}`;
+    // El valor ("A RH+") puede estar en la MISMA línea de la etiqueta o en la
+    // SIGUIENTE (en el CI nuevo la etiqueta va arriba y el valor debajo). Exigimos
+    // el factor +/- para no confundir una "A"/"O" suelta de otra palabra.
+    for (const cand of [lineas[i], lineas[i + 1] ?? '']) {
+      const m = cand.match(/\b(AB|A|B|O)\s*(?:RH)?\s*([+-])/i);
+      if (m) return `${m[1].toUpperCase()}${m[2]}`;
+    }
   }
   return undefined;
 }
@@ -713,6 +736,59 @@ function rellenarOpcionalesReverso(out: CedulaFields, r: string, a: string): voi
 }
 
 /**
+ * Nombres y apellidos del ANVERSO del CI NUEVO desde sus etiquetas ("NOMBRES" /
+ * "APELLIDOS"), con el valor en la MISMA línea o en la SIGUIENTE (el carnet nuevo
+ * los imprime debajo de la etiqueta). Es MÁS completo que la MRZ —que trunca el 2º
+ * nombre—, por eso se prefiere para el nombre. Conservador: valida con `pareceNombre`.
+ */
+/** Recorta basura no-alfabética en los BORDES (el OCR antepone `"`, `”`, `-`…). */
+function recortarNoLetras(s: string): string {
+  const L = 'A-Za-zÁÉÍÓÚÑÜáéíóúñü';
+  return s
+    .replace(new RegExp(`^[^${L}]+`), '')
+    .replace(new RegExp(`[^${L}]+$`), '')
+    .trim();
+}
+
+function parseNombresAnverso(anverso: string): Partial<CedulaFields> {
+  const out: Partial<CedulaFields> = {};
+  if (!anverso) return out;
+  const lineas = anverso
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  // El valor puede quedar en lo que sigue a la etiqueta o en las 1-2 líneas
+  // siguientes (el carnet lo imprime debajo y el OCR deja basura tras la etiqueta).
+  // Tomamos el PRIMER candidato que parezca un nombre real.
+  const tomar = (i: number, re: RegExp): string => {
+    const m = lineas[i].match(re);
+    if (!m) return '';
+    const cands = [lineas[i].slice(m.index! + m[0].length), lineas[i + 1] ?? '', lineas[i + 2] ?? ''];
+    for (const c of cands) {
+      const v = recortarNoLetras(limpiarValor(c));
+      if (v && pareceNombre(v)) return v;
+    }
+    return '';
+  };
+  for (let i = 0; i < lineas.length; i++) {
+    const norm = deburr(lineas[i]).toLowerCase();
+    if (out.nombres == null && /\bnombres?\b/.test(norm) && !/apellido/.test(norm)) {
+      const v = tomar(i, /nombres?\s*\$?\s*:?\s*/i);
+      if (v) out.nombres = v;
+    }
+    if (out.apellidoPaterno == null && /\bapellidos?\b/.test(norm)) {
+      const v = tomar(i, /apellidos?\s*:?\s*/i);
+      if (v) {
+        const partes = v.split(/\s+/);
+        out.apellidoPaterno = partes[0];
+        if (partes.length > 1) out.apellidoMaterno = partes.slice(1).join(' ');
+      }
+    }
+  }
+  return out;
+}
+
+/**
  * Orquesta la detección de formato y el merge de ambos lados. Es la entrada que
  * usa `DocumentScanner`. Reglas:
  *  - CI NUEVO: MRZ-first (más fiable por sus check digits); el anverso/etiquetas
@@ -734,11 +810,12 @@ export function mergeLados(anverso: string, reverso: string): CedulaFields {
   const formato = mrz ? 'nuevo' : detectarFormato(combinado);
 
   if (formato === 'nuevo') {
-    // MRZ-first.
+    // NOMBRE primero desde las etiquetas del anverso (más completo que la MRZ, que
+    // trunca el 2º nombre). Luego MRZ (número/fecha validados por check digits, y
+    // nombre si el anverso no se leyó). Luego anverso/combinado para huecos.
+    rellenarVacios(out, parseNombresAnverso(a));
     if (mrz) rellenarVacios(out, mrz);
-    // Anverso del nuevo: etiquetas "NOMBRES/APELLIDOS/N°/FECHA DE NACIMIENTO".
     rellenarVacios(out, parseCedula(a));
-    // Como último recurso, cualquier campo del texto combinado.
     rellenarVacios(out, parseCedula(combinado));
     // Opcionales etiquetados del reverso (conservador).
     rellenarOpcionalesReverso(out, r, a);
