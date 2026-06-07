@@ -56,6 +56,7 @@ import type {
   SucursalCreate,
   SucursalUpdate,
   TokenOut,
+  TutorByCi,
   UserOut,
 } from './types';
 
@@ -114,6 +115,14 @@ export class ApiError extends Error {
 
   get isValidation(): boolean {
     return this.status === 422;
+  }
+
+  get isConflict(): boolean {
+    return this.status === 409;
+  }
+
+  get isNotFound(): boolean {
+    return this.status === 404;
   }
 }
 
@@ -260,6 +269,19 @@ export const api = {
   },
   crearDeportista(data: DeportistaCreate, signal?: AbortSignal): Promise<DeportistaCreated> {
     return request<DeportistaCreated>('/deportistas', { method: 'POST', body: data, signal });
+  },
+  // GET /deportistas/por-ci/{ci} -> detalle del deportista (200) o 404 si no existe
+  // en la org. Recuperar-por-CI (S3): al ingresar/escanear el CI, precarga el
+  // registro anterior y evita duplicados (el backend además da 409 en el alta).
+  deportistaPorCi(ci: string, signal?: AbortSignal): Promise<DeportistaDetail> {
+    return request<DeportistaDetail>(`/deportistas/por-ci/${encodeURIComponent(ci)}`, { signal });
+  },
+  // GET /tutores/por-ci/{ci} -> tutor (200) o 404 si no existe en la org.
+  // Recuperar-por-CI del tutor (S3): el CI del tutor es OPCIONAL; si existe,
+  // recupera el tutor para reutilizarlo y permitir actualizar su teléfono. Devuelve
+  // solo los datos propios del tutor (sin parentesco/responsable_pago del vínculo).
+  tutorPorCi(ci: string, signal?: AbortSignal): Promise<TutorByCi> {
+    return request<TutorByCi>(`/tutores/por-ci/${encodeURIComponent(ci)}`, { signal });
   },
 
   // ---- Cobranza (C4) ----

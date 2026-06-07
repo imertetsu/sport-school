@@ -134,6 +134,17 @@ export interface DeportistaDetail {
   ficha_medica: FichaMedica | null;
 }
 
+// --- GET /tutores/por-ci/{ci} (recuperar-por-CI del tutor; S3) ---
+// Solo los datos propios del tutor (sin parentesco/responsable_pago, que viven en
+// el puente deportista_tutor y dependen del vínculo, no del tutor). 404 si no hay
+// tutor con ese CI en la org. Mirror EXACTO de TutorByCiOut del backend.
+export interface TutorByCi {
+  id: string;
+  nombres: string;
+  telefono: string | null;
+  ci: string | null;
+}
+
 // ---- C5: POST /deportistas (DeportistaCreate) ----
 export interface TutorCreate {
   nombres: string;

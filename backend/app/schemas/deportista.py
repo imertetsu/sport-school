@@ -63,6 +63,21 @@ class TutorOut(BaseModel):
     responsable_pago: bool = False
 
 
+class TutorByCiOut(BaseModel):
+    """Tutor recuperado por CI (`GET /tutores/por-ci/{ci}`, S3).
+
+    Solo los datos propios del tutor (sin `parentesco`/`responsable_pago`, que viven
+    en el puente `deportista_tutor` y dependen del vínculo, no del tutor en sí).
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    nombres: str
+    telefono: str | None = None
+    ci: str | None = None
+
+
 class ConsentimientoIn(BaseModel):
     """Consentimiento obligatorio en el alta (C5)."""
 
