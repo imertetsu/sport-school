@@ -165,6 +165,10 @@ def test_multiples_ci_null_permitidos(app_engine: Engine, ci_fixture: dict) -> N
             org_id=org_a,
         )
         db.commit()
+        # Re-fijar el contexto: `db.commit()` cerró la transacción y
+        # `set_config(..., true)` es transaction-local -> sin re-fijar, la query de
+        # verificación cae en RLS fail-closed (0 filas).
+        _set_org(db, org_a)
         # Ambos persistieron (sin IntegrityError).
         total = db.execute(
             text("SELECT count(*) FROM deportista WHERE org_id = :o AND ci IS NULL"),
@@ -252,6 +256,9 @@ def test_tutor_recuperado_por_ci_actualiza_telefono(app_engine: Engine, ci_fixtu
             org_id=org_a,
         )
         db.commit()
+        # El commit resetea `app.current_org` (set_config local); re-fijar para que el
+        # lookup no caiga en RLS fail-closed.
+        _set_org(db, org_a)
         tutor_id_1 = svc.buscar_tutor_por_ci(db, tutor_ci).id  # type: ignore[union-attr]
 
     # Segundo deportista con el MISMO tutor_ci pero teléfono NUEVO -> reusa el tutor
@@ -313,6 +320,8 @@ def test_tutor_sin_ci_se_crea_normal(app_engine: Engine, ci_fixture: dict) -> No
             org_id=org_a,
         )
         db.commit()
+        # Re-fijar contexto tras commit (set_config local -> sino RLS fail-closed -> 0).
+        _set_org(db, org_a)
         n = db.execute(
             text("SELECT count(*) FROM tutor WHERE org_id = :o AND ci IS NULL"),
             {"o": str(org_a)},
