@@ -145,3 +145,10 @@
   border-radius: var(--radius-sm);
   padding: var(--space-3);
 }
+
+/* Hint discreto cuando el OCR no extrajo nada (p.ej. CI antiguo ilegible). */
+.doc-scanner__nodata {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--color-text-muted);
+}
