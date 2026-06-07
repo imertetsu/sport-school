@@ -25,6 +25,7 @@ from app.core.db import get_db
 from app.core.tenant import CurrentUser, require_role, set_tenant_context
 from app.models.entrenador import Entrenador
 from app.models.usuario import Usuario
+from app.schemas.disciplina import DisciplinaRef
 from app.schemas.entrenador import (
     EntrenadorCreate,
     EntrenadorOut,
@@ -42,10 +43,12 @@ router = APIRouter(prefix="/entrenadores", tags=["entrenadores"])
 def _to_out(
     row: Row[tuple[Entrenador, Usuario]],
     sucursal_ids: list[uuid.UUID] | None = None,
+    disciplinas: list[DisciplinaRef] | None = None,
 ) -> EntrenadorOut:
     """Mapea una fila `(Entrenador, Usuario)` del join a `EntrenadorOut`.
 
-    `sucursal_ids` se pasa ya resuelto (query agregada, sin N+1) por el caller.
+    `sucursal_ids` y `disciplinas` (refs al catálogo, {id,nombre}) se pasan ya
+    resueltos (query agregada, sin N+1) por el caller.
     """
     entrenador, usuario = row
     return EntrenadorOut(
@@ -53,9 +56,10 @@ def _to_out(
         usuario_id=entrenador.usuario_id,
         nombres=entrenador.nombres,
         email=usuario.email,
+        ci=entrenador.ci,
         especialidad=entrenador.especialidad,
         telefono=entrenador.telefono,
-        disciplinas=entrenador.disciplinas,
+        disciplinas=disciplinas or [],
         activo=usuario.activo,
         sucursal_ids=sucursal_ids or [],
     )
@@ -75,9 +79,13 @@ def listar_entrenadores(
     `?solo_activos=true` excluye los dados de baja (`usuario.activo=false`).
     """
     filas = svc.listar(db, solo_activos=solo_activos)
-    # Una sola query para todas las sucursales (evita N+1 al poblar `sucursal_ids`).
-    mapa = svc.sucursal_ids_por_entrenador(db, [row[0].id for row in filas])
-    return [_to_out(row, mapa.get(row[0].id, [])) for row in filas]
+    ids = [row[0].id for row in filas]
+    # Dos queries agregadas (evitan N+1) para poblar `sucursal_ids` y `disciplinas`.
+    mapa_suc = svc.sucursal_ids_por_entrenador(db, ids)
+    mapa_disc = svc.disciplinas_por_entrenador(db, ids)
+    return [
+        _to_out(row, mapa_suc.get(row[0].id, []), mapa_disc.get(row[0].id, [])) for row in filas
+    ]
 
 
 # --------------------------------------------------------------------------- #
@@ -92,12 +100,16 @@ def crear_entrenador(
     """Crea `usuario`(ENTRENADOR, activo) + perfil en una transacción -> 201.
 
     Email ya en uso (en esta org **o** en otra, vía el GOTCHA de RLS) -> 409.
+    CI ya en uso por otro entrenador de la org -> 409 (no se crea el login, D2).
+    Disciplina inexistente/inactiva -> 404/422 (propagado por el servicio).
     """
     try:
         row = svc.crear(db, body, org_id=uuid.UUID(user.org_id))
     except svc.EmailEnUso as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    return _to_out(row, svc.sucursal_ids_de(db, row[0].id))
+    except svc.CiEnUso as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return _to_out(row, svc.sucursal_ids_de(db, row[0].id), svc.disciplina_refs_de(db, row[0].id))
 
 
 # --------------------------------------------------------------------------- #
@@ -110,9 +122,10 @@ def editar_entrenador(
     _user: CurrentUser = Depends(require_role("ADMIN")),
     db: Session = Depends(get_db),
 ) -> EntrenadorOut:
-    """Edita nombres/especialidad/disciplinas/activo/password (solo lo provisto).
+    """Edita nombres/ci/especialidad/telefono/disciplina_ids/activo/password (solo lo provisto).
 
-    `activo=false` da de baja, `activo=true` reactiva. Inexistente -> 404.
+    `activo=false` da de baja, `activo=true` reactiva. Inexistente -> 404. CI en uso por
+    otro entrenador -> 409. Disciplina inexistente/inactiva -> 404/422.
     """
     try:
         row = svc.editar(db, entrenador_id, body)
@@ -120,7 +133,9 @@ def editar_entrenador(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except svc.EmailEnUso as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    return _to_out(row, svc.sucursal_ids_de(db, row[0].id))
+    except svc.CiEnUso as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return _to_out(row, svc.sucursal_ids_de(db, row[0].id), svc.disciplina_refs_de(db, row[0].id))
 
 
 # --------------------------------------------------------------------------- #

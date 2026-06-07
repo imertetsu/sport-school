@@ -125,51 +125,9 @@
   padding-top: var(--space-2);
 }
 
-/* --- Entrada multi-tag de disciplinas --- */
-.tag-input {
-  display: flex;
-  gap: var(--space-2);
-}
-
-.tag-input__add {
-  flex-shrink: 0;
-}
-
-.tag-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin-top: var(--space-2);
-}
-
-.tag-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: 2px var(--space-2);
-  border-radius: var(--radius-pill);
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  background: var(--accent-soft);
-  border: 1px solid var(--accent-soft-border);
-  color: var(--accent-text);
-}
-
-.tag-chip__remove {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  font-size: var(--fs-sm);
-  line-height: 1;
-  padding: 0;
-}
-
-.tag-chip__remove:hover {
-  color: var(--state-overdue-text);
+/* --- Escáner OCR de cédula (prellena CI/nombres) en el formulario --- */
+.entrenadores__scan {
+  margin-top: calc(-1 * var(--space-2));
 }
 
 /* Toggle activo/inactivo en edición */

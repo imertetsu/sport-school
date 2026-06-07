@@ -18,6 +18,8 @@ from decimal import Decimal
 
 from pydantic import BaseModel, EmailStr, Field
 
+from app.schemas.disciplina import DisciplinaRef
+
 
 class EntrenadorCreate(BaseModel):
     """Body de `POST /entrenadores` (solo ADMIN).
@@ -32,9 +34,13 @@ class EntrenadorCreate(BaseModel):
     nombres: str = Field(min_length=1)
     email: EmailStr
     password: str = Field(min_length=8)
+    # CI (documento de identidad), único por org cuando no es NULL (S4). `None` = sin CI.
+    ci: str | None = None
     especialidad: str | None = None
     telefono: str | None = None
-    disciplinas: list[str] = Field(default_factory=list)
+    # IDs del catálogo GLOBAL de disciplinas (S2) a enlazar (M:N). Reemplaza el antiguo
+    # `disciplinas: list[str]` (texto libre). Vacío = sin disciplinas asignadas.
+    disciplina_ids: list[uuid.UUID] = Field(default_factory=list)
     sucursal_ids: list[uuid.UUID] = Field(default_factory=list)
 
 
@@ -50,9 +56,13 @@ class EntrenadorUpdate(BaseModel):
     """
 
     nombres: str | None = Field(default=None, min_length=1)
+    # CI: `None` = no tocar; string = set + valida unicidad por org (409 si colisiona).
+    ci: str | None = None
     especialidad: str | None = None
     telefono: str | None = None
-    disciplinas: list[str] | None = None
+    # `disciplina_ids` (S2, semántica del CONTRATO 3): `None` = no tocar; `[]` = limpiar
+    # el set; lista = **REEMPLAZA** el set de disciplinas enlazadas.
+    disciplina_ids: list[uuid.UUID] | None = None
     activo: bool | None = None
     password: str | None = Field(default=None, min_length=8)
     sucursal_ids: list[uuid.UUID] | None = None
@@ -63,15 +73,18 @@ class EntrenadorOut(BaseModel):
 
     `email`/`activo` provienen del `usuario` ligado (join por `usuario_id`).
     `telefono` y `sucursal_ids` (asignación M:N) del epic Recordatorio de deudores.
+    `ci` (S4) único por org. `disciplinas` son **refs al catálogo** (`{id, nombre}`),
+    resueltas del join `entrenador_disciplina ⨝ disciplina` (S4, ya no texto libre).
     """
 
     id: uuid.UUID
     usuario_id: uuid.UUID
     nombres: str
     email: str
+    ci: str | None = None
     especialidad: str | None = None
     telefono: str | None = None
-    disciplinas: list[str]
+    disciplinas: list[DisciplinaRef] = Field(default_factory=list)
     activo: bool
     sucursal_ids: list[uuid.UUID] = Field(default_factory=list)
 

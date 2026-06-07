@@ -897,17 +897,21 @@ export interface DisciplinaUpdate {
 // ============================================================
 
 // --- GET /entrenadores?solo_activos= -> item de lista ---
-// {id, usuario_id, nombres, email, especialidad|null, disciplinas[], activo}.
+// {id, usuario_id, nombres, email, ci|null, especialidad|null,
+//  disciplinas:[{id,nombre}], activo}.
 // email y activo provienen del usuario ligado (join por entrenador.usuario_id).
-// telefono: E.164 sin "+" (p.ej. "59170000000"), opcional. sucursal_ids: set de
-// sucursales asignadas al entrenador (M:N) que alimenta el digest de deudores.
+// ci: único por org (índice parcial; múltiples NULL OK), opcional. telefono:
+// E.164 sin "+" (p.ej. "59170000000"), opcional. disciplinas: refs al catálogo
+// global S2 (M:N entrenador_disciplina). sucursal_ids: set de sucursales
+// asignadas al entrenador (M:N) que alimenta el digest de deudores.
 export interface EntrenadorOut {
   id: string;
   usuario_id: string;
   nombres: string;
   email: string;
+  ci?: string | null;
   especialidad: string | null;
-  disciplinas: string[];
+  disciplinas: DisciplinaRef[];
   activo: boolean;
   telefono?: string | null;
   sucursal_ids: string[];
@@ -915,27 +919,31 @@ export interface EntrenadorOut {
 
 // --- POST /entrenadores (ADMIN) body ---
 // Crea usuario(ENTRENADOR, activo) + entrenador en una transacción.
-// Email ya en uso (en esta org o en otra) -> 409. password < 8 -> 422.
-// telefono: E.164 sin "+" (opcional). sucursal_ids: set de sucursales asignadas.
+// Email ya en uso (en esta org o en otra) -> 409. CI ya en uso en la org -> 409.
+// password < 8 -> 422. telefono: E.164 sin "+" (opcional). disciplina_ids: ids del
+// catálogo global S2 (422 si inactiva/inexistente). sucursal_ids: set de sucursales.
 export interface EntrenadorCreate {
   nombres: string;
   email: string;
   password: string;
+  ci?: string | null;
   especialidad?: string | null;
-  disciplinas?: string[];
+  disciplina_ids: string[];
   telefono?: string | null;
   sucursal_ids: string[];
 }
 
 // --- PUT /entrenadores/{id} (ADMIN) body (todos opcionales) ---
-// Edita nombres/especialidad/disciplinas y activo (+ password si viene).
+// Edita nombres/ci/especialidad/disciplinas y activo (+ password si viene).
 // activo=false da de baja; activo=true reactiva. password < 8 (si viene) -> 422.
-// telefono: E.164 sin "+". sucursal_ids: null = no tocar; [] = limpiar; lista
-// REEMPLAZA el set actual (el backend resuelve el delta).
+// ci: null = no tocar; string = set + valida unicidad por org (409). telefono:
+// E.164 sin "+". disciplina_ids: null = no tocar; [] = limpiar; lista REEMPLAZA el
+// set actual. sucursal_ids: null = no tocar; [] = limpiar; lista REEMPLAZA.
 export interface EntrenadorUpdate {
   nombres?: string;
+  ci?: string | null;
   especialidad?: string | null;
-  disciplinas?: string[];
+  disciplina_ids?: string[] | null;
   activo?: boolean;
   password?: string;
   telefono?: string | null;
