@@ -30,7 +30,14 @@
  * typecheck del resto del frontend pase aunque el paquete no esté instalado
  * localmente. Ver `src/types/tesseract.d.ts`.
  */
-import { useCallback, useEffect, useReducer, useRef, type ChangeEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useReducer,
+  useRef,
+  useState,
+  type ChangeEvent,
+} from 'react';
 import { mergeLados, type CedulaFields } from './parseCedula';
 import './DocumentScanner.css';
 
@@ -107,6 +114,10 @@ const LADOS: { id: Lado; titulo: string; ayuda: string }[] = [
 
 export function DocumentScanner({ onExtract, onRawText, label }: DocumentScannerProps) {
   const [state, dispatch] = useReducer(reducer, { anverso: LADO_INICIAL, reverso: LADO_INICIAL });
+  // `true` cuando ya se procesó al menos un lado y el merge no extrajo NINGÚN
+  // campo (caso típico del CI antiguo, ilegible por OCR): mostramos un hint para
+  // que el usuario teclee a mano. No bloquea nada.
+  const [sinDatos, setSinDatos] = useState(false);
 
   const inputRefs = {
     anverso: useRef<HTMLInputElement>(null),
@@ -138,13 +149,18 @@ export function DocumentScanner({ onExtract, onRawText, label }: DocumentScanner
     const anverso = rawRefs.current.anverso;
     const reverso = rawRefs.current.reverso;
     onRawText?.({ anverso, reverso });
-    onExtract?.(mergeLados(anverso, reverso));
+    const campos = mergeLados(anverso, reverso);
+    onExtract?.(campos);
+    // ¿Se extrajo algún campo útil? (parser conservador: ante duda deja vacío).
+    const algunCampo = Object.values(campos).some((v) => v != null && v !== '');
+    setSinDatos(!algunCampo);
   }, [onExtract, onRawText]);
 
   const procesar = useCallback(
     async (lado: Lado, file: File) => {
       // Vista previa local (en memoria, nunca sube a red).
       revocarPreview(lado);
+      setSinDatos(false); // se recalcula al terminar el OCR de este lado
       const url = URL.createObjectURL(file);
       previewUrlRefs.current[lado] = url;
       dispatch({ type: 'reset', lado, previewUrl: url });
@@ -331,6 +347,12 @@ export function DocumentScanner({ onExtract, onRawText, label }: DocumentScanner
         guardar.
         {algunoOcupado ? ' Procesando…' : ''}
       </p>
+
+      {sinDatos && !algunoOcupado && (
+        <p className="doc-scanner__nodata" role="note">
+          No se pudieron leer datos automáticamente; ingrésalos a mano.
+        </p>
+      )}
     </div>
   );
 }

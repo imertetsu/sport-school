@@ -11,11 +11,12 @@
  *
  * Soporta los DOS formatos vigentes del CI boliviano:
  *  - NUEVO: con MRZ TD1 en el reverso (ver `mrz.ts`); la MRZ es la fuente más
- *    fiable (monoespaciada, con check digits).
- *  - ANTIGUO: sin MRZ; el número real va en el anverso (abajo, junto al
- *    complemento/extensión; el "No." de arriba es FOLIO de trámite, no el CI) y
- *    el nombre está SOLO en el reverso tras "...pertenece A:" en orden
- *    NOMBRES → APELLIDOS.
+ *    fiable (monoespaciada, con check digits). Rellena bien.
+ *  - ANTIGUO: sin MRZ. NO es legible de forma fiable por OCR on-device (tinta
+ *    roja + microimpresión). DECISIÓN DE PRODUCTO: se ingresa A MANO. El parser
+ *    es CONSERVADOR: ante baja confianza deja el campo VACÍO (mejor vacío que
+ *    basura). En particular NO toma como CI el serial de tarjeta del anverso
+ *    ("NNNNNNN NN-XX") ni rellena nombres con texto institucional del carnet.
  */
 
 import { parseMrz } from './mrz';
@@ -24,9 +25,10 @@ export { parseMrz } from './mrz';
 
 export interface CedulaFields {
   /**
-   * Número de cédula en formato canónico `"<numero>[ <complemento>][ <EXT>]"`
-   * (espacio separador, EXT departamental en MAYÚSCULAS, ej. `"3727170 CB"`).
-   * Si no se detecta complemento/extensión con confianza, es solo el número.
+   * Número de cédula: SOLO el número del titular, sin complemento/extensión
+   * (decisión de producto). Un grupo de dígitos CONTIGUO de 6–8. Si no se puede
+   * leer con confianza (típico del CI antiguo), queda `undefined` y se teclea a
+   * mano. Nunca incluye el serial de tarjeta ("NNNNNNN NN-XX").
    */
   numeroCi?: string;
   /** Nombres (de pila). */
@@ -65,6 +67,78 @@ function deburr(s: string): string {
     .trim();
 }
 
+/**
+ * Palabras institucionales/legales del carnet que NUNCA son nombre ni apellido.
+ * Se comparan deburreadas + en MAYÚSCULAS. Filtrar contra esta lista evita el bug
+ * de producción donde el fallback posicional tomaba "DOCUMENTOS REGISTRADOS",
+ * "ESTADO", etc. como datos del titular. Ante baja confianza, mejor campo vacío.
+ */
+const PALABRAS_INSTITUCIONALES = new Set([
+  'DOCUMENTOS',
+  'DOCUMENTO',
+  'REGISTRADOS',
+  'REGISTRADO',
+  'REGISTRADA',
+  'REGISTRO',
+  // Fragmentos típicos del troceo OCR de "DOCUMENTOS REGISTRADOS".
+  'REGISTRA',
+  'DOS',
+  'ESTADO',
+  'PLURINACIONAL',
+  'BOLIVIA',
+  'CEDULA',
+  'IDENTIDAD',
+  'ENTIDAD',
+  'SERVICIO',
+  'GENERAL',
+  'DIRECCION',
+  'CERTIFICA',
+  'DOMICILIO',
+  'PROFESION',
+  'OCUPACION',
+  'NACIONAL',
+  'FIRMA',
+  'INTERESADO',
+  'TITULAR',
+  'ESTUDIANTE',
+  'SOLTERO',
+  'SOLTERA',
+  'CASADO',
+  'CASADA',
+  'CERCADO',
+  'NACIDO',
+  'NACIDA',
+  'EMITIDA',
+  'EXPIRA',
+  'SERIE',
+  'SECCION',
+  'BIO',
+  // Términos frecuentes del encabezado/etiquetas que el OCR cuela como "nombre".
+  'IDENTIFICACION',
+  'PERSONAL',
+  'PRESENTE',
+  'PERTENECE',
+  'REPUBLICA',
+  'CIVIL',
+  'NACIMIENTO',
+  'EXPEDIDA',
+  'EXPEDICION',
+]);
+
+/** ¿La palabra (deburreada + uppercase) es institucional (no un nombre)? */
+function esPalabraInstitucional(palabra: string): boolean {
+  return PALABRAS_INSTITUCIONALES.has(deburr(palabra).toUpperCase());
+}
+
+/**
+ * Filtra una lista de palabras candidatas a nombre/apellido, quitando las
+ * institucionales. Devuelve `[]` si todas eran institucionales (señal de que la
+ * línea NO es un nombre y no debe rellenarse nada).
+ */
+function palabrasNombreValidas(palabras: string[]): string[] {
+  return palabras.filter((p) => !esPalabraInstitucional(p));
+}
+
 function pad2(n: number): string {
   return String(n).padStart(2, '0');
 }
@@ -83,7 +157,7 @@ export function normalizarFecha(raw: string): string | undefined {
     const d = Number(numerica[1]);
     const m = Number(numerica[2]);
     const y = Number(numerica[3]);
-    if (d >= 1 && d <= 31 && m >= 1 && m <= 12) {
+    if (d >= 1 && d <= 31 && m >= 1 && m <= 12 && anioNacimientoPlausible(y)) {
       return `${y}-${pad2(m)}-${pad2(d)}`;
     }
   }
@@ -95,7 +169,20 @@ export function normalizarFecha(raw: string): string | undefined {
     const mesKey = conMes[2].slice(0, 3);
     const m = MESES[conMes[2]] ?? MESES[mesKey];
     const y = Number(conMes[3]);
-    if (m && d >= 1 && d <= 31) {
+    if (m && d >= 1 && d <= 31 && anioNacimientoPlausible(y)) {
+      return `${y}-${pad2(m)}-${pad2(d)}`;
+    }
+  }
+
+  // ddmm[sep]yyyy: el OCR a veces pierde el separador interno día/mes
+  // (p.ej. "0504/2003" = 05/04/2003). Conservador: exige dd/mm válidos y año
+  // plausible; si no, no aporta nada.
+  const compacta = txt.match(/\b(\d{2})(\d{2})[\s./-]+(\d{4})\b/);
+  if (compacta) {
+    const d = Number(compacta[1]);
+    const m = Number(compacta[2]);
+    const y = Number(compacta[3]);
+    if (d >= 1 && d <= 31 && m >= 1 && m <= 12 && anioNacimientoPlausible(y)) {
       return `${y}-${pad2(m)}-${pad2(d)}`;
     }
   }
@@ -122,6 +209,77 @@ function pareceNombre(s: string): boolean {
 }
 
 /**
+ * ¿La línea parece un nombre HUMANO real y no ruido/etiqueta institucional?
+ * Mucho más estricta que `pareceNombre`: exige que, tras quitar las palabras
+ * institucionales, queden ≥1 palabra "limpia" y que cada palabra restante tenga
+ * pinta de nombre (≥2 letras, sin fragmentos sueltos tipo "ZO O U L"). Usada por
+ * los caminos posicionales/sin etiqueta, donde el riesgo de basura es máximo.
+ */
+function pareceNombreHumano(s: string): boolean {
+  const v = limpiarValor(s);
+  if (!pareceNombre(v)) return false;
+  const palabras = v.split(/\s+/).filter(Boolean);
+  // Demasiados fragmentos de 1 letra (p.ej. "ZO O U L") = ruido OCR, no nombre.
+  const fragmentosCortos = palabras.filter((p) => p.replace(/[^A-Za-zÁÉÍÓÚÑÜáéíóúñü]/g, '').length <= 1);
+  if (fragmentosCortos.length >= 2) return false;
+  const limpias = palabrasNombreValidas(palabras);
+  if (limpias.length === 0) return false;
+  // Si quedó UNA sola palabra y es corta/dudosa, no la tratamos como nombre.
+  if (limpias.length === 1 && limpias[0].length < 3) return false;
+  // Todas las palabras restantes deben tener ≥2 letras reales.
+  return limpias.every((p) => p.replace(/[^A-Za-zÁÉÍÓÚÑÜáéíóúñü]/g, '').length >= 2);
+}
+
+/** Año actual, para validar plausibilidad de fechas de nacimiento. */
+function anioActual(): number {
+  return new Date().getFullYear();
+}
+
+/** ¿El año es plausible como año de nacimiento? Rango [1900, año_actual]. */
+function anioNacimientoPlausible(y: number): boolean {
+  return Number.isInteger(y) && y >= 1900 && y <= anioActual();
+}
+
+/**
+ * ¿La línea (deburreada + lowercase) habla de una fecha de TRÁMITE (emisión,
+ * expedición, expiración/vencimiento)? Esas fechas NO son de nacimiento; las
+ * descartamos en el fallback de fecha para no meter basura.
+ */
+function esLineaFechaTramite(norm: string): boolean {
+  return /\b(emitid|emision|expedid|expedicion|expira|expiracion|vence|vencimient|valid[ao]|caduc)/.test(
+    norm,
+  );
+}
+
+/** ¿Es un grupo de dígitos CONTIGUO en el rango típico del CI boliviano (6–8)? */
+function esCiContiguoPlausible(soloDigitos: string): boolean {
+  return /^\d{6,8}$/.test(soloDigitos);
+}
+
+/**
+ * Devuelve el primer grupo de dígitos CONTIGUO de 6–8 de la línea, descartando
+ * los que forman parte de un SERIAL de tarjeta (patrón "NNNNNNN NN-XX" del CI
+ * antiguo, donde lo legible es el serial, NO el número del titular). Si el grupo
+ * va seguido inmediatamente de un complemento tipo " 08-L3" o "-L3", se descarta.
+ */
+function primerCiContiguo(linea: string): string | undefined {
+  const re = /\d{6,8}/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(linea)) !== null) {
+    const num = m[0];
+    if (!esCiContiguoPlausible(num)) continue;
+    // ¿Lo que sigue inmediatamente es un sufijo de serial (complemento "NN-XX"
+    // o "-XX")? Entonces este número es serial de tarjeta, no el CI.
+    const resto = linea.slice(m.index + num.length);
+    if (/^\s*[-\s]?\s*(\d{2}\s*-\s*[A-Za-z0-9]{1,3}|-\s*[A-Za-z0-9]{1,3})\b/.test(resto)) {
+      continue;
+    }
+    return num;
+  }
+  return undefined;
+}
+
+/**
  * Extrae los campos del CI a partir del texto OCR crudo.
  *
  * Estrategia tolerante por capas:
@@ -142,44 +300,38 @@ export function parseCedula(rawText: string): CedulaFields {
 
   // ---- Número de CI -------------------------------------------------------
   // El carnet boliviano suele etiquetarlo como "No.", "Nro", "C.I." o similar.
-  // Tomamos un grupo de 5–10 dígitos (admitiendo separadores OCR) cerca de esas
-  // etiquetas; si no hay etiqueta, el grupo de dígitos más largo del documento.
+  // CONSERVADOR: solo un grupo de dígitos CONTIGUO de 6–8 (rango típico boliviano),
+  // SIN cruzar espacios/guiones (eso pegaría el complemento/serial → basura). No
+  // incluimos complemento/extensión: solo el número.
   for (const linea of lineas) {
     const norm = deburr(linea).toLowerCase();
     if (/\b(c\.?\s*i\.?|no\.?|nro\.?|numero|cédula|cedula)\b/.test(norm)) {
-      const m = linea.match(/(\d[\d.\s-]{4,12}\d)/);
-      if (m) {
-        const soloDigitos = m[1].replace(/\D/g, '');
-        if (soloDigitos.length >= 5 && soloDigitos.length <= 10) {
-          fields.numeroCi = soloDigitos;
-          break;
-        }
+      const ci = primerCiContiguo(linea);
+      if (ci) {
+        fields.numeroCi = ci;
+        break;
       }
     }
   }
   if (!fields.numeroCi) {
+    // Sin etiqueta: el grupo contiguo más largo dentro del rango plausible, pero
+    // DESCARTANDO los seriales de tarjeta ("NNNNNNN NN-XX" del CI antiguo).
     let mejor = '';
     for (const linea of lineas) {
-      for (const grupo of linea.matchAll(/(\d[\d.\s-]{4,12}\d)/g)) {
-        const soloDigitos = grupo[1].replace(/\D/g, '');
-        if (
-          soloDigitos.length >= 5 &&
-          soloDigitos.length <= 10 &&
-          soloDigitos.length > mejor.length
-        ) {
-          mejor = soloDigitos;
-        }
-      }
+      const ci = primerCiContiguo(linea);
+      if (ci && ci.length > mejor.length) mejor = ci;
     }
     if (mejor) fields.numeroCi = mejor;
   }
 
   // ---- Fecha de nacimiento ------------------------------------------------
-  // Preferimos la línea etiquetada como "nacimiento"; si no, la primera fecha
-  // plausible del documento.
+  // Preferimos la línea etiquetada como "nacimiento". Como fallback tomamos la
+  // primera fecha plausible PERO descartando líneas de emisión/expiración (para
+  // no confundir una fecha de trámite con la de nacimiento). `normalizarFecha`
+  // ya rechaza años fuera de [1900, año_actual].
   for (const linea of lineas) {
     const norm = deburr(linea).toLowerCase();
-    if (/nacim|nac\.|f\.?\s*nac|fecha de nac/.test(norm)) {
+    if (/nacim|nacid[oa]|nac\.|f\.?\s*nac|fecha de nac/.test(norm)) {
       const iso = normalizarFecha(linea);
       if (iso) {
         fields.fechaNacimiento = iso;
@@ -190,6 +342,8 @@ export function parseCedula(rawText: string): CedulaFields {
   }
   if (!fields.fechaNacimiento) {
     for (const linea of lineas) {
+      const norm = deburr(linea).toLowerCase();
+      if (esLineaFechaTramite(norm)) continue; // emisión/expiración/expedición
       const iso = normalizarFecha(linea);
       if (iso) {
         fields.fechaNacimiento = iso;
@@ -216,29 +370,40 @@ export function parseCedula(rawText: string): CedulaFields {
   }
 
   if (apellidosLinea && pareceNombre(apellidosLinea)) {
-    const partes = apellidosLinea.split(/\s+/);
-    fields.apellidoPaterno = partes[0];
-    if (partes.length > 1) fields.apellidoMaterno = partes.slice(1).join(' ');
+    // Filtra palabras institucionales: si tras el filtro no queda nada, no setea.
+    const partes = palabrasNombreValidas(apellidosLinea.split(/\s+/).filter(Boolean));
+    if (partes.length > 0) {
+      fields.apellidoPaterno = partes[0];
+      if (partes.length > 1) fields.apellidoMaterno = partes.slice(1).join(' ');
+    }
   }
   if (nombresLinea && pareceNombre(nombresLinea)) {
-    fields.nombres = nombresLinea;
+    const partes = palabrasNombreValidas(nombresLinea.split(/\s+/).filter(Boolean));
+    if (partes.length > 0) fields.nombres = partes.join(' ');
   }
 
-  // ---- Fallback posicional ------------------------------------------------
-  // Si no hubo etiquetas usables, tomamos líneas de solo letras mayúsculas (los
-  // datos del titular en el CI van en mayúsculas). Heurística: primera línea de
-  // nombre = apellidos, segunda = nombres. Conservadora a propósito.
+  // ---- Fallback posicional (CONSERVADOR) ----------------------------------
+  // Si no hubo etiquetas usables, antes se tomaban "líneas de solo mayúsculas"
+  // como apellidos/nombres. Eso capturaba basura institucional ("DOCUMENTOS
+  // REGISTRADOS"). Ahora exigimos que la línea parezca un nombre HUMANO real
+  // (sin palabras institucionales, sin fragmentos sueltos). Ante duda, vacío.
   if (!fields.apellidoPaterno && !fields.nombres) {
     const candidatos = lineas
       .map(limpiarValor)
-      .filter((l) => pareceNombre(l) && l === l.toUpperCase() && l.split(/\s+/).length <= 4);
+      .filter(
+        (l) =>
+          pareceNombreHumano(l) && l === l.toUpperCase() && l.split(/\s+/).length <= 4,
+      )
+      // Quita las palabras institucionales que sobrevivieran dentro de la línea.
+      .map((l) => palabrasNombreValidas(l.split(/\s+/).filter(Boolean)))
+      .filter((palabras) => palabras.length > 0);
     if (candidatos[0]) {
-      const partes = candidatos[0].split(/\s+/);
+      const partes = candidatos[0];
       fields.apellidoPaterno = partes[0];
       if (partes.length > 1) fields.apellidoMaterno = partes.slice(1).join(' ');
     }
     if (candidatos[1]) {
-      fields.nombres = candidatos[1];
+      fields.nombres = candidatos[1].join(' ');
     }
   }
 
@@ -248,9 +413,6 @@ export function parseCedula(rawText: string): CedulaFields {
 // ===========================================================================
 // Soporte de DOS lados (anverso + reverso) y DOS formatos (nuevo/antiguo)
 // ===========================================================================
-
-/** Códigos departamentales de Bolivia usados como extensión del CI. */
-const DEPARTAMENTOS = new Set(['LP', 'CB', 'SC', 'OR', 'PT', 'TJ', 'CH', 'BE', 'PD']);
 
 /**
  * Detecta el formato del CI por el texto OCR (de uno o ambos lados):
@@ -273,20 +435,23 @@ export function detectarFormato(texto: string): 'nuevo' | 'antiguo' | 'desconoci
   return 'desconocido';
 }
 
-/** Quita el complemento `Nro.`/`No.` (folio de trámite) de una línea OCR. */
-function esLineaFolio(norm: string): boolean {
-  return /\b(no\.?|nro\.?|n°|nº|folio|tramite|tr[aá]mite)\b/.test(norm);
+/** ¿La línea está etiquetada como número de CI ("No."/"C.I."/"cédula"/"Nro.")? */
+function esLineaEtiquetaCi(norm: string): boolean {
+  return /\b(c\.?\s*i\.?|no\.?|nro\.?|n°|nº|numero|cédula|cedula)\b/.test(norm);
 }
 
 /**
- * Extrae el número REAL del titular en el CI ANTIGUO desde el anverso, junto a
- * su complemento/extensión, en el FORMATO CANÓNICO.
+ * Extrae el número del titular en el CI ANTIGUO desde el anverso.
  *
- * El anverso del antiguo lleva ARRIBA un `No. #######` que es FOLIO de trámite
- * (a descartar) y ABAJO el número real, normalmente acompañado de un sufijo
- * tipo `08-L3` (complemento/lote) o un código departamental (LP/CB/SC...).
- * Heurística: preferir el número acompañado de ese sufijo/depto; descartar el
- * que sigue a la etiqueta "No.".
+ * DECISIÓN DE PRODUCTO: en el CI antiguo el número REAL (en tinta roja, "No.
+ * #######") casi nunca lo lee el OCR on-device. Lo que el OCR SÍ lee abajo —el
+ * patrón "NNNNNNN NN-XX" (p.ej. "3727170 08-L3")— es el SERIAL de la tarjeta, NO
+ * el CI del titular. Por tanto:
+ *  - NUNCA tomamos ese patrón de serial como CI.
+ *  - Solo devolvemos un número si aparece CLARAMENTE etiquetado como CI ("No.",
+ *    "C.I.", "cédula"...) y es un grupo de dígitos contiguo plausible (6–8) que
+ *    NO sea, a su vez, un serial.
+ *  - Ante cualquier duda → `undefined` (el usuario lo teclea a mano).
  */
 function extraerCiAntiguo(anverso: string): string | undefined {
   if (!anverso) return undefined;
@@ -295,58 +460,15 @@ function extraerCiAntiguo(anverso: string): string | undefined {
     .map((l) => l.trim())
     .filter(Boolean);
 
-  type Cand = { numero: string; complemento?: string; ext?: string; score: number };
-  const candidatos: Cand[] = [];
-
   for (const linea of lineas) {
     const norm = deburr(linea).toLowerCase();
-    const esFolio = esLineaFolio(norm);
-    const sufijoLinea = deburr(linea).toUpperCase();
-
-    // 1) Patrón estructurado: número base (5-10 dígitos, SIN espacios internos)
-    //    seguido de complemento "08-L3" o de un código departamental. Es la
-    //    señal más fuerte de que es el número REAL del titular (no el folio).
-    let estructurado = false;
-    for (const m of sufijoLinea.matchAll(/\b(\d{5,10})\s*[-\s]?\s*(\d{2}-[A-Z0-9]{2}|[A-Z]{2})\b/g)) {
-      const numero = m[1];
-      const cola = m[2];
-      let score = 5; // patrón estructurado: muy probable
-      let complemento: string | undefined;
-      let ext: string | undefined;
-      if (/^\d{2}-[A-Z0-9]{2}$/.test(cola)) {
-        complemento = cola;
-      } else if (DEPARTAMENTOS.has(cola)) {
-        ext = cola;
-      } else {
-        // Dos letras que NO son depto: no es extensión fiable; no la anexamos.
-        score = 2;
-      }
-      if (esFolio) score -= 5;
-      candidatos.push({ numero, complemento, ext, score });
-      estructurado = true;
-    }
-
-    // 2) Si no hubo patrón estructurado en la línea, toma un grupo de dígitos
-    //    suelto (admite separadores OCR) como candidato de menor confianza.
-    if (!estructurado) {
-      for (const m of linea.matchAll(/(\d[\d.\s-]{4,12}\d)/g)) {
-        const numero = m[1].replace(/\D/g, '');
-        if (numero.length < 5 || numero.length > 10) continue;
-        const score = esFolio ? -5 : 1; // sin sufijo no sube de confianza
-        candidatos.push({ numero, score });
-      }
-    }
+    if (!esLineaEtiquetaCi(norm)) continue;
+    // Tras la etiqueta, un grupo CONTIGUO de 6–8 dígitos que no sea serial.
+    const ci = primerCiContiguo(linea);
+    if (ci) return ci;
   }
-
-  if (candidatos.length === 0) return undefined;
-  // Mejor score; a igualdad, el más largo (más específico).
-  candidatos.sort((a, b) => b.score - a.score || b.numero.length - a.numero.length);
-  const mejor = candidatos[0];
-
-  let out = mejor.numero;
-  if (mejor.complemento) out += ` ${mejor.complemento}`;
-  if (mejor.ext) out += ` ${mejor.ext}`;
-  return out;
+  // Sin etiqueta de CI clara → no devolvemos serial ni "el primer número": vacío.
+  return undefined;
 }
 
 /**
@@ -392,16 +514,20 @@ function extraerNombreAntiguo(reverso: string): Partial<CedulaFields> {
   }
 
   if (!nombreRaw) return out;
-  // Solo letras (descarta dígitos/ruido residual).
-  const palabras = nombreRaw
-    .split(/\s+/)
-    .map((p) => p.trim())
-    .filter((p) => /^[A-Za-zÁÉÍÓÚÑÜáéíóúñü'’.-]+$/.test(p) && p.length > 1);
+  // Solo letras (descarta dígitos/ruido residual) Y filtra palabras
+  // institucionales: si lo que sigue a "pertenece a:" es texto legal/ruido, no
+  // setea nada (mejor vacío que basura).
+  const palabras = palabrasNombreValidas(
+    nombreRaw
+      .split(/\s+/)
+      .map((p) => p.trim())
+      .filter((p) => /^[A-Za-zÁÉÍÓÚÑÜáéíóúñü'’.-]+$/.test(p) && p.length > 1),
+  );
 
   if (palabras.length === 0) return out;
-  if (palabras.length === 1) {
-    out.nombres = palabras[0];
-  } else if (palabras.length === 2) {
+  // Una sola palabra "limpia" es demasiado dudosa para repartir en campos: vacío.
+  if (palabras.length === 1) return out;
+  if (palabras.length === 2) {
     out.nombres = palabras[0];
     out.apellidoPaterno = palabras[1];
   } else {
@@ -425,29 +551,22 @@ export function parseAntiguo(anverso: string, reverso: string): Partial<CedulaFi
 
   Object.assign(out, extraerNombreAntiguo(reverso));
 
-  // Fecha de nacimiento: el reverso trae "Nacido el <fecha larga>".
+  // Fecha de nacimiento — CONSERVADOR: SOLO desde una línea etiquetada como
+  // nacimiento ("nacid[oa]"/"nacimiento"/"f. nac"). En el CI antiguo abundan
+  // fechas de EMISIÓN/EXPIRACIÓN; tomar "la primera fecha que aparezca" mete
+  // basura (p.ej. fecha de emisión como nacimiento). Si no hay línea de
+  // nacimiento legible, dejamos la fecha VACÍA (el usuario la teclea).
   const lineasRev = reverso
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter(Boolean);
   for (const linea of lineasRev) {
     const norm = deburr(linea).toLowerCase();
-    if (/nacid[oa] el|fecha de nac|nacim/.test(norm)) {
+    if (/nacid[oa]\b|nacid[oa] el|fecha de nac|nacim/.test(norm)) {
       const iso = normalizarFecha(linea);
       if (iso) {
         out.fechaNacimiento = iso;
         out.fechaNacimientoRaw = limpiarValor(linea.replace(/.*?:/, ''));
-        break;
-      }
-    }
-  }
-  // Fallback: primera fecha plausible del reverso.
-  if (!out.fechaNacimiento) {
-    for (const linea of lineasRev) {
-      const iso = normalizarFecha(linea);
-      if (iso) {
-        out.fechaNacimiento = iso;
-        out.fechaNacimientoRaw = limpiarValor(linea);
         break;
       }
     }

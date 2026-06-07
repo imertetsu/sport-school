@@ -194,14 +194,14 @@ describe('detectarFormato', () => {
 });
 
 describe('parseAntiguo — CI antiguo (anverso + reverso)', () => {
-  // Datos FICTICIOS plausibles.
-  // Anverso: "No. 9999999" es FOLIO (descartar); "1234567 08-L3" es el CI real.
+  // Datos FICTICIOS plausibles. Decisión de producto (parser conservador): el CI
+  // antiguo se ingresa A MANO; solo aceptamos un número CLARAMENTE etiquetado
+  // ("No."/"C.I.") y NUNCA el patrón de serial "NNNNNNN NN-XX".
   const anverso = [
     'ESTADO PLURINACIONAL DE BOLIVIA',
     'SERVICIO GENERAL DE IDENTIFICACION PERSONAL',
-    'No. 9999999',
+    'No. 1234567',
     'CEDULA DE IDENTIDAD',
-    '1234567 08-L3',
     'Emitida el 31 de Octubre de 2022',
   ].join('\n');
   // Reverso: nombre en orden NOMBRES -> APELLIDOS tras "pertenece A:".
@@ -215,9 +215,8 @@ describe('parseAntiguo — CI antiguo (anverso + reverso)', () => {
 
   const f = parseAntiguo(anverso, reverso);
 
-  it('toma el número REAL (con complemento), no el folio "No."', () => {
-    expect(f.numeroCi).toBe('1234567 08-L3');
-    expect(f.numeroCi).not.toContain('9999999');
+  it('toma el número etiquetado ("No."), sin complemento/serial', () => {
+    expect(f.numeroCi).toBe('1234567');
   });
 
   it('extrae el nombre del reverso en orden nombres -> apellidos', () => {
@@ -230,16 +229,17 @@ describe('parseAntiguo — CI antiguo (anverso + reverso)', () => {
     expect(f.fechaNacimiento).toBe('2010-03-10');
   });
 
-  it('detecta extensión departamental como EXT en mayúsculas', () => {
-    const anversoDepto = ['CEDULA DE IDENTIDAD', 'No. 8888888', '3727170 CB'].join('\n');
-    const g = parseAntiguo(anversoDepto, 'pertenece A: ANA LUCIA TORRES VEGA');
-    expect(g.numeroCi).toBe('3727170 CB');
+  it('NUNCA toma el patrón de serial "NNNNNNN NN-XX" como CI', () => {
+    // Solo aparece el serial (sin etiqueta "No."/"C.I."): el CI queda vacío.
+    const anversoSerial = ['CEDULA DE IDENTIDAD', '3727170 08-L3'].join('\n');
+    const g = parseAntiguo(anversoSerial, 'pertenece A: ANA LUCIA TORRES VEGA');
+    expect(g.numeroCi).toBeUndefined();
   });
 
-  it('no inventa extensión cuando no la hay (solo número)', () => {
-    const anversoSolo = ['CEDULA DE IDENTIDAD', 'No. 7777777', '4561237'].join('\n');
+  it('CI vacío si no hay número etiquetado como cédula', () => {
+    const anversoSolo = ['CEDULA DE IDENTIDAD', 'serie 43333 seccion 42222'].join('\n');
     const g = parseAntiguo(anversoSolo, 'pertenece A: PEDRO ROJAS LIMA');
-    expect(g.numeroCi).toBe('4561237');
+    expect(g.numeroCi).toBeUndefined();
   });
 });
 
@@ -285,14 +285,14 @@ describe('mergeLados — orquestación de dos lados', () => {
     expect(f.nombres).toBe('MARIA');
   });
 
-  it('CI antiguo: CI del anverso, nombre y fecha del reverso', () => {
-    const anverso = ['CEDULA DE IDENTIDAD', 'No. 9999999', '1234567 08-L3'].join('\n');
+  it('CI antiguo: CI etiquetado del anverso, nombre y fecha del reverso', () => {
+    const anverso = ['CEDULA DE IDENTIDAD', 'No. 1234567'].join('\n');
     const reverso = [
       'pertenece A: JUAN CARLOS MAMANI QUISPE',
       'Nacido el 10 de Marzo de 2010',
     ].join('\n');
     const f = mergeLados(anverso, reverso);
-    expect(f.numeroCi).toBe('1234567 08-L3');
+    expect(f.numeroCi).toBe('1234567');
     expect(f.nombres).toBe('JUAN CARLOS');
     expect(f.apellidoPaterno).toBe('MAMANI');
     expect(f.apellidoMaterno).toBe('QUISPE');
@@ -312,5 +312,140 @@ describe('mergeLados — orquestación de dos lados', () => {
 
   it('textos vacíos: objeto vacío, sin lanzar', () => {
     expect(mergeLados('', '')).toEqual({});
+  });
+});
+
+// ===========================================================================
+// Fixtures con TEXTO OCR REAL capturado de cédulas físicas (anonimizado en su
+// estructura, con el ruido real del OCR on-device). Objetivo: el CI NUEVO sigue
+// rellenando bien y el CI ANTIGUO ya NO mete BASURA (ante duda, campo vacío).
+// ===========================================================================
+
+describe('REAL — CI nuevo (MRZ reverso, ruido real)', () => {
+  // Ruido real: "B0L" con cero, espacio en línea 2, prefijo "MÍ " en línea 3.
+  // Los check digits de doc/fecha de ESTA captura NO cuadran (OCR sobre foto),
+  // así que la MRZ solo aporta los NOMBRES de forma fiable (no tienen check).
+  const reverso = [
+    'IDBOL8942507<<9<<<<<<<<<<<<<<<',
+    '0304053F2806125B0L <<<<<<<<<<<6',
+    'MÍ RODRIGUEZ<GONZALEZ<<MARIA<<<<R',
+  ].join('\n');
+
+  it('extrae apellidos y nombres pese al prefijo "MÍ " y la "R" colgando', () => {
+    const f = parseMrz(reverso);
+    expect(f?.apellidoPaterno).toBe('RODRIGUEZ');
+    expect(f?.apellidoMaterno).toBe('GONZALEZ');
+    expect(f?.nombres).toContain('MARIA');
+  });
+
+  it('no propaga numeroCi ni fecha si los check de ESTA captura no cuadran', () => {
+    const f = parseMrz(reverso);
+    expect(f?.numeroCi).toBeUndefined();
+    expect(f?.fechaNacimiento).toBeUndefined();
+  });
+});
+
+describe('REAL — CI nuevo (anverso + reverso, merge)', () => {
+  const reverso = [
+    'IDBOL8942507<<9<<<<<<<<<<<<<<<',
+    '0304053F2806125B0L <<<<<<<<<<<6',
+    'MÍ RODRIGUEZ<GONZALEZ<<MARIA<<<<R',
+  ].join('\n');
+  const anverso = [
+    'ESTADO PLURINACIONAL DE BOLIVIA CÉDULA DE IDENTIDAD',
+    'RODRIGUEZ GONZALEZ',
+    '0504/2003',
+    'N* 1234567',
+  ].join('\n');
+
+  const f = mergeLados(anverso, reverso);
+
+  it('el CI sale del anverso (7 dígitos contiguos)', () => {
+    expect(f.numeroCi).toBe('1234567');
+  });
+
+  it('la fecha de nacimiento sale del anverso "0504/2003"', () => {
+    expect(f.fechaNacimiento).toBe('2003-04-05');
+  });
+
+  it('los nombres salen de la MRZ', () => {
+    expect(f.apellidoPaterno).toBe('RODRIGUEZ');
+    expect(f.apellidoMaterno).toBe('GONZALEZ');
+    expect(f.nombres).toContain('MARIA');
+  });
+});
+
+describe('REAL — CI antiguo (basura): NO debe rellenar basura', () => {
+  it('anverso: NO toma el serial "3727170 08-L3" como CI', () => {
+    const anverso = [
+      '3727170 08-L3',
+      'Emitida el 31 de Octubre de 2022',
+      'Expira el 31 de Octubre de 2032',
+      'serie 43333 seccion 42222',
+    ].join('\n');
+    const f = parseCedula(anverso);
+    // El serial NO es el CI: ni el número entero ni su raíz.
+    expect(f.numeroCi).not.toBe('372717008');
+    expect(f.numeroCi).not.toBe('3727170');
+    expect(f.numeroCi).toBeUndefined();
+  });
+
+  it('anverso: NO toma emisión/expiración como fecha de nacimiento', () => {
+    const anverso = [
+      '3727170 08-L3',
+      'Emitida el 31 de Octubre de 2022',
+      'Expira el 31 de Octubre de 2032',
+      'serie 43333 seccion 42222',
+    ].join('\n');
+    const f = parseCedula(anverso);
+    expect(f.fechaNacimiento).toBeUndefined();
+  });
+
+  it('reverso institucional: NO mete "DOCUMENTOS"/"REGISTRADOS"/"ESTADO" en nombre', () => {
+    const reverso = [
+      'ESTADO PLURINACIONAL DE BOLIVIA CEDULA DE ENTIDAD',
+      'DOCUMENTOS REGISTRA DOS',
+      'DOCUMENTOS REGISTRADOS',
+    ].join('\n');
+    const f = parseCedula(reverso);
+    const todos = [f.apellidoPaterno, f.apellidoMaterno, f.nombres]
+      .filter(Boolean)
+      .join(' ')
+      .toUpperCase();
+    expect(todos).not.toContain('DOCUMENTOS');
+    expect(todos).not.toContain('REGISTRADOS');
+    expect(todos).not.toContain('ESTADO');
+    expect(f.apellidoPaterno).toBeUndefined();
+    expect(f.apellidoMaterno).toBeUndefined();
+    expect(f.nombres).toBeUndefined();
+  });
+
+  it('merge de ambos lados basura: queda (casi) todo vacío, sin basura', () => {
+    const anverso = [
+      '3727170 08-L3',
+      'Emitida el 31 de Octubre de 2022',
+      'Expira el 31 de Octubre de 2032',
+      'serie 43333 seccion 42222',
+    ].join('\n');
+    const reverso = [
+      'ESTADO PLURINACIONAL DE BOLIVIA CEDULA DE ENTIDAD',
+      'DOCUMENTOS REGISTRA DOS',
+      'DOCUMENTOS REGISTRADOS',
+    ].join('\n');
+    const f = mergeLados(anverso, reverso);
+    const todos = [f.apellidoPaterno, f.apellidoMaterno, f.nombres]
+      .filter(Boolean)
+      .join(' ')
+      .toUpperCase();
+    expect(todos).not.toContain('DOCUMENTOS');
+    expect(todos).not.toContain('REGISTRADOS');
+    expect(todos).not.toContain('ESTADO');
+    expect(f.numeroCi).toBeUndefined();
+    // Si hubiese fecha, jamás un año implausible.
+    if (f.fechaNacimiento) {
+      const anio = Number(f.fechaNacimiento.slice(0, 4));
+      expect(anio).toBeGreaterThanOrEqual(1900);
+      expect(anio).toBeLessThanOrEqual(new Date().getFullYear());
+    }
   });
 });

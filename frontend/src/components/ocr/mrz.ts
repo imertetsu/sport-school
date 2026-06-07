@@ -68,7 +68,12 @@ function fechaMrzAIso(yymmdd: string): string | undefined {
 function extraerLineasMrz(texto: string): [string, string, string] | undefined {
   const candidatas = texto
     .split(/\r?\n/)
-    .map((l) => l.toUpperCase().replace(/\s+/g, '').replace(/[«»]/g, '<'))
+    .map((l) => l.toUpperCase())
+    // Ruido OCR frecuente: un fragmento suelto de 1–2 letras + espacio ANTES de
+    // una línea MRZ (p.ej. "MÍ RODRIGUEZ<GONZALEZ<<..."). Solo lo quitamos si lo
+    // que sigue ya tiene pinta de MRZ (contiene '<'), para no tocar líneas normales.
+    .map((l) => (/[<«»]/.test(l) ? l.replace(/^\s*[A-ZÀ-ÿ]{1,2}\s+(?=\S*[<«»])/, '') : l))
+    .map((l) => l.replace(/\s+/g, '').replace(/[«»]/g, '<'))
     // Las fotos suelen leer `<` como `K`, `C`, `(` ... pero conservar `<` reales.
     .map((l) => l.replace(/[^A-Z0-9<]/g, ''))
     .filter((l) => l.length >= 20)
@@ -95,14 +100,15 @@ function parseNombresMrz(linea3: string): Partial<CedulaFields> {
   const out: Partial<CedulaFields> = {};
   const limpio = linea3.replace(/<+$/, ''); // quita relleno final
   const [apRaw = '', nomRaw = ''] = limpio.split('<<');
-  const apellidos = apRaw
-    .split('<')
-    .map((s) => s.trim())
-    .filter(Boolean);
-  const nombres = nomRaw
-    .split('<')
-    .map((s) => s.trim())
-    .filter(Boolean);
+  // Tokeniza por '<'; descarta fragmentos sueltos de 1 carácter (ruido OCR
+  // típico de la MRZ, p.ej. una "R" colgando al final de la línea de nombres).
+  const tokens = (s: string): string[] =>
+    s
+      .split('<')
+      .map((t) => t.trim())
+      .filter((t) => t.length >= 2);
+  const apellidos = tokens(apRaw);
+  const nombres = tokens(nomRaw);
 
   if (apellidos[0]) out.apellidoPaterno = apellidos[0];
   if (apellidos.length > 1) out.apellidoMaterno = apellidos.slice(1).join(' ');

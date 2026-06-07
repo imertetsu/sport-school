@@ -4,7 +4,7 @@
 > cada epic**. Máx ~150 líneas; poda lo viejo. Esto NO es un changelog — es un snapshot
 > de "cómo está el mundo hoy".
 
-_Última actualización: 2026-06-07 — epic **personas-y-disciplinas** (S1–S4 + componente OCR) integrado en `main` (migraciones **0015→0018**): rename alumno→deportista, catálogo GLOBAL de disciplinas (superadmin), CI único por org + recuperar-por-CI (deportista/tutor/entrenador), entrenador multi-disciplina, y escaneo OCR on-device de cédula. Migraciones **0001→0018**. · **Fixes UX entrenador** (`6d5b9c2`, sin migración): el ENTRENADOR ahora ve **solo sus disciplinas asignadas** (deportistas + asistencia), Horarios muestra la sucursal de cada clase y los nombres ya no se cortan. · **OCR cédula a 2 fotos + 2 formatos (MRZ)** (epic `ocr-cedula`, sin migración, solo frontend): pendiente QA con fotos reales en `/dev/ocr`._
+_Última actualización: 2026-06-07 — epic **personas-y-disciplinas** (S1–S4 + componente OCR) integrado en `main` (migraciones **0015→0018**): rename alumno→deportista, catálogo GLOBAL de disciplinas (superadmin), CI único por org + recuperar-por-CI (deportista/tutor/entrenador), entrenador multi-disciplina, y escaneo OCR on-device de cédula. Migraciones **0001→0018**. · **Fixes UX entrenador** (`6d5b9c2`, sin migración): el ENTRENADOR ahora ve **solo sus disciplinas asignadas** (deportistas + asistencia), Horarios muestra la sucursal de cada clase y los nombres ya no se cortan. · **OCR cédula a 2 fotos + 2 formatos (MRZ)** (sin migración, solo frontend), **validado con cédulas reales**: CI nuevo se lee (MRZ); CI antiguo NO es OCR-able on-device → manual; parser conservador (no mete basura)._
 
 ## Stack snapshot
 
@@ -44,10 +44,13 @@ enlace HMAC stateless), Recordatorio de deudores al entrenador (0014, `entrenado
   CRUD en `/plataforma`. Se añaden `categoria.disciplina_id` y `deportista.disciplina_id` + data-migration
   texto→ref. **`disciplina_id` (FK al catálogo) es lo canónico**; `deportista.disciplina` (texto) se conserva.
 - **Componente OCR on-device** (Tesseract.js, `DocumentScanner` + parser `parseCedula`/`mrz.ts`, spike `/dev/ocr`):
-  **la imagen NO se sube ni se guarda** (privacidad RNF-02). **2 fotos (anverso+reverso) + 2 formatos** del CI:
-  nuevo (MRZ TD1 con check digits, fuente fiable) y antiguo (nombre en reverso, CI junto al complemento; descarta
-  el folio "No."). `numeroCi` puede traer extensión/complemento en el string (ej. "3727170 CB"). **Pendiente QA:
-  afinar precisión sobre fotos reales en `/dev/ocr`** (el OCR pre-llena; la corrección manual siempre disponible).
+  **la imagen NO se sube ni se guarda** (privacidad RNF-02). **2 fotos (anverso+reverso) + 2 formatos**.
+  **VALIDADO con cédulas reales (2026-06-07):** el **CI nuevo SÍ** se lee (MRZ TD1 con check digits → apellidos,
+  nombres, CI, fecha). El **CI antiguo NO es OCR-able on-device** (tinta roja + fondo de microimpresión laminado;
+  Tesseract no lee CI/nombre/fecha ni con preprocesado) → **se ingresa a mano**. Parser **conservador**: ante baja
+  confianza deja el campo VACÍO en vez de rellenar basura (lista negra de palabras institucionales, fecha plausible
+  1900..hoy, CI = dígitos contiguos 6–8, NUNCA el serial "NNNNNNN NN-XX"). Solo se guarda el **número** de CI
+  (sin extensión). El escáner avisa "ingrésalos a mano" si no extrajo nada.
 - **S3 — CI único por org + recuperar-por-CI** (0017, deportista y tutor): índices únicos **PARCIALES**
   `(org_id, ci) WHERE ci IS NOT NULL`; `GET /deportistas|tutores/por-ci/{ci}` (200|404); **409** al dar de alta
   con CI duplicado; tutor recuperar→actualizar teléfono. `NuevoDeportista` cablea OCR + recuperar + select de
@@ -125,9 +128,11 @@ efímeras (`personas-y-disciplinas.md` roadmap, `disciplinas.md` S2, `entrenador
   **0015→0018**. Deploy **gateado** (`DEPLOY_ENABLED` off), manual: `pg_dump` → `git pull` → `bash infra/deploy.sh`.
   **Antes de aplicar 0017/0018 en prod: correr la detección de CI duplicados** en deportista/tutor/entrenador
   (si hay dup no-null, el índice único parcial falla al crearse).
-- **OCR (mejorado, epic `ocr-cedula`):** ya soporta 2 fotos + 2 formatos + MRZ. **Pendiente QA:** afinar precisión
-  con CI nuevo y antiguo reales en `/dev/ocr` (sin login/backend: `cd frontend && npm run dev`); en particular
-  confirmar si el sufijo "08-L3" del CI antiguo es extensión real o código de lote.
+- **OCR (validado 2026-06-07):** CI nuevo se lee por MRZ; CI antiguo NO es OCR-able on-device → **manual** (parser
+  conservador, no mete basura). Confirmado E2E con cédulas reales (`9396529` rojo y nombre del antiguo no los lee
+  Tesseract ni con preprocesado de canal rojo/binarización). El sufijo "08-L3" es **serial de tarjeta, NO el CI**
+  (el CI real es el "No. #######"). No queda QA bloqueante de OCR. (Mejora futura opcional si el antiguo fuera
+  mayoría: OCR en la nube con consentimiento — descartado hoy por RNF-02.)
 
 Remoto `imertetsu/sport-school` (push vía `http.sslBackend=schannel` por el proxy TLS). Al abrir el próximo epic,
 `product-owner` crea `docs/specs/<epic>.md`.
