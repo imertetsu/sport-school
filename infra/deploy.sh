@@ -31,6 +31,9 @@ docker compose -f infra/docker-compose.yml up -d --build
 echo "[deploy] limpiando imágenes huérfanas…"
 docker image prune -f
 
+echo "[deploy] limpiando build cache (mantiene ~2GB reciente)…"
+docker builder prune -f --keep-storage 2GB || docker builder prune -f
+
 echo "[deploy] estado:"
 docker compose -f infra/docker-compose.yml ps
 echo "[deploy] OK"
