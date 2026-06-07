@@ -35,7 +35,7 @@ Celery; PostgreSQL con RLS).
   antiguas usando la tabla puente `PAGO_CUOTA`.
 - **Cron diario (SRS §4.4) idempotente.** Generar siguiente cuota, recordatorio N días
   antes, marcar VENCIDO, alertar morosidad. Re-ejecutar el job **no debe duplicar** cuotas.
-- **Menores y auditoría (RNF-02/03).** No se persiste un alumno sin ≥1 tutor +
+- **Menores y auditoría (RNF-02/03).** No se persiste un deportista sin ≥1 tutor +
   `CONSENTIMIENTO`. Audita quién/cuándo en pagos manuales, cambios de monto y emisión de
   comprobantes. No loguees ficha médica ni datos sensibles en claro.
 - **Notificaciones (RNF-07).** Plantillas pre-aprobadas; cada mensaje tiene **costo**;

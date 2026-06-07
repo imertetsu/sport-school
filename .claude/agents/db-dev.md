@@ -53,7 +53,7 @@ modelo y la migración divergen, es un handoff hacia backend-dev, no un parche s
 
 ## Patterns to follow (ejemplos por ruta)
 - Revisión: `migrations/versions/<rev>_<slug>.py` con `upgrade()`/`downgrade()`.
-- RLS en migración: dentro de `upgrade()`, `op.execute("ALTER TABLE alumno ENABLE ROW LEVEL
+- RLS en migración: dentro de `upgrade()`, `op.execute("ALTER TABLE deportista ENABLE ROW LEVEL
   SECURITY; ...CREATE POLICY...")` y el `DROP POLICY` correspondiente en `downgrade()`.
 - Entorno: `migrations/env.py` (carga `target_metadata = Base.metadata`).
 

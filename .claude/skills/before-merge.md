@@ -26,7 +26,7 @@ lee el `git diff` y ejecuta los checks **tú mismo**.
       `transaccion_id` ⇒ sin doble pago ni doble comprobante.
 - [ ] **Casos borde de cuotas** cubiertos si tocó facturación — 29/30/31 → último día,
       FIJO vs ANIVERSARIO, prorrateo del primer período.
-- [ ] **Consentimiento/menores** respetado si tocó alumnos — no se persiste alumno sin
+- [ ] **Consentimiento/menores** respetado si tocó deportistas — no se persiste deportista sin
       tutor + consentimiento; sin datos sensibles en logs.
 
 ## Solo en la última fase del epic

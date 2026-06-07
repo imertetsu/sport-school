@@ -1,6 +1,6 @@
 # LATINASPORT
 
-SaaS **multi-tenant** para gestión de escuelas/clubes deportivos (alumnos, asistencia,
+SaaS **multi-tenant** para gestión de escuelas/clubes deportivos (deportistas, asistencia,
 cobranza automatizada y comunicación). Primer mercado: Bolivia; diseñado para cruzar
 fronteras sin reescribir el núcleo. Documento de requisitos: `LATINASPORT_SRS_v2.md`.
 

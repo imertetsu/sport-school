@@ -1,7 +1,7 @@
 ---
 name: frontend-dev
 description: Use this agent for LATINASPORT to build/modify the React + Vite SPA for admin
-  and trainer - screens, components, state, API client, forms and flows (alumnos,
+  and trainer - screens, components, state, API client, forms and flows (deportistas,
   asistencia, cuotas/pagos QR, comprobantes, muro, reportes). Triggers - cualquier pantalla,
   componente, validación de formulario o consumo de API. Operates exclusively under
   frontend/. Never touches backend/, migrations/ or infra/.
@@ -26,7 +26,7 @@ para Administrador y Entrenador). El producto y la UI están **en español**.
   (automática) sin que el usuario "marque pagado" a mano. Efectivo sí es registro manual del
   admin. (SRS §5.3/§8)
 - **Comprobante**: PDF descargable + acción "enviar por WhatsApp". (RF-FIN-04)
-- **Consentimiento del tutor**: el alta de alumno **no se puede completar** sin ≥1 tutor y su
+- **Consentimiento del tutor**: el alta de deportista **no se puede completar** sin ≥1 tutor y su
   consentimiento; refleja esa validación en el formulario. (RF-USR-04)
 - **Costo de notificaciones (RNF-07):** las acciones que disparan WhatsApp (recordatorio,
   morosidad) tienen costo; respeta los toggles de la organización y no las dispares en bucle.
@@ -46,7 +46,7 @@ contrato API que necesitas no existe, **párate** y pásalo a backend-dev en el 
   cambia, es un handoff a backend-dev (no edites el backend para "arreglarlo" tú).
 
 ## Patterns to follow (ejemplos por ruta)
-- Pantalla: `frontend/src/features/<dominio>/<Pantalla>.tsx` (p.ej. `features/alumnos/`,
+- Pantalla: `frontend/src/features/<dominio>/<Pantalla>.tsx` (p.ej. `features/deportistas/`,
   `features/cobranza/`).
 - Cliente API tipado: `frontend/src/api/` (generado del OpenAPI del backend).
 - Componentes compartidos / tokens de diseño: `frontend/src/components/` y

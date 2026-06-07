@@ -22,12 +22,12 @@ tenant), **ADMIN** (escuela/org), **ENTRENADOR**. (Tutor = passwordless, fase 2;
 ## Estado actual — MVP fase 1 + fase 2 en curso
 
 **MVP fase 1 COMPLETO** y verificado E2E:
-1. **Alumnos**: login, lista, perfil (tabs + ficha médica por rol), RLS activa.
+1. **Deportistas**: login, lista, perfil (tabs + ficha médica por rol), RLS activa.
 2. **Cobranza**: cuotas (FIJO/ANIVERSARIO), pago **efectivo** y **QR** (sandbox OpenBCB) con
    **webhook idempotente** + cola `conciliacion_pendiente`, **recibo PDF**, cron diario (beat),
    Panel de cobranza (KPIs + morosidad) + Registrar pago (QR vivo).
 3. **Asistencia**: `sesion`/`asistencia`, API (roster get-or-create, guardar idempotente por
-   `(sesion_id,alumno_id)`, historial) y pantalla **Tomar asistencia** (mobile-first). Entrenador ve solo sus sucursales.
+   `(sesion_id,deportista_id)`, historial) y pantalla **Tomar asistencia** (mobile-first). Entrenador ve solo sus sucursales.
 4. **Reportes** (solo ADMIN, sin migración): ingresos por mes (pagos CONFIRMADO) + % asistencia.
 5. **Egresos** (migración 0005, solo ADMIN): lista + filtros + total + alta auditada.
 6. **Muro de avisos** (migración 0006): feed scoped por rol; CRUD solo ADMIN con soft-delete.
@@ -36,8 +36,8 @@ tenant), **ADMIN** (escuela/org), **ENTRENADOR**. (Tutor = passwordless, fase 2;
 7. **Programación de clases** (migración 0007): `horario_clase` + `sesion` ampliada; CRUD ADMIN
    `/horarios` + `/horarios/semana`; crons `generar_sesiones_programadas` (reusa get-or-create de
    Asistencia) y `recordatorios_clase` (idempotente), ambos por org. Pantalla **Horarios**.
-8. **Auto-registro de alumno** (migración 0008, **EN SISTEMA**, no link público): `solicitud_registro`;
-   captura autenticada (ADMIN/ENTRENADOR scoped), cola, **aprobar** solo ADMIN (reusa `services/alumno.py`)
+8. **Auto-registro de deportista** (migración 0008, **EN SISTEMA**, no link público): `solicitud_registro`;
+   captura autenticada (ADMIN/ENTRENADOR scoped), cola, **aprobar** solo ADMIN (reusa `services/deportista.py`)
    o rechazar. Pantalla **Solicitudes**.
 9. **Abonos** (pagos parciales, migración 0009): `cuota.monto_pagado`, estado **PARCIAL**,
    `pago.credito_aplicado`, tabla `credito`. Parciales **solo efectivo** (`monto_recibido`); sobrepago
@@ -68,7 +68,7 @@ tenant), **ADMIN** (escuela/org), **ENTRENADOR**. (Tutor = passwordless, fase 2;
     Pantalla **Sucursales/Categorías** (ADMIN).
 15. **Recordatorio de deudores al entrenador** (**migración 0014**): asignación **M:N** `entrenador_sucursal` (+RLS)
     y `entrenador.telefono`; tabla `recordatorio_deudores` (idempotencia por `(entrenador,sucursal,periodo)`). El
-    entrenador recibe por WhatsApp el **digest de morosos** (alumno con ≥1 cuota `VENCIDO`) de cada sucursal donde
+    entrenador recibe por WhatsApp el **digest de morosos** (deportista con ≥1 cuota `VENCIDO`) de cada sucursal donde
     trabaja: **plantilla resumen + `send_text` con el detalle** (nuevo método del `WhatsAppPort`). **Cron semanal**
     lunes 07:00 UTC (período `%G-W%V`) **+ botón a demanda** (`POST /entrenadores/{id}/recordatorio-deudores`, ADMIN,
     período `MANUAL-<ts>` que no colisiona con el cron). **Alcance acotado:** NO toca el JWT `sucursal_ids` ni el RLS
@@ -111,7 +111,7 @@ cd backend && DATABASE_URL=postgresql+psycopg://latinosport_app:devpass@localhos
 cd frontend && VITE_API_URL=http://localhost:8010 npm run dev -- --port 5180 --strictPort
 ```
 **Credenciales de seed:** `admin@latinosport.bo / admin1234` (ADMIN) · `coach@latinosport.bo / coach1234`
-(ENTRENADOR). Org: `Academia Andina` (BO/BOB), 2 sucursales, 8 alumnos. Super admin: el que pongas en
+(ENTRENADOR). Org: `Academia Andina` (BO/BOB), 2 sucursales, 8 deportistas. Super admin: el que pongas en
 `PLATFORM_ADMIN_EMAIL`/`PLATFORM_ADMIN_PASSWORD` al correr `app.seed_plataforma` (consola en `/plataforma`).
 
 ### Flags de negocio (configurables por organización — aún sin implementar; SRS §4.2/§7)
@@ -139,8 +139,8 @@ admin usa **sesión/token separados** en `/plataforma`. Remoto `imertetsu/sport-
 ## Recent decisions
 
 - **2026-06-07 Recordatorio de deudores al entrenador.** `entrenador_sucursal` (M:N, RLS) + `entrenador.telefono`;
-  deudor = alumno con ≥1 `cuota.estado='VENCIDO'` (NO se reimplementa la lógica de vencimiento; la mantiene
-  `cobranza_diaria`); ruta de joins `cuota→inscripcion→alumno.sucursal_id` (**FK directa**, sin categoría); saldo =
+  deudor = deportista con ≥1 `cuota.estado='VENCIDO'` (NO se reimplementa la lógica de vencimiento; la mantiene
+  `cobranza_diaria`); ruta de joins `cuota→inscripcion→deportista.sucursal_id` (**FK directa**, sin categoría); saldo =
   `SUM(monto - monto_pagado)`. WhatsApp en **2 mensajes**: plantilla `resumen_deudores` (resumen+conteo, inicia la
   conversación) + nuevo `WhatsAppPort.send_text` (detalle multilínea; texto libre no cabe en params de plantilla
   Meta). Idempotencia `recordatorio_deudores` `UNIQUE(entrenador,sucursal,periodo)`: cron usa **semana ISO**
@@ -212,7 +212,7 @@ admin usa **sesión/token separados** en `/plataforma`. Remoto `imertetsu/sport-
 - **Cuotas:** nada de aritmética `+30 días`; usar "mismo día del mes" y *clamp* a 29/30/31 → último día del mes (SRS §7.2).
 - **Pagos:** webhook duplicado ⇒ sin doble pago ni doble comprobante; monto que no cuadra ⇒ **cola de
   conciliación**, nunca se descarta un pago (RNF-06); multi-cuota ⇒ FIFO sobre vencidas más antiguas.
-- **Menores:** no se guarda alumno sin ≥1 tutor + `CONSENTIMIENTO`; datos médicos cifrados en reposo; auditar
+- **Menores:** no se guarda deportista sin ≥1 tutor + `CONSENTIMIENTO`; datos médicos cifrados en reposo; auditar
   pagos manuales / cambios de monto / emisión de comprobantes (RNF-02/03).
 - **DELETE de sucursal/categoría:** protegido en API (409 si está en uso) aunque la BD tenga FKs CASCADE —
   no confíes en el CASCADE para decidir si se puede borrar.

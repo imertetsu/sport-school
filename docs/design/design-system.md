@@ -25,9 +25,9 @@
 
 ## Shell común (layout)
 - **Top bar:** logo + selector de sucursal (`Todas las sucursales ▾`) + buscador
-  (`Buscar alumno, CI o…`) + campana de notificaciones + avatar de usuario con rol.
+  (`Buscar deportista, CI o…`) + campana de notificaciones + avatar de usuario con rol.
 - **Sidebar izquierda colapsable**, adaptada al rol:
-  - `GESTIÓN`: **Panel**, **Alumnos**, **Pagos**, **Asistencia**
+  - `GESTIÓN`: **Panel**, **Deportistas**, **Pagos**, **Asistencia**
   - `ACCIONES`: **Generar QR**
   - pie: usuario actual + rol (con punto de estado)
 - **Toggle de rol:** clic en el avatar alterna **Administrador ⇄ Entrenador**; la sidebar y
@@ -37,14 +37,14 @@
 
 ### 1. Panel del Administrador — "Panel de cobranza"
 Subtítulo: `RESUMEN · TODA LA ESCUELA` · `Junio 2026 · estado de cuotas y pagos en tiempo real`.
-- **Acciones:** `Nuevo alumno`, `Generar QR`, `Registrar pago` (primario, verde).
+- **Acciones:** `Nuevo deportista`, `Generar QR`, `Registrar pago` (primario, verde).
 - **4 KPI cards:**
   - Ingresos del mes — `Bs 28.450` (`▲ 8.2% vs mayo`)
-  - Alumnos activos — `142` (`en 2 sucursales · 3 disciplinas`)
+  - Deportistas activos — `142` (`en 2 sucursales · 3 disciplinas`)
   - Cuotas pendientes — `23` (`Bs 5.290 por cobrar`)
   - Cuotas vencidas — `7` (`Bs 1.680 en mora`) — **card resaltada en rojo**
 - **Filtro por estado (chips):** `Todos 15` · `Pagado 8` · `Pendiente 4` · `Vencido 3`.
-- **Tabla de alumnos:** columnas `ALUMNO` (avatar inicial + nombre + `Sub-14 Intermedio ·
+- **Tabla de deportistas:** columnas `DEPORTISTA` (avatar inicial + nombre + `Sub-14 Intermedio ·
   Fútbol`), `SUCURSAL` (Centro / Cala Cala), `ESTADO` (badge), + monto / vencimiento /
   método / acción. Tabla con **scroll interno**; "Último pago" se oculta en anchos medianos
   priorizando el botón de acción.
@@ -52,7 +52,7 @@ Subtítulo: `RESUMEN · TODA LA ESCUELA` · `Junio 2026 · estado de cuotas y pa
   `Ver todos los vencidos`.
 
 ### 2. Registrar pago (modal)
-- Selección de **alumno** y **cuota(s)**.
+- Selección de **deportista** y **cuota(s)**.
 - **Método Efectivo:** confirmación manual.
 - **Método QR:** estado en vivo `Esperando pago…` → `Pago confirmado` (conciliación
   automática **simulada** en el prototipo; en real = webhook OpenBCB idempotente).
@@ -60,7 +60,7 @@ Subtítulo: `RESUMEN · TODA LA ESCUELA` · `Junio 2026 · estado de cuotas y pa
 
 ### 3. Perfil del deportista
 - **Header:** nombre, badge de categoría (`Sub-14 Intermedio`), disciplina (`Fútbol`),
-  `Sucursal Cala Cala`, `CI 9123456 LP`, `Cuota mensual Bs 250`, `Alumno desde 10 feb 2024`.
+  `Sucursal Cala Cala`, `CI 9123456 LP`, `Cuota mensual Bs 250`, `Deportista desde 10 feb 2024`.
 - **Pestañas:**
   - **Datos personales:** Apellidos, Nombres, CI, Fecha de nacimiento (+ edad calculada),
     Disciplina, Categoría.
