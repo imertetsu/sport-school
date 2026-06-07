@@ -1,11 +1,13 @@
-import { useEffect, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { api, ApiError } from '@/api/client';
 import type {
+  DisciplinaRef,
   EntrenadorCreate,
   EntrenadorOut,
   EntrenadorUpdate,
   Sucursal,
 } from '@/api/types';
+import { DocumentScanner, type CedulaFields } from '@/components/ocr/DocumentScanner';
 import { Button, Card, Field } from '@/components/ui';
 
 export interface NuevoEntrenadorProps {
@@ -17,18 +19,23 @@ export interface NuevoEntrenadorProps {
 }
 
 // Formulario de alta/edición de entrenador (modal, solo ADMIN). Valida UX, pero
-// el backend es la fuente de verdad: refleja sus 422 (validación) y 409 (email
-// ya en uso, en esta org o en otra). En edición el email NO es editable.
+// el backend es la fuente de verdad: refleja sus 422 (validación) y 409 (email o
+// CI ya en uso). En edición el email NO es editable. El CI (opcional) se puede
+// prellenar con el escáner OCR de cédula; la imagen NO se sube ni se guarda.
 export function NuevoEntrenador({ entrenador, onClose, onSaved }: NuevoEntrenadorProps) {
   const editar = Boolean(entrenador);
 
   const [nombres, setNombres] = useState(entrenador?.nombres ?? '');
   const [email, setEmail] = useState(entrenador?.email ?? '');
+  const [ci, setCi] = useState(entrenador?.ci ?? '');
   const [password, setPassword] = useState('');
   const [especialidad, setEspecialidad] = useState(entrenador?.especialidad ?? '');
   const [telefono, setTelefono] = useState(entrenador?.telefono ?? '');
-  const [disciplinas, setDisciplinas] = useState<string[]>(entrenador?.disciplinas ?? []);
-  const [disciplinaInput, setDisciplinaInput] = useState('');
+  // Disciplinas (M:N al catálogo global S2). Guardamos solo ids; al editar
+  // precarga las refs del entrenador. El catálogo puebla los checkboxes.
+  const [disciplinaIds, setDisciplinaIds] = useState<string[]>(
+    () => entrenador?.disciplinas.map((d) => d.id) ?? [],
+  );
   // Sucursales asignadas (M:N). Al editar precarga las actuales del entrenador.
   const [sucursalIds, setSucursalIds] = useState<string[]>(entrenador?.sucursal_ids ?? []);
   // Solo relevante en edición: toggle de baja/reactivación.
@@ -37,6 +44,10 @@ export function NuevoEntrenador({ entrenador, onClose, onSaved }: NuevoEntrenado
   // Catálogo de sucursales para el multiselect (reusa GET /sucursales).
   const [sucursales, setSucursales] = useState<Sucursal[]>([]);
   const [sucursalesError, setSucursalesError] = useState<string | null>(null);
+
+  // Catálogo global de disciplinas (S2) para el multiselect.
+  const [disciplinasCatalogo, setDisciplinasCatalogo] = useState<DisciplinaRef[]>([]);
+  const [disciplinasError, setDisciplinasError] = useState<string | null>(null);
 
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -61,30 +72,42 @@ export function NuevoEntrenador({ entrenador, onClose, onSaved }: NuevoEntrenado
     };
   }, []);
 
+  useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+    api
+      .disciplinasCatalogo(controller.signal)
+      .then((data) => {
+        if (active) setDisciplinasCatalogo(data);
+      })
+      .catch((err) => {
+        if (!active) return;
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        setDisciplinasError('No se pudieron cargar las disciplinas.');
+      });
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, []);
+
   function toggleSucursal(id: string) {
     setSucursalIds((prev) =>
       prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id],
     );
   }
 
-  // Añade el texto actual como una disciplina (sin duplicados, recortado).
-  function addDisciplina() {
-    const value = disciplinaInput.trim();
-    if (!value) return;
-    setDisciplinas((prev) => (prev.includes(value) ? prev : [...prev, value]));
-    setDisciplinaInput('');
+  function toggleDisciplina(id: string) {
+    setDisciplinaIds((prev) =>
+      prev.includes(id) ? prev.filter((d) => d !== id) : [...prev, id],
+    );
   }
 
-  function removeDisciplina(value: string) {
-    setDisciplinas((prev) => prev.filter((d) => d !== value));
-  }
-
-  // Enter (o coma) añade la disciplina sin enviar el formulario.
-  function onDisciplinaKeyDown(e: KeyboardEvent<HTMLInputElement>) {
-    if (e.key === 'Enter' || e.key === ',') {
-      e.preventDefault();
-      addDisciplina();
-    }
+  // El OCR prellena CI y nombres (best-effort). Los campos siguen editables a mano;
+  // la imagen no se guarda (lo garantiza DocumentScanner).
+  function onScan(fields: CedulaFields) {
+    if (fields.numeroCi) setCi(fields.numeroCi);
+    if (fields.nombres) setNombres(fields.nombres);
   }
 
   // Validación de UX que refleja el 422 del backend (no lo reemplaza).
@@ -119,12 +142,6 @@ export function NuevoEntrenador({ entrenador, onClose, onSaved }: NuevoEntrenado
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setFormError(null);
-    // Si quedó texto sin añadir en el input, lo incorporamos antes de validar.
-    const pendiente = disciplinaInput.trim();
-    const discFinal =
-      pendiente && !disciplinas.includes(pendiente)
-        ? [...disciplinas, pendiente]
-        : disciplinas;
 
     const errs = validate();
     setFieldErrors(errs);
@@ -139,11 +156,12 @@ export function NuevoEntrenador({ entrenador, onClose, onSaved }: NuevoEntrenado
       if (entrenador) {
         const payload: EntrenadorUpdate = {
           nombres: nombres.trim(),
+          ci: ci.trim() || null,
           especialidad: especialidad.trim() || null,
-          disciplinas: discFinal,
+          // Lista = REEMPLAZA el set actual (el backend resuelve el delta).
+          disciplina_ids: disciplinaIds,
           activo,
           telefono: telefono.trim() || null,
-          // Lista = REEMPLAZA el set actual (el backend resuelve el delta).
           sucursal_ids: sucursalIds,
         };
         // Solo enviamos la contraseña si el admin escribió una nueva.
@@ -154,8 +172,9 @@ export function NuevoEntrenador({ entrenador, onClose, onSaved }: NuevoEntrenado
           nombres: nombres.trim(),
           email: email.trim(),
           password,
+          ci: ci.trim() || null,
           especialidad: especialidad.trim() || null,
-          disciplinas: discFinal,
+          disciplina_ids: disciplinaIds,
           telefono: telefono.trim() || null,
           sucursal_ids: sucursalIds,
         };
@@ -165,8 +184,22 @@ export function NuevoEntrenador({ entrenador, onClose, onSaved }: NuevoEntrenado
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.status === 409) {
-          setFieldErrors((prev) => ({ ...prev, email: 'Ese email ya está en uso.' }));
-          setFormError('El email ya está en uso por otra cuenta.');
+          // El backend usa 409 para email duplicado y para CI duplicado (D2:
+          // rechaza, no recupera). Distinguimos por el detail del backend.
+          const detalle = (err.message ?? '').toLowerCase();
+          const esCi = detalle.includes('ci');
+          if (esCi) {
+            setFieldErrors((prev) => ({
+              ...prev,
+              ci: 'Ya existe un entrenador con ese CI',
+            }));
+            setFormError(
+              'Ya existe un entrenador con ese CI en tu organización. Edita el entrenador existente en lugar de crear otro.',
+            );
+          } else {
+            setFieldErrors((prev) => ({ ...prev, email: 'Ese email ya está en uso.' }));
+            setFormError('El email ya está en uso por otra cuenta.');
+          }
         } else if (err.isValidation) {
           applyApiErrors(err);
           setFormError('El servidor rechazó los datos. Revisa los campos marcados.');
@@ -223,6 +256,20 @@ export function NuevoEntrenador({ entrenador, onClose, onSaved }: NuevoEntrenado
             />
 
             <Field
+              label="CI (cédula de identidad)"
+              inputMode="numeric"
+              value={ci}
+              onChange={(e) => setCi(e.target.value)}
+              error={fieldErrors.ci}
+              placeholder="Opcional"
+              hint="Único por organización. Opcional. Puedes escanear la cédula para prellenarlo."
+            />
+
+            <div className="entrenadores__scan">
+              <DocumentScanner label="Escanear cédula" onExtract={onScan} />
+            </div>
+
+            <Field
               label={editar ? 'Nueva contraseña' : 'Contraseña'}
               type="password"
               value={password}
@@ -253,47 +300,38 @@ export function NuevoEntrenador({ entrenador, onClose, onSaved }: NuevoEntrenado
               hint="Formato internacional sin «+» (código de país + número). Opcional."
             />
 
-            <div className="field">
-              <label className="field__label" htmlFor="entrenador-disciplina">
-                Disciplinas
-              </label>
-              <div className="tag-input">
-                <input
-                  id="entrenador-disciplina"
-                  className="field__input"
-                  value={disciplinaInput}
-                  onChange={(e) => setDisciplinaInput(e.target.value)}
-                  onKeyDown={onDisciplinaKeyDown}
-                  placeholder="Fútbol, Natación…"
-                />
-                <Button
-                  variant="secondary"
-                  className="tag-input__add"
-                  onClick={addDisciplina}
-                  disabled={!disciplinaInput.trim()}
-                >
-                  Añadir
-                </Button>
-              </div>
-              <p className="field__hint">Escribe una disciplina y pulsa Enter o «Añadir».</p>
-              {disciplinas.length > 0 && (
-                <ul className="tag-list" aria-label="Disciplinas añadidas">
-                  {disciplinas.map((d) => (
-                    <li key={d} className="tag-chip">
-                      {d}
-                      <button
-                        type="button"
-                        className="tag-chip__remove"
-                        aria-label={`Quitar ${d}`}
-                        onClick={() => removeDisciplina(d)}
-                      >
-                        ×
-                      </button>
+            <fieldset className="entrenadores__sucursales">
+              <legend className="field__label">Disciplinas</legend>
+              <p className="field__hint">
+                Marca las disciplinas que entrena. Vienen del catálogo de la
+                plataforma.
+              </p>
+              {disciplinasError && (
+                <p className="field__error" role="alert">
+                  {disciplinasError}
+                </p>
+              )}
+              {disciplinasCatalogo.length === 0 && !disciplinasError ? (
+                <p className="entrenador-cell__muted">
+                  No hay disciplinas en el catálogo todavía.
+                </p>
+              ) : (
+                <ul className="entrenadores__sucursales-list">
+                  {disciplinasCatalogo.map((d) => (
+                    <li key={d.id}>
+                      <label className="entrenadores__toggle">
+                        <input
+                          type="checkbox"
+                          checked={disciplinaIds.includes(d.id)}
+                          onChange={() => toggleDisciplina(d.id)}
+                        />
+                        {d.nombre}
+                      </label>
                     </li>
                   ))}
                 </ul>
               )}
-            </div>
+            </fieldset>
 
             <fieldset className="entrenadores__sucursales">
               <legend className="field__label">Sucursales asignadas</legend>

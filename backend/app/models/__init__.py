@@ -20,6 +20,7 @@ from app.models.deportista_tutor import DeportistaTutor
 from app.models.disciplina import Disciplina
 from app.models.egreso import Egreso
 from app.models.entrenador import Entrenador
+from app.models.entrenador_disciplina import EntrenadorDisciplina
 from app.models.entrenador_sucursal import EntrenadorSucursal
 from app.models.horario_clase import HorarioClase
 from app.models.inscripcion import Inscripcion
@@ -45,6 +46,7 @@ __all__ = [
     "Categoria",
     "Disciplina",
     "Entrenador",
+    "EntrenadorDisciplina",
     "EntrenadorSucursal",
     "Deportista",
     "Tutor",

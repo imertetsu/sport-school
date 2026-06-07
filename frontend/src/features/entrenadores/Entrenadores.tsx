@@ -161,8 +161,8 @@ export function Entrenadores() {
           e.disciplinas.length > 0 ? (
             <div className="entrenador-chips">
               {e.disciplinas.map((d) => (
-                <Badge key={d} tone="accent">
-                  {d}
+                <Badge key={d.id} tone="accent">
+                  {d.nombre}
                 </Badge>
               ))}
             </div>
