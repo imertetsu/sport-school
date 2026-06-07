@@ -152,7 +152,9 @@ export interface TutorByCi {
 export interface TutorCreate {
   nombres: string;
   telefono: string;
-  ci: string;
+  // El CI del TUTOR es OPCIONAL (a diferencia del CI del deportista). El backend
+  // lo acepta vacío/omitido; "" en el cliente => sin CI.
+  ci?: string;
   parentesco: string;
   responsable_pago: boolean;
 }
@@ -180,6 +182,8 @@ export interface DeportistaCreate {
   ap_paterno: string;
   ap_materno: string;
   nombres: string;
+  // CI del DEPORTISTA: OBLIGATORIO (regla de negocio; el backend lo exige -> 422
+  // si falta/vacío). El CI del tutor sí es opcional (ver TutorCreate.ci).
   ci: string;
   fecha_nac: string; // date
   // Texto LEGACY (S2): opcional. El backend lo deriva del FK si no se envía.
@@ -699,6 +703,8 @@ export interface SolicitudCreate {
   ap_paterno: string;
   ap_materno: string;
   nombres: string;
+  // CI del DEPORTISTA: OBLIGATORIO (el backend lo exige -> 422 si falta/vacío).
+  // El CI del tutor de la solicitud sí es opcional (ver SolicitudTutorCreate.ci).
   ci: string;
   fecha_nac: string; // date YYYY-MM-DD
   disciplina: string;

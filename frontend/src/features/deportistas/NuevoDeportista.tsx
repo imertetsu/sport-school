@@ -15,7 +15,12 @@ import { DocumentScanner, type CedulaFields } from '@/components/ocr/DocumentSca
 import { nivelLabel } from '@/lib/format';
 import './NuevoDeportista.css';
 
-const EMPTY_TUTOR: TutorCreate = {
+// Estado interno del formulario de tutor: campos SIEMPRE string para inputs
+// controlados. El CI del tutor es opcional (se mapea a TutorCreate.ci al enviar;
+// "" => omitido). Distinto del CI del deportista, que es obligatorio.
+type TutorForm = Omit<TutorCreate, 'ci'> & { ci: string };
+
+const EMPTY_TUTOR: TutorForm = {
   nombres: '',
   telefono: '',
   ci: '',
@@ -44,7 +49,7 @@ export function NuevoDeportista() {
   const [contactoEmergencia, setContactoEmergencia] = useState('');
 
   // Tutores (≥1) + consentimiento obligatorio
-  const [tutores, setTutores] = useState<TutorCreate[]>([{ ...EMPTY_TUTOR }]);
+  const [tutores, setTutores] = useState<TutorForm[]>([{ ...EMPTY_TUTOR }]);
   const [consentimiento, setConsentimiento] = useState(false);
 
   // Catálogos
@@ -198,7 +203,7 @@ export function NuevoDeportista() {
     }
   }
 
-  function updateTutor(index: number, patch: Partial<TutorCreate>) {
+  function updateTutor(index: number, patch: Partial<TutorForm>) {
     setTutores((prev) => prev.map((t, i) => (i === index ? { ...t, ...patch } : t)));
   }
 
@@ -225,7 +230,8 @@ export function NuevoDeportista() {
     const errs: Record<string, string> = {};
     if (!apPaterno.trim()) errs.ap_paterno = 'Requerido';
     if (!nombres.trim()) errs.nombres = 'Requerido';
-    if (!ci.trim()) errs.ci = 'Requerido';
+    // CI del deportista: OBLIGATORIO. Bloquea el submit si está vacío.
+    if (!ci.trim()) errs.ci = 'El CI del deportista es obligatorio.';
     if (!fechaNac) errs.fecha_nac = 'Requerido';
     if (!disciplinaId) errs.disciplina_id = 'Requerido';
     if (!sucursalId) errs.sucursal_id = 'Selecciona una sucursal';
@@ -382,7 +388,7 @@ export function NuevoDeportista() {
               required
             />
             <Field
-              label="CI"
+              label="CI del deportista"
               value={ci}
               onChange={(e) => {
                 setCi(e.target.value);
@@ -392,6 +398,7 @@ export function NuevoDeportista() {
               onBlur={(e) => void recuperarDeportistaPorCi(e.target.value)}
               error={fieldErrors.ci}
               placeholder="9123456 LP"
+              hint="Obligatorio. El escaneo lo pre-llena; puedes corregirlo, no dejarlo vacío."
               required
             />
             <Field

@@ -86,7 +86,8 @@ export function NuevaSolicitud({ sucursales, onClose, onSaved }: NuevaSolicitudP
     const errs: Record<string, string> = {};
     if (!apPaterno.trim()) errs.ap_paterno = 'Requerido';
     if (!nombres.trim()) errs.nombres = 'Requerido';
-    if (!ci.trim()) errs.ci = 'Requerido';
+    // CI del deportista: OBLIGATORIO. Bloquea el submit si está vacío.
+    if (!ci.trim()) errs.ci = 'El CI del deportista es obligatorio.';
     if (!fechaNac) errs.fecha_nac = 'Requerido';
     if (!disciplina.trim()) errs.disciplina = 'Requerido';
     if (!tutorNombres.trim()) errs.tutor_nombres = 'Requerido';
@@ -224,11 +225,12 @@ export function NuevaSolicitud({ sucursales, onClose, onSaved }: NuevaSolicitudP
                   required
                 />
                 <Field
-                  label="CI"
+                  label="CI del deportista"
                   value={ci}
                   onChange={(e) => setCi(e.target.value)}
                   error={fieldErrors.ci}
                   placeholder="9123456 LP"
+                  hint="Obligatorio."
                   required
                 />
                 <Field
@@ -305,6 +307,7 @@ export function NuevaSolicitud({ sucursales, onClose, onSaved }: NuevaSolicitudP
                   label="CI"
                   value={tutorCi}
                   onChange={(e) => setTutorCi(e.target.value)}
+                  hint="Opcional"
                 />
                 <Field
                   label="Parentesco"

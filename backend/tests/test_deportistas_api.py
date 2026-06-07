@@ -24,6 +24,8 @@ from pydantic import ValidationError
 _BASE_BODY: dict[str, Any] = {
     "sucursal_id": "11111111-1111-1111-1111-111111111111",
     "nombres": "Test Deportista",
+    # El CI del DEPORTISTA es OBLIGATORIO a nivel schema (regla de negocio).
+    "ci": "CI-12345678",
     "consentimiento": {"version_terminos": "v1", "canal": "PRESENCIAL"},
 }
 
@@ -49,10 +51,44 @@ def test_deportista_create_schema_sin_consentimiento_falla() -> None:
     body = {
         "sucursal_id": _BASE_BODY["sucursal_id"],
         "nombres": "Test",
+        "ci": "CI-99999999",
         "tutores": [{"nombres": "Tutor 1"}],
     }
     with pytest.raises(ValidationError):
         DeportistaCreate(**body)  # type: ignore[arg-type]
+
+
+def test_deportista_create_schema_sin_ci_falla() -> None:
+    """CI del DEPORTISTA OBLIGATORIO: sin `ci` (o vacío) -> ValidationError (=> 422).
+
+    Refuerza la asimetría: el deportista DEBE llevar CI; el TUTOR no.
+    """
+    # Sin `ci` en absoluto.
+    body = {
+        "sucursal_id": _BASE_BODY["sucursal_id"],
+        "nombres": "Sin CI",
+        "tutores": [{"nombres": "Tutor 1"}],
+        "consentimiento": {"version_terminos": "v1"},
+    }
+    with pytest.raises(ValidationError):
+        DeportistaCreate(**body)  # type: ignore[arg-type]
+
+    # CI presente pero vacío / solo espacios -> también rechazado (validador strip).
+    for ci_vacio in ("", "   "):
+        body_vacio = dict(body)
+        body_vacio["ci"] = ci_vacio
+        with pytest.raises(ValidationError):
+            DeportistaCreate(**body_vacio)  # type: ignore[arg-type]
+
+
+def test_deportista_create_tutor_sin_ci_ok() -> None:
+    """El TUTOR sin CI SÍ se permite (su CI es opcional), aun con CI del deportista."""
+    body = dict(_BASE_BODY)
+    # Tutor explícitamente sin `ci` (campo opcional).
+    body["tutores"] = [{"nombres": "Tutor sin CI", "telefono": "777"}]
+    obj = DeportistaCreate(**body)  # type: ignore[arg-type]
+    assert obj.ci == "CI-12345678"
+    assert obj.tutores[0].ci is None
 
 
 def test_deportista_create_disciplina_id_opcional() -> None:

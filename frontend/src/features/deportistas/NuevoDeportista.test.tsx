@@ -289,6 +289,54 @@ describe('NuevoDeportista — OCR + recuperar-por-CI + disciplina (S3)', () => {
     ).toBeInTheDocument();
   });
 
+  it('no envía si falta el CI del deportista (obligatorio) y muestra el error', async () => {
+    const user = userEvent.setup();
+    renderForm();
+    await screen.findByText('Centro');
+
+    // Todo lo demás válido, pero SIN CI del deportista.
+    await user.type(screen.getByLabelText(/Apellido paterno/), 'Quispe');
+    await user.type(screen.getAllByLabelText(/^Nombres/)[0], 'Mateo');
+    await user.type(screen.getByLabelText(/Fecha de nacimiento/), '2014-03-10');
+    await user.selectOptions(await screen.findByLabelText(/Disciplina/), 'd1');
+    await user.selectOptions(screen.getByLabelText(/Sucursal/), 's1');
+    await user.type(screen.getAllByLabelText(/^Nombres/)[1], 'Rosa');
+    await user.click(screen.getByRole('checkbox', { name: /consentimiento/i }));
+
+    await user.click(screen.getByRole('button', { name: 'Crear deportista' }));
+
+    expect(crearDeportistaMock).not.toHaveBeenCalled();
+    expect(
+      screen.getByText('El CI del deportista es obligatorio.'),
+    ).toBeInTheDocument();
+  });
+
+  it('envía cuando el CI del deportista está presente (CI de tutor opcional)', async () => {
+    const user = userEvent.setup();
+    crearDeportistaMock.mockResolvedValue({ id: 'dep-7' });
+    renderForm();
+    await screen.findByText('Centro');
+
+    await user.type(screen.getByLabelText(/Apellido paterno/), 'Quispe');
+    await user.type(screen.getAllByLabelText(/^Nombres/)[0], 'Mateo');
+    await user.type(screen.getAllByLabelText(/^CI/)[0], '9123456');
+    await user.type(screen.getByLabelText(/Fecha de nacimiento/), '2014-03-10');
+    await user.selectOptions(await screen.findByLabelText(/Disciplina/), 'd1');
+    await user.selectOptions(screen.getByLabelText(/Sucursal/), 's1');
+    // Tutor con nombre pero SIN CI (opcional): no debe bloquear el envío.
+    await user.type(screen.getAllByLabelText(/^Nombres/)[1], 'Rosa');
+    await user.click(screen.getByRole('checkbox', { name: /consentimiento/i }));
+
+    await user.click(screen.getByRole('button', { name: 'Crear deportista' }));
+
+    await waitFor(() => expect(crearDeportistaMock).toHaveBeenCalledTimes(1));
+    const payload = crearDeportistaMock.mock.calls[0][0];
+    expect(payload.ci).toBe('9123456');
+    expect(payload.tutores[0].nombres).toBe('Rosa');
+    // El CI del tutor quedó vacío (opcional) y no impidió el envío.
+    expect(payload.tutores[0].ci).toBe('');
+  });
+
   it('no envía si falta el consentimiento (obligatorio, RF-USR-04)', async () => {
     const user = userEvent.setup();
     renderForm();

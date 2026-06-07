@@ -31,6 +31,8 @@ from pydantic import ValidationError
 # --------------------------------------------------------------------------- #
 _BASE_BODY: dict[str, Any] = {
     "nombres": "Camila",
+    # El CI del DEPORTISTA es OBLIGATORIO también en la captura de auto-registro.
+    "ci": "CI-CAMILA-01",
     "tutor": {"nombres": "María Rojas", "telefono": "777", "parentesco": "Madre"},
 }
 
@@ -62,11 +64,41 @@ def test_solicitud_schema_tutor_sin_nombres_falla() -> None:
     """Tutor sin nombres (dato mínimo) -> ValidationError (=> 422)."""
     body = {
         "nombres": "Camila",
+        "ci": "CI-CAMILA-02",
         "tutor": {"telefono": "777"},
         "consentimiento": {"aceptado": True, "version_terminos": "v1"},
     }
     with pytest.raises(ValidationError):
         SolicitudCreate(**body)  # type: ignore[arg-type]
+
+
+def test_solicitud_schema_sin_ci_deportista_falla() -> None:
+    """CI del DEPORTISTA OBLIGATORIO en la captura: sin `ci` (o vacío) -> 422."""
+    base = {
+        "nombres": "Camila",
+        "tutor": {"nombres": "María Rojas", "telefono": "777"},
+        "consentimiento": {"aceptado": True, "version_terminos": "v1"},
+    }
+    # Sin `ci`.
+    with pytest.raises(ValidationError):
+        SolicitudCreate(**base)  # type: ignore[arg-type]
+    # CI vacío / solo espacios.
+    for ci_vacio in ("", "   "):
+        body = dict(base)
+        body["ci"] = ci_vacio
+        with pytest.raises(ValidationError):
+            SolicitudCreate(**body)  # type: ignore[arg-type]
+
+
+def test_solicitud_schema_tutor_sin_ci_ok() -> None:
+    """El TUTOR de la solicitud sin CI SÍ se permite (su CI es opcional)."""
+    body = dict(_BASE_BODY)
+    body["consentimiento"] = {"aceptado": True, "version_terminos": "v1"}
+    # Tutor explícitamente sin `ci`.
+    body["tutor"] = {"nombres": "María Rojas", "telefono": "777"}
+    obj = SolicitudCreate(**body)  # type: ignore[arg-type]
+    assert obj.ci == "CI-CAMILA-01"
+    assert obj.tutor.ci is None
 
 
 # --------------------------------------------------------------------------- #

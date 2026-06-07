@@ -50,7 +50,10 @@ class SolicitudCreate(BaseModel):
     ap_paterno: str | None = None
     ap_materno: str | None = None
     nombres: str
-    ci: str | None = None
+    # CI del DEPORTISTA: OBLIGATORIO (regla de negocio). Así `aprobar` puede construir
+    # el `DeportistaCreate` (que también exige CI) sin fallar. El CI del TUTOR
+    # (`TutorSolicitud.ci`) sigue siendo opcional.
+    ci: str
     fecha_nac: date | None = None
     disciplina: str | None = None
     contacto_emergencia: str | None = None
@@ -69,6 +72,13 @@ class SolicitudCreate(BaseModel):
     def _nombres_no_vacio(cls, v: str) -> str:
         if not v or not v.strip():
             raise ValueError("nombres del deportista es obligatorio")
+        return v.strip()
+
+    @field_validator("ci")
+    @classmethod
+    def _ci_no_vacio(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("El CI del deportista es obligatorio")
         return v.strip()
 
     @field_validator("consentimiento")

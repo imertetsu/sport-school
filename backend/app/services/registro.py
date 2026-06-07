@@ -79,6 +79,12 @@ class SolicitudYaResuelta(RegistroError):
     """La solicitud ya está APROBADA/RECHAZADA -> 409 (idempotencia)."""
 
 
+class SolicitudSinCI(RegistroError):
+    """Solicitud LEGACY sin CI del deportista (la columna es nullable para datos
+    viejos, pero las solicitudes nuevas siempre traen CI). No se puede aprobar sin él
+    porque el alta de deportista exige CI -> 409 (conflicto de datos incompletos)."""
+
+
 # --------------------------------------------------------------------------- #
 # Scoping por rol
 # --------------------------------------------------------------------------- #
@@ -244,6 +250,13 @@ def aprobar(
     if solicitud.estado != ESTADO_PENDIENTE:
         raise SolicitudYaResuelta(f"La solicitud ya está {solicitud.estado}")
 
+    # El CI del deportista es OBLIGATORIO en el alta. Las solicitudes nuevas siempre lo
+    # traen (schema), pero la columna es nullable para tolerar datos legacy: si una
+    # solicitud vieja no tiene CI, no se puede aprobar (fail-closed) en vez de crashear.
+    if not solicitud.ci or not solicitud.ci.strip():
+        raise SolicitudSinCI("La solicitud no tiene CI del deportista; no se puede aprobar")
+    ci_deportista = solicitud.ci.strip()
+
     # Reconstruir el body de creación de deportista desde la solicitud + decisiones del admin.
     ficha = FichaMedica(**solicitud.ficha_medica) if solicitud.ficha_medica else None
     inscripcion = None
@@ -263,7 +276,7 @@ def aprobar(
         ap_paterno=solicitud.ap_paterno,
         ap_materno=solicitud.ap_materno,
         nombres=solicitud.nombres,
-        ci=solicitud.ci,
+        ci=ci_deportista,
         fecha_nac=solicitud.fecha_nac,
         disciplina=solicitud.disciplina,
         contacto_emergencia=solicitud.contacto_emergencia,

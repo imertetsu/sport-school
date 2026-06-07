@@ -128,7 +128,11 @@ class DeportistaCreate(BaseModel):
     ap_paterno: str | None = None
     ap_materno: str | None = None
     nombres: str
-    ci: str | None = None
+    # CI del DEPORTISTA: OBLIGATORIO en el alta (regla de negocio). La columna en BD
+    # queda nullable (datos viejos) y el índice único parcial `(org_id, ci) WHERE ci
+    # IS NOT NULL` no cambia; el enforcement es a nivel API. El CI del TUTOR y del
+    # ENTRENADOR siguen siendo opcionales.
+    ci: str
     fecha_nac: date | None = None
     # Texto LEGACY (se conserva, S2): disciplina escrita a mano.
     disciplina: str | None = None
@@ -141,6 +145,13 @@ class DeportistaCreate(BaseModel):
     tutores: list[TutorIn] = Field(..., min_length=1)
     consentimiento: ConsentimientoIn
     inscripcion: InscripcionIn | None = None
+
+    @field_validator("ci")
+    @classmethod
+    def _ci_no_vacio(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("El CI del deportista es obligatorio")
+        return v.strip()
 
     @field_validator("tutores")
     @classmethod

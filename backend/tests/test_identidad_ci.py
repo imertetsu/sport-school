@@ -101,10 +101,11 @@ def _body(
     *,
     suc_id: uuid.UUID,
     nombres: str,
-    ci: str | None,
+    ci: str,
     tutores: list[TutorIn],
     disciplina_id: uuid.UUID | None = None,
 ) -> DeportistaCreate:
+    # El CI del DEPORTISTA es OBLIGATORIO (str, no nullable a nivel schema).
     return DeportistaCreate(
         sucursal_id=suc_id,
         nombres=nombres,
@@ -146,22 +147,37 @@ def test_dedup_deportista_mismo_ci_misma_org(app_engine: Engine, ci_fixture: dic
 
 
 # --------------------------------------------------------------------------- #
-# (b) múltiples deportistas con ci=NULL permitidos (índice único PARCIAL)
+# (b) múltiples TUTORES con ci=NULL permitidos (índice único PARCIAL)
+#
+# El "múltiples NULL conviven" aplica a TUTORES: el CI del deportista es ahora
+# OBLIGATORIO a nivel schema, así que los deportistas llevan CIs únicos. Lo que se
+# prueba aquí es que dos tutores con `ci=None` no chocan con el índice parcial
+# `(org_id, ci) WHERE ci IS NOT NULL`.
 # --------------------------------------------------------------------------- #
 @pytest.mark.db
 def test_multiples_ci_null_permitidos(app_engine: Engine, ci_fixture: dict) -> None:
     org_a, suc_a = ci_fixture["org_a"], ci_fixture["suc_a"]
     with Session(app_engine, expire_on_commit=False) as db:
         _set_org(db, org_a)
-        # Dos deportistas sin CI y dos tutores sin CI: no debe haber colisión.
+        # Deportistas con CI propio (obligatorio) + tutores SIN CI: no debe colisionar.
         svc.crear_deportista(
             db,
-            _body(suc_id=suc_a, nombres="SinCI 1", ci=None, tutores=[_tutor("Tut sin CI 1")]),
+            _body(
+                suc_id=suc_a,
+                nombres="Dep 1",
+                ci=f"CI-{uuid.uuid4().hex[:10]}",
+                tutores=[_tutor("Tut sin CI 1", ci=None)],
+            ),
             org_id=org_a,
         )
         svc.crear_deportista(
             db,
-            _body(suc_id=suc_a, nombres="SinCI 2", ci=None, tutores=[_tutor("Tut sin CI 2")]),
+            _body(
+                suc_id=suc_a,
+                nombres="Dep 2",
+                ci=f"CI-{uuid.uuid4().hex[:10]}",
+                tutores=[_tutor("Tut sin CI 2", ci=None)],
+            ),
             org_id=org_a,
         )
         db.commit()
@@ -169,9 +185,9 @@ def test_multiples_ci_null_permitidos(app_engine: Engine, ci_fixture: dict) -> N
         # `set_config(..., true)` es transaction-local -> sin re-fijar, la query de
         # verificación cae en RLS fail-closed (0 filas).
         _set_org(db, org_a)
-        # Ambos persistieron (sin IntegrityError).
+        # Ambos tutores SIN CI persistieron (sin IntegrityError por el índice parcial).
         total = db.execute(
-            text("SELECT count(*) FROM deportista WHERE org_id = :o AND ci IS NULL"),
+            text("SELECT count(*) FROM tutor WHERE org_id = :o AND ci IS NULL"),
             {"o": str(org_a)},
         ).scalar_one()
     assert total == 2

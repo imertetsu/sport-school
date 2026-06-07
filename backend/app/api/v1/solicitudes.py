@@ -43,7 +43,7 @@ def _http_error(exc: svc.RegistroError) -> HTTPException:
     """Traduce errores de negocio del servicio a HTTP (403/404/409)."""
     if isinstance(exc, svc.SucursalFuera):
         return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
-    if isinstance(exc, svc.SolicitudYaResuelta):
+    if isinstance(exc, (svc.SolicitudYaResuelta, svc.SolicitudSinCI)):
         return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
     return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
 
