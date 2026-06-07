@@ -140,6 +140,8 @@ class DeportistaCreate(BaseModel):
     # (el servicio valida → 422). None = sin disciplina del catálogo.
     disciplina_id: uuid.UUID | None = None
     contacto_emergencia: str | None = None
+    domicilio: str | None = None
+    lugar_nacimiento: str | None = None
     ficha_medica: FichaMedica | None = None
 
     tutores: list[TutorIn] = Field(..., min_length=1)
@@ -174,6 +176,8 @@ class DeportistaUpdate(BaseModel):
     disciplina: str | None = None
     disciplina_id: uuid.UUID | None = None
     contacto_emergencia: str | None = None
+    domicilio: str | None = None
+    lugar_nacimiento: str | None = None
     ficha_medica: FichaMedica | None = None
 
 
@@ -212,6 +216,8 @@ class DeportistaDetailOut(BaseModel):
     disciplina: str | None = None
     disciplina_id: uuid.UUID | None = None
     contacto_emergencia: str | None = None
+    domicilio: str | None = None
+    lugar_nacimiento: str | None = None
     sucursal: SucursalRef
     categoria: CategoriaRef | None = None
     inscripcion: InscripcionOut | None = None

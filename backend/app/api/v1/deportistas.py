@@ -288,6 +288,8 @@ def get_deportista(
         disciplina=deportista.disciplina,
         disciplina_id=deportista.disciplina_id,
         contacto_emergencia=deportista.contacto_emergencia,
+        domicilio=deportista.domicilio,
+        lugar_nacimiento=deportista.lugar_nacimiento,
         sucursal=SucursalRef(id=suc.id, nombre=suc.nombre),  # type: ignore[union-attr]
         categoria=(CategoriaRef(id=cat.id, nombre=cat.nombre, nivel=cat.nivel) if cat else None),
         inscripcion=(

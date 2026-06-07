@@ -47,6 +47,14 @@ export function NuevoDeportista() {
   const [sucursalId, setSucursalId] = useState('');
   const [categoriaId, setCategoriaId] = useState('');
   const [contactoEmergencia, setContactoEmergencia] = useState('');
+  // Campos OPCIONALES (string|null). "" => null al enviar; nunca bloquean el alta.
+  const [domicilio, setDomicilio] = useState('');
+  const [lugarNacimiento, setLugarNacimiento] = useState('');
+
+  // Ficha médica (OPCIONAL). Grupo sanguíneo = ficha_medica.tipo_sangre.
+  const [tipoSangre, setTipoSangre] = useState('');
+  const [alergias, setAlergias] = useState('');
+  const [condiciones, setCondiciones] = useState('');
 
   // Tutores (≥1) + consentimiento obligatorio
   const [tutores, setTutores] = useState<TutorForm[]>([{ ...EMPTY_TUTOR }]);
@@ -125,6 +133,14 @@ export function NuevoDeportista() {
     // Precarga el select con el FK canónico devuelto ("" si no tiene disciplina).
     setDisciplinaId(d.disciplina_id ?? '');
     setContactoEmergencia(d.contacto_emergencia ?? '');
+    setDomicilio(d.domicilio ?? '');
+    setLugarNacimiento(d.lugar_nacimiento ?? '');
+    // Ficha médica: puede venir null si el rol no tiene acceso (RNF-02).
+    if (d.ficha_medica) {
+      setTipoSangre(d.ficha_medica.tipo_sangre ?? '');
+      setAlergias(d.ficha_medica.alergias ?? '');
+      setCondiciones(d.ficha_medica.condiciones ?? '');
+    }
     if (d.sucursal?.id) setSucursalId(d.sucursal.id);
     if (d.categoria?.id) setCategoriaId(d.categoria.id);
     if (d.tutores && d.tutores.length > 0) {
@@ -197,6 +213,10 @@ export function NuevoDeportista() {
     if (fields.apellidoMaterno) setApMaterno(fields.apellidoMaterno);
     if (fields.nombres) setNombres(fields.nombres);
     if (fields.fechaNacimiento) setFechaNac(fields.fechaNacimiento);
+    // Campos opcionales del reverso (solo si el OCR los extrajo con confianza).
+    if (fields.domicilio) setDomicilio(fields.domicilio);
+    if (fields.lugarNacimiento) setLugarNacimiento(fields.lugarNacimiento);
+    if (fields.grupoSanguineo) setTipoSangre(fields.grupoSanguineo);
     if (fields.numeroCi) {
       setCi(fields.numeroCi);
       void recuperarDeportistaPorCi(fields.numeroCi);
@@ -286,6 +306,9 @@ export function NuevoDeportista() {
       sucursal_id: sucursalId,
       categoria_id: categoriaId || null,
       contacto_emergencia: contactoEmergencia.trim(),
+      // Campos OPCIONALES: "" => null (no se envían como string vacío).
+      domicilio: domicilio.trim() || null,
+      lugar_nacimiento: lugarNacimiento.trim() || null,
       tutores: tutores
         .filter((t) => t.nombres.trim())
         .map((t) => ({
@@ -297,6 +320,16 @@ export function NuevoDeportista() {
         })),
       consentimiento: { version_terminos: CONSENT_VERSION, canal: 'WEB' },
     };
+
+    // Ficha médica: solo se envía si hay algún dato (toda OPCIONAL). El backend
+    // acepta null/omitido.
+    if (tipoSangre.trim() || alergias.trim() || condiciones.trim()) {
+      payload.ficha_medica = {
+        tipo_sangre: tipoSangre.trim(),
+        alergias: alergias.trim(),
+        condiciones: condiciones.trim(),
+      };
+    }
 
     setSubmitting(true);
     try {
@@ -461,12 +494,57 @@ export function NuevoDeportista() {
               ))}
             </SelectField>
           </div>
+          <div className="form-grid">
+            <Field
+              label="Domicilio"
+              value={domicilio}
+              onChange={(e) => setDomicilio(e.target.value)}
+              placeholder="Calle, número, zona"
+              hint="Opcional"
+            />
+            <Field
+              label="Lugar de nacimiento"
+              value={lugarNacimiento}
+              onChange={(e) => setLugarNacimiento(e.target.value)}
+              placeholder="Ciudad / localidad"
+              hint="Opcional"
+            />
+          </div>
           <div className="form-grid form-grid--single">
             <Field
               label="Contacto de emergencia"
               value={contactoEmergencia}
               onChange={(e) => setContactoEmergencia(e.target.value)}
               placeholder="Nombre y teléfono"
+            />
+          </div>
+        </Card>
+
+        <Card title="Ficha médica">
+          <p className="page-head__subtitle">Todos los campos son opcionales.</p>
+          <div className="form-grid">
+            <Field
+              label="Grupo sanguíneo"
+              value={tipoSangre}
+              onChange={(e) => setTipoSangre(e.target.value)}
+              placeholder="O+, A-, AB+…"
+              hint="Opcional"
+            />
+            <Field
+              label="Alergias"
+              value={alergias}
+              onChange={(e) => setAlergias(e.target.value)}
+              placeholder="Penicilina, polen…"
+              hint="Opcional"
+            />
+          </div>
+          <div className="form-grid form-grid--single">
+            <Field
+              label="Condiciones médicas"
+              value={condiciones}
+              onChange={(e) => setCondiciones(e.target.value)}
+              placeholder="Asma, diabetes…"
+              hint="Opcional"
             />
           </div>
         </Card>

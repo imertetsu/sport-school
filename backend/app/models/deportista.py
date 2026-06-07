@@ -38,4 +38,6 @@ class Deportista(UUIDPkMixin, OrgScoped, TimestampMixin, Base):
         index=True,
     )
     contacto_emergencia: Mapped[str | None] = mapped_column(String, nullable=True)
+    domicilio: Mapped[str | None] = mapped_column(String, nullable=True)
+    lugar_nacimiento: Mapped[str | None] = mapped_column(String, nullable=True)
     ficha_medica: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)

@@ -128,6 +128,9 @@ export interface DeportistaDetail {
   // salida para precargar el select al recuperar por CI; null si no tiene.
   disciplina_id?: string | null;
   contacto_emergencia: string;
+  // Campos OPCIONALES (string|null): el backend los expone si existen.
+  domicilio?: string | null;
+  lugar_nacimiento?: string | null;
   sucursal: SucursalRef;
   categoria: CategoriaRef | null;
   inscripcion: Inscripcion | null;
@@ -194,6 +197,9 @@ export interface DeportistaCreate {
   sucursal_id: string;
   categoria_id?: string | null;
   contacto_emergencia: string;
+  // Campos OPCIONALES (string|null): "" => null en el cliente al enviar.
+  domicilio?: string | null;
+  lugar_nacimiento?: string | null;
   tutores: TutorCreate[]; // >= 1 (validación dura backend -> 422)
   consentimiento: ConsentimientoCreate; // obligatorio
   inscripcion?: InscripcionCreate | null;

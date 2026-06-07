@@ -225,3 +225,70 @@ def test_ficha_medica_gateada_por_rol() -> None:
     # No afirmamos null duro (el seed da todas las sucursales al token); afirmamos
     # que el campo existe y respeta el contrato (presente, posiblemente null).
     assert "ficha_medica" in detalle_coach.json()
+
+
+@pytest.mark.db
+def test_crear_y_actualizar_campos_opcionales() -> None:
+    """`domicilio` y `lugar_nacimiento` se persisten en el alta, vuelven en el detalle
+    y se actualizan vía PUT (misma semántica que `contacto_emergencia`).
+
+    No están en el item de lista (resumen), solo en el detalle (C5).
+    """
+    client = _client_or_skip()
+    token = _login_admin(client)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    suc = client.get("/api/v1/sucursales", headers=headers).json()
+    if not suc:
+        pytest.skip("No hay sucursales; ¿seed ejecutado?")
+    sucursal_id = suc[0]["id"]
+
+    import uuid as _uuid
+
+    ci = f"CI-OPT-{_uuid.uuid4().hex[:10]}"
+    resp = client.post(
+        "/api/v1/deportistas",
+        headers=headers,
+        json={
+            "sucursal_id": sucursal_id,
+            "nombres": "Campos Opcionales",
+            "ci": ci,
+            "domicilio": "Calle Falsa 123, Zona Sur",
+            "lugar_nacimiento": "Cochabamba, Bolivia",
+            "tutores": [{"nombres": "Tutor Opt", "telefono": "777"}],
+            "consentimiento": {"version_terminos": "v1", "canal": "PRESENCIAL"},
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    creado = resp.json()
+    assert creado["domicilio"] == "Calle Falsa 123, Zona Sur"
+    assert creado["lugar_nacimiento"] == "Cochabamba, Bolivia"
+    deportista_id = creado["id"]
+
+    # El detalle (GET) los devuelve.
+    detalle = client.get(f"/api/v1/deportistas/{deportista_id}", headers=headers)
+    assert detalle.status_code == 200
+    detalle_json = detalle.json()
+    assert detalle_json["domicilio"] == "Calle Falsa 123, Zona Sur"
+    assert detalle_json["lugar_nacimiento"] == "Cochabamba, Bolivia"
+
+    # El item de lista NO los incluye (es resumen).
+    lista = client.get(f"/api/v1/deportistas?q={ci}&page_size=50", headers=headers).json()
+    items = [it for it in lista["items"] if it["id"] == deportista_id]
+    if items:
+        assert "domicilio" not in items[0]
+        assert "lugar_nacimiento" not in items[0]
+
+    # PUT los actualiza.
+    upd = client.put(
+        f"/api/v1/deportistas/{deportista_id}",
+        headers=headers,
+        json={
+            "domicilio": "Av. Nueva 456",
+            "lugar_nacimiento": "La Paz, Bolivia",
+        },
+    )
+    assert upd.status_code == 200, upd.text
+    upd_json = upd.json()
+    assert upd_json["domicilio"] == "Av. Nueva 456"
+    assert upd_json["lugar_nacimiento"] == "La Paz, Bolivia"

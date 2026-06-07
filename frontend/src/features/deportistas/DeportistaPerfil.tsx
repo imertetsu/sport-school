@@ -95,6 +95,12 @@ export function DeportistaPerfil() {
             <DataRow label="Disciplina" value={deportista.disciplina} />
             <DataRow label="Categoría" value={categoriaLabel ?? 'Sin categoría'} />
             <DataRow label="Sucursal" value={deportista.sucursal.nombre} />
+            {deportista.lugar_nacimiento && (
+              <DataRow label="Lugar de nacimiento" value={deportista.lugar_nacimiento} />
+            )}
+            {deportista.domicilio && (
+              <DataRow label="Domicilio" value={deportista.domicilio} />
+            )}
           </dl>
         </Card>
       ),

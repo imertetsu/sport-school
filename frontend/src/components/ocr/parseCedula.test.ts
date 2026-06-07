@@ -243,6 +243,39 @@ describe('parseAntiguo — CI antiguo (anverso + reverso)', () => {
   });
 });
 
+describe('campos OPCIONALES del reverso (domicilio / lugar nac / grupo sanguíneo)', () => {
+  it('extrae DOMICILIO desde una línea claramente etiquetada', () => {
+    const reverso = [
+      'pertenece A: JUAN CARLOS MAMANI QUISPE',
+      'DOMICILIO: AV X 123',
+    ].join('\n');
+    const f = parseAntiguo('', reverso);
+    expect(f.domicilio).toBe('AV X 123');
+  });
+
+  it('extrae LUGAR DE NACIMIENTO y GRUPO SANGUINEO etiquetados', () => {
+    const reverso = [
+      'LUGAR DE NACIMIENTO: LA PAZ',
+      'GRUPO SANGUINEO: O+',
+    ].join('\n');
+    const f = parseAntiguo('', reverso);
+    expect(f.lugarNacimiento).toBe('LA PAZ');
+    expect(f.grupoSanguineo).toBe('O+');
+  });
+
+  it('reverso BASURA: los 3 campos quedan undefined (conservador, sin basura)', () => {
+    const reverso = [
+      'ESTADO PLURINACIONAL DE BOLIVIA CEDULA DE ENTIDAD',
+      'DOCUMENTOS REGISTRA DOS',
+      'xZq 88 ## --',
+    ].join('\n');
+    const f = mergeLados('', reverso);
+    expect(f.domicilio).toBeUndefined();
+    expect(f.lugarNacimiento).toBeUndefined();
+    expect(f.grupoSanguineo).toBeUndefined();
+  });
+});
+
 describe('mergeLados — orquestación de dos lados', () => {
   it('CI nuevo: MRZ-first en el merge', () => {
     const anverso = [
