@@ -482,3 +482,80 @@ describe('REAL — CI antiguo (basura): NO debe rellenar basura', () => {
     }
   });
 });
+
+describe('REAL — CI nuevo: extracción COMPLETA (anverso etiquetado + opcionales)', () => {
+  it('NOMBRES completos del anverso (etiqueta + línea siguiente) ganan al MRZ truncado', () => {
+    const anverso = [
+      'ESTADO PLURINACIONAL DE BOLIVIA CÉDULA DE IDENTIDAD',
+      'NOMBRE $', // el OCR garblea la etiqueta y deja basura tras ella
+      '” MARÍA RENEÉ', // el valor va en la línea siguiente, con prefijo basura
+      'APELLIDOS',
+      'RODRIGUEZ GONZALEZ',
+      'N* 1234567',
+      'FECHA DE NACIMIENTO',
+      '05/04/2003',
+    ].join('\n');
+    const reverso = [
+      'IDBOL8942507<<9<<<<<<<<<<<<<<<',
+      '0304053F2806125BOL<<<<<<<<<<<6',
+      'RODRIGUEZ<GONZALEZ<<MARIA<<<<R', // MRZ trunca el 2º nombre
+    ].join('\n');
+    const f = mergeLados(anverso, reverso);
+    expect(f.nombres).toBe('MARÍA RENEÉ'); // del anverso, NO "MARIA" de la MRZ
+    expect(f.apellidoPaterno).toBe('RODRIGUEZ');
+    expect(f.apellidoMaterno).toBe('GONZALEZ');
+    expect(f.numeroCi).toBe('1234567');
+    expect(f.fechaNacimiento).toBe('2003-04-05');
+  });
+
+  it('LUGAR y DOMICILIO multilínea: junta renglones y para en el siguiente campo', () => {
+    const reverso = [
+      'LUGAR DE NACIMIENTO',
+      'SANTA CRUZ-ANDRES IBANEZ-SANTA CRUZ',
+      'DE LA SIERRA',
+      'DOMICILIO',
+      'C. SANCHEZ LIMA NO.2520 Z. SOPOCACHI',
+      'OCUPACION',
+      'ESTUDIANTE',
+    ].join('\n');
+    const f = parseAntiguo('', reverso);
+    expect(f.lugarNacimiento).toBe('SANTA CRUZ-ANDRES IBANEZ-SANTA CRUZ DE LA SIERRA');
+    expect(f.domicilio).toBe('C. SANCHEZ LIMA NO.2520 Z. SOPOCACHI');
+  });
+
+  it('LUGAR con etiqueta garbleada ("...NACIMIENTO" sin "lugar de") igual se detecta', () => {
+    const reverso = ['5 E NACIMIENTO', 'COCHABAMBA - QUILLACOLLO - COLCAPIRHUA'].join('\n');
+    const f = parseAntiguo('', reverso);
+    expect(f.lugarNacimiento).toContain('COCHABAMBA');
+  });
+
+  it('GRUPO SANGUÍNEO con el valor en la línea SIGUIENTE a la etiqueta', () => {
+    const reverso = ['ESTADO CIVIL GRUPO SANGUINEO', 'SOLTERA A RH+'].join('\n');
+    const f = parseAntiguo('', reverso);
+    expect(f.grupoSanguineo).toBe('A+');
+  });
+
+  it('CI nuevo REAL (Miguel): apellidos QUISPE QUIROGA, no se truncan', () => {
+    const anverso = [
+      'ESTADO PLURINACIONAL DE BOLIVIA CEDULA DE IDENTIDAD',
+      'NOMBRES',
+      'MIGUEL ANGEL',
+      'APELLIDOS',
+      'QUISPE QUIROGA',
+      'N° 13719132',
+      'FECHA DE NACIMIENTO',
+      '09/02/2002',
+    ].join('\n');
+    const reverso = [
+      'I<BOL13719132<5<<<<<<<<<<<<<<<',
+      '0202099M2912165BOL<<<<<<<<<<8',
+      'QUISPE<QUIROGA<<MIGUEL<ANGEL<<',
+    ].join('\n');
+    const f = mergeLados(anverso, reverso);
+    expect(f.numeroCi).toBe('13719132');
+    expect(f.nombres).toBe('MIGUEL ANGEL');
+    expect(f.apellidoPaterno).toBe('QUISPE');
+    expect(f.apellidoMaterno).toBe('QUIROGA');
+    expect(f.fechaNacimiento).toBe('2002-02-09');
+  });
+});

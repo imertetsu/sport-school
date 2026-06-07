@@ -263,6 +263,16 @@ export function DocumentScanner({ onExtract, onRawText, label }: DocumentScanner
         La imagen se procesa en tu dispositivo. No se sube ni se guarda.
       </p>
 
+      <details className="doc-scanner__guia">
+        <summary>📷 Cómo tomar la foto para mejores resultados</summary>
+        <ul>
+          <li>Carnet <strong>plano</strong> sobre una superficie lisa; sin funda ni reflejos.</li>
+          <li><strong>Buena luz</strong>, sin sombras ni brillos sobre el carnet.</li>
+          <li>Encuadra <strong>solo el carnet</strong> (que llene la foto), en <strong>horizontal</strong>.</li>
+          <li>Teléfono <strong>paralelo</strong> al carnet y enfocado hasta que el texto se lea nítido.</li>
+        </ul>
+      </details>
+
       <div className="doc-scanner__lados">
         {LADOS.map(({ id, titulo, ayuda }) => {
           const s = state[id];
@@ -366,15 +376,21 @@ interface Preparada {
   canvas: HTMLCanvasElement;
 }
 
-const MAX_LADO = 1600; // techo de resolución para acotar coste on-device
+// Lado objetivo: SUBE imágenes pequeñas (un carnet limpio suele venir en baja
+// resolución y el texto fino se pierde) y ACOTA las grandes (coste on-device).
+// Tesseract rinde mejor con texto grande (~300dpi equivalente).
+const OBJETIVO_LADO = 1800;
 
 /**
- * Carga el archivo en un canvas, lo escala a un techo razonable y aplica escala
- * de grises + aumento de contraste/umbral suave (mejora el OCR sobre foto).
+ * Carga el archivo en un canvas, lo re-escala (upscale de pequeñas / downscale de
+ * grandes) a `OBJETIVO_LADO` y lo pasa a escala de grises. NO estira contraste: el
+ * estiramiento degradaba el texto fino de los carnets limpios (p.ej. la fecha del
+ * anverso quedaba ilegible). El OCR de Tesseract ya maneja bien grises nítidos.
  */
 async function prepararImagen(file: File): Promise<HTMLCanvasElement> {
   const bitmap = await cargarBitmap(file);
-  const escala = Math.min(1, MAX_LADO / Math.max(bitmap.width, bitmap.height));
+  const ladoMayor = Math.max(bitmap.width, bitmap.height);
+  const escala = OBJETIVO_LADO / ladoMayor; // >1 sube, <1 baja
   const w = Math.max(1, Math.round(bitmap.width * escala));
   const h = Math.max(1, Math.round(bitmap.height * escala));
 
@@ -383,18 +399,17 @@ async function prepararImagen(file: File): Promise<HTMLCanvasElement> {
   canvas.height = h;
   const ctx = canvas.getContext('2d');
   if (!ctx) return canvas;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(bitmap, 0, 0, w, h);
   cerrarBitmap(bitmap);
 
-  // Escala de grises + contraste (estiramiento simple alrededor de la media).
+  // Solo escala de grises (sin estiramiento de contraste).
   const img = ctx.getImageData(0, 0, w, h);
   const d = img.data;
-  const contraste = 1.35;
   for (let i = 0; i < d.length; i += 4) {
     const gris = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
-    let v = (gris - 128) * contraste + 128;
-    v = v < 0 ? 0 : v > 255 ? 255 : v;
-    d[i] = d[i + 1] = d[i + 2] = v;
+    d[i] = d[i + 1] = d[i + 2] = gris;
   }
   ctx.putImageData(img, 0, 0);
   return canvas;
