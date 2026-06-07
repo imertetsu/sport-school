@@ -191,7 +191,11 @@ describe('Entrenadores — alta/edición + resumen de deudores (ADMIN)', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Nuevo entrenador' });
 
     // El DocumentScanner mockeado dispara onExtract con campos de prueba.
-    await user.click(within(dialog).getByRole('button', { name: 'Escanear cédula' }));
+    await user.click(
+      within(dialog).getByRole('button', {
+        name: 'Escanea anverso y reverso para prellenar CI y nombres.',
+      }),
+    );
 
     expect(within(dialog).getByLabelText(/^CI/)).toHaveValue('7654321');
     expect(within(dialog).getByLabelText(/Nombres/)).toHaveValue('Coach OCR');

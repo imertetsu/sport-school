@@ -10,7 +10,11 @@
  * se sube ni se guarda; el texto OCR solo se muestra en pantalla.
  */
 import { useState } from 'react';
-import { DocumentScanner, type CedulaFields } from '@/components/ocr/DocumentScanner';
+import {
+  DocumentScanner,
+  type CedulaFields,
+  type RawLados,
+} from '@/components/ocr/DocumentScanner';
 import './OcrSpike.css';
 
 const CAMPOS: { key: keyof CedulaFields; label: string }[] = [
@@ -24,7 +28,7 @@ const CAMPOS: { key: keyof CedulaFields; label: string }[] = [
 
 export function OcrSpike() {
   const [fields, setFields] = useState<CedulaFields | null>(null);
-  const [rawText, setRawText] = useState<string>('');
+  const [raw, setRaw] = useState<RawLados>({ anverso: '', reverso: '' });
 
   return (
     <div className="ocr-spike">
@@ -32,22 +36,23 @@ export function OcrSpike() {
         <h1 className="ocr-spike__title">Spike OCR — Cédula boliviana</h1>
         <p className="ocr-spike__subtitle">
           Herramienta de desarrollo para validar la precisión del escaneo con un
-          documento real. La imagen se procesa en este navegador; no se sube ni se
-          guarda.
+          documento real (CI nuevo con MRZ y CI antiguo). Sube ambos lados; el
+          merge prioriza la MRZ del reverso en el nuevo. La imagen se procesa en
+          este navegador; no se sube ni se guarda.
         </p>
       </header>
 
       <section className="ocr-spike__scanner">
         <DocumentScanner
-          label="Subir o capturar cédula"
+          label="Sube anverso y reverso de la cédula."
           onExtract={setFields}
-          onRawText={setRawText}
+          onRawText={setRaw}
         />
       </section>
 
       <div className="ocr-spike__cols">
         <section className="ocr-spike__panel">
-          <h2 className="ocr-spike__panel-title">Campos parseados</h2>
+          <h2 className="ocr-spike__panel-title">Campos del merge</h2>
           {fields ? (
             <dl className="ocr-spike__fields">
               {CAMPOS.map(({ key, label }) => (
@@ -65,11 +70,20 @@ export function OcrSpike() {
         </section>
 
         <section className="ocr-spike__panel">
-          <h2 className="ocr-spike__panel-title">Texto OCR crudo</h2>
-          {rawText ? (
-            <pre className="ocr-spike__raw">{rawText}</pre>
+          <h2 className="ocr-spike__panel-title">Texto OCR crudo — Anverso</h2>
+          {raw.anverso ? (
+            <pre className="ocr-spike__raw">{raw.anverso}</pre>
           ) : (
-            <p className="ocr-spike__hint">Aún no hay texto reconocido.</p>
+            <p className="ocr-spike__hint">Aún no hay texto del anverso.</p>
+          )}
+        </section>
+
+        <section className="ocr-spike__panel">
+          <h2 className="ocr-spike__panel-title">Texto OCR crudo — Reverso</h2>
+          {raw.reverso ? (
+            <pre className="ocr-spike__raw">{raw.reverso}</pre>
+          ) : (
+            <p className="ocr-spike__hint">Aún no hay texto del reverso.</p>
           )}
         </section>
       </div>

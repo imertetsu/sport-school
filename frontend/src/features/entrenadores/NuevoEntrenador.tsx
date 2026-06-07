@@ -266,7 +266,10 @@ export function NuevoEntrenador({ entrenador, onClose, onSaved }: NuevoEntrenado
             />
 
             <div className="entrenadores__scan">
-              <DocumentScanner label="Escanear cédula" onExtract={onScan} />
+              <DocumentScanner
+                label="Escanea anverso y reverso para prellenar CI y nombres."
+                onExtract={onScan}
+              />
             </div>
 
             <Field
