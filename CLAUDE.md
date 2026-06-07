@@ -104,6 +104,38 @@ usuario → main → prompt-engineer (refina) → main → product-owner → spe
               → Sin contrato → PARALELO sin más.
 ```
 
+### Epics multi-sesión (tareas largas) — integración en `staging`
+
+Cuando una tarea es **demasiado grande** para una sola spec (varias áreas, dependencias
+entre piezas, trabajo de varios días en paralelo), se parte en **Sesiones** coordinadas e
+integradas en una rama `staging`, **NO en `main`**:
+
+1. **Documento de coordinación.** Se crea `docs/specs/<epic>-roadmap.md` que parte el epic
+   en Sesiones (S1, S2, …): qué cubre cada una, **dependencias** entre ellas, **propiedad
+   de archivos**, **contratos compartidos** y orden. No es una spec efímera de fase: es el
+   mapa del epic completo. Cada sesión, además, escribe su propia spec efímera
+   `docs/specs/<sesion>.md`.
+2. **Una rama (y worktree) por sesión.** Cada sesión trabaja en su **rama propia**
+   (`feat/<sesion>`), en su **propio worktree** (una rama NO aísla el árbol de trabajo;
+   compartir el dir principal entre sesiones las pisa), en paralelo cuando las dependencias
+   lo permiten.
+3. **`staging/<epic>` es el ÚNICO punto de integración.** Las ramas de sesión **NO se
+   mergean a `main`**: se mergean a la rama **`staging/<epic>`** (creada desde `main`). Una
+   sesión que depende de otra (p. ej. S4 reusa S2+S3) se construye **sobre `staging`**, que
+   ya tiene a las anteriores — no espera a que cada una llegue a `main`.
+4. **`main` solo al final, una sola vez.** Cuando **todas** las sesiones están terminadas,
+   integradas en `staging` **y el conjunto funciona** (gates verdes + verificación E2E
+   sobre `staging`), se hace **un único merge `staging → main`** → un solo deploy, un solo
+   `pg_dump` de respaldo de prod si toca datos reales.
+5. **Limpieza en el merge final.** En ese merge se **borra el documento de coordinación**
+   (`<epic>-roadmap.md`) y las specs efímeras de las sesiones; se actualiza
+   `docs/HANDOFF.md`. Sin carpeta `archive/`.
+
+**Por qué `staging` y no "mergeando entre medias a `main`":** `main` queda estable y
+desplegable durante todo el epic; las migraciones del epic se aplican a prod **una sola
+vez** (al final, con respaldo), no N veces; y se evita que las sesiones aterricen en `main`
+en orden arbitrario (S3 antes que S2, etc.).
+
 ### Reparto de decisiones
 
 Las decisiones de **producto/alcance** se escalan al usuario. Las decisiones **puramente
