@@ -1,0 +1,101 @@
+.doc-scanner {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* El <input file> nativo queda oculto; el botón estilizado lo dispara. */
+.doc-scanner__file {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.doc-scanner__btn {
+  align-self: flex-start;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--color-text-on-accent);
+  font-weight: 600;
+  font-size: var(--fs-md);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-5);
+  min-height: 44px; /* objetivo táctil mobile-first */
+}
+
+.doc-scanner__btn:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+.doc-scanner__btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.doc-scanner__privacy {
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+}
+
+.doc-scanner__preview {
+  max-width: 100%;
+  max-height: 320px;
+  width: auto;
+  object-fit: contain;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-2);
+}
+
+.doc-scanner__progress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.doc-scanner__progress-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: var(--fs-sm);
+  color: var(--color-text-muted);
+}
+
+.doc-scanner__bar {
+  height: 8px;
+  width: 100%;
+  background: var(--color-surface-2);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+
+.doc-scanner__bar-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: var(--radius-pill);
+  transition: width 0.2s ease;
+}
+
+.doc-scanner__done {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--state-paid-text);
+}
+
+.doc-scanner__error {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--color-danger);
+  background: var(--color-danger-bg);
+  border: 1px solid var(--color-danger-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+}
