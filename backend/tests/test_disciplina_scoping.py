@@ -1,16 +1,20 @@
-"""Scoping POR DISCIPLINA para no-ADMIN (fix UX entrenador).
+"""Scoping POR DISCIPLINA para no-ADMIN (fix UX entrenador + RED DE SEGURIDAD).
 
-Decisión de producto: un ENTRENADOR solo ve lo de las DISCIPLINAS que tiene asignadas
-(`entrenador_disciplina`). ADMIN ve todo. Sin disciplinas asignadas -> no ve nada.
+Decisión de producto: un ENTRENADOR ve lo de las DISCIPLINAS que tiene asignadas
+(`entrenador_disciplina`), MÁS los registros con disciplina NULL (red de seguridad:
+nunca invisibles). ADMIN ve todo. **Sin disciplinas asignadas -> NO se filtra por
+disciplina** (cae al comportamiento por sucursal de antes; ve lo de su org/sucursales,
+no vacío).
 
 Cubre:
 - `entrenador_svc.disciplina_ids_de_usuario`: resuelve las disciplinas del entrenador
   cuyo usuario es el dado (vacío si no es entrenador o no tiene disciplinas).
-- Deportistas: ENTRENADOR de la disciplina A ve solo los de A en el listado (total
-  respeta el alcance) y recibe 404 en el detalle de un deportista de B; ADMIN ve ambos;
-  ENTRENADOR sin disciplinas -> lista vacía.
-- Asistencia `listar_categorias`: ENTRENADOR ve solo categorías de su disciplina;
-  roster/guardar/sesiones de una categoría de otra disciplina -> `CategoriaFuera`.
+- Deportistas: ENTRENADOR de la disciplina A ve los de A + los de disciplina NULL en el
+  listado (NO los de B) y recibe 404 SOLO en el detalle de un deportista de B; ADMIN ve
+  todos; ENTRENADOR sin disciplinas -> ve por sucursal (red de seguridad, no vacío).
+- Asistencia `listar_categorias`: ENTRENADOR ve categorías de su disciplina + las de
+  disciplina NULL; roster/guardar/sesiones de una categoría de otra disciplina ->
+  `CategoriaFuera`. Sin disciplinas asignadas (set vacío) -> sin filtro de disciplina.
 
 `owner_engine` siembra saltando RLS; el servicio corre sobre `app_engine` (rol
 `latinosport_app`, NOBYPASSRLS) bajo RLS real. GOTCHA: `SET LOCAL app.current_org` se
@@ -253,10 +257,11 @@ def test_listar_categorias_entrenador_solo_su_disciplina(
 
 
 @pytest.mark.db
-def test_listar_categorias_entrenador_sin_disciplinas_vacio(
+def test_listar_categorias_entrenador_sin_disciplinas_red_de_seguridad(
     app_engine: Engine, scope_fixture: dict
 ) -> None:
-    """ENTRENADOR sin disciplinas (set vacío) -> no ve ninguna categoría."""
+    """ENTRENADOR sin disciplinas (set vacío) -> RED DE SEGURIDAD: NO se filtra por
+    disciplina, ve las categorías de sus sucursales (ambas aquí: A y B)."""
     org = scope_fixture["org"]
     with Session(app_engine) as db:
         _set_org(db, org)
@@ -266,7 +271,10 @@ def test_listar_categorias_entrenador_sin_disciplinas_vacio(
             sucursal_ids=[str(scope_fixture["suc_a"]), str(scope_fixture["suc_b"])],
             disciplina_ids=set(),
         )
-    assert coach == []
+    coach_ids = {c.id for (c, _t) in coach}
+    # Sin filtro de disciplina: ve ambas (filtra solo por sucursal, tiene las dos).
+    assert scope_fixture["cat_a"] in coach_ids
+    assert scope_fixture["cat_b"] in coach_ids
 
 
 @pytest.mark.db
@@ -354,9 +362,10 @@ def _token(user_id: uuid.UUID, org_id: uuid.UUID, role: str, sucursal_ids: list[
 def test_deportistas_lista_y_detalle_scoped_por_disciplina(
     scope_fixture: dict,
 ) -> None:
-    """ENTRENADOR de A ve solo a Ana (disc A) en la lista y 404 en el detalle de Bruno (disc B).
+    """ENTRENADOR de A ve a Ana (disc A) + Sin Disc (disc NULL, red de seguridad), pero
+    NO a Bruno (disc B), y recibe 404 SOLO en el detalle de Bruno.
 
-    ADMIN ve a ambos. El total del listado respeta el alcance.
+    ADMIN ve a todos. El total del listado respeta el alcance (Ana + Sin Disc = 2).
     """
     client = _client_or_skip()
     org = scope_fixture["org"]
@@ -374,7 +383,7 @@ def test_deportistas_lista_y_detalle_scoped_por_disciplina(
     assert str(scope_fixture["al_a"]) in admin_ids
     assert str(scope_fixture["al_b"]) in admin_ids
 
-    # ENTRENADOR de A: solo Ana; NO Bruno (disc B) ni el sin disciplina.
+    # ENTRENADOR de A: ve Ana (disc A) y Sin Disc (disc NULL, red de seguridad); NO Bruno.
     coach_resp = client.get(
         "/api/v1/deportistas?page_size=100",
         headers={"Authorization": f"Bearer {coach_token}"},
@@ -383,16 +392,21 @@ def test_deportistas_lista_y_detalle_scoped_por_disciplina(
     coach_list = coach_resp.json()
     coach_ids = {it["id"] for it in coach_list["items"]}
     assert str(scope_fixture["al_a"]) in coach_ids
+    assert str(scope_fixture["al_sin_disc"]) in coach_ids, "NULL siempre visible (red de seguridad)"
     assert str(scope_fixture["al_b"]) not in coach_ids
-    assert str(scope_fixture["al_sin_disc"]) not in coach_ids
-    assert coach_list["total"] == 1, "el total debe respetar el alcance por disciplina"
+    assert coach_list["total"] == 2, "alcance = disciplina A + los de disciplina NULL"
 
-    # Detalle: el entrenador ve a Ana (200) pero recibe 404 para Bruno (no se revela).
+    # Detalle: ve a Ana (200) y a Sin Disc (200, disc NULL); 404 SOLO para Bruno (disc B).
     ok = client.get(
         f"/api/v1/deportistas/{scope_fixture['al_a']}",
         headers={"Authorization": f"Bearer {coach_token}"},
     )
     assert ok.status_code == 200
+    ok_null = client.get(
+        f"/api/v1/deportistas/{scope_fixture['al_sin_disc']}",
+        headers={"Authorization": f"Bearer {coach_token}"},
+    )
+    assert ok_null.status_code == 200, "deportista sin disciplina visible (red de seguridad)"
     nope = client.get(
         f"/api/v1/deportistas/{scope_fixture['al_b']}",
         headers={"Authorization": f"Bearer {coach_token}"},
@@ -401,8 +415,12 @@ def test_deportistas_lista_y_detalle_scoped_por_disciplina(
 
 
 @pytest.mark.db
-def test_deportistas_entrenador_sin_disciplinas_lista_vacia(scope_fixture: dict) -> None:
-    """ENTRENADOR sin disciplinas asignadas -> lista vacía (total=0)."""
+def test_deportistas_entrenador_sin_disciplinas_red_de_seguridad(scope_fixture: dict) -> None:
+    """ENTRENADOR sin disciplinas -> RED DE SEGURIDAD: NO se filtra por disciplina, ve
+    los deportistas de la org (sin filtro por disciplina), no lista vacía.
+
+    Con ambas sucursales en el token y sin filtro de sucursal en el query, ve a los tres
+    deportistas de la org (Ana A, Bruno B, Sin Disc)."""
     client = _client_or_skip()
     org = scope_fixture["org"]
     sucs = [str(scope_fixture["suc_a"]), str(scope_fixture["suc_b"])]
@@ -414,4 +432,8 @@ def test_deportistas_entrenador_sin_disciplinas_lista_vacia(scope_fixture: dict)
     )
     assert resp.status_code == 200
     data = resp.json()
-    assert data["items"] == [] and data["total"] == 0
+    ids = {it["id"] for it in data["items"]}
+    assert str(scope_fixture["al_a"]) in ids
+    assert str(scope_fixture["al_b"]) in ids
+    assert str(scope_fixture["al_sin_disc"]) in ids
+    assert data["total"] >= 3, "sin disciplinas -> ve por sucursal (red de seguridad), no vacío"

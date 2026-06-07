@@ -189,27 +189,33 @@ def test_crear_deportista_sin_tutor_422() -> None:
 
 @pytest.mark.db
 def test_ficha_medica_gateada_por_rol() -> None:
-    """ADMIN ve ficha_medica; ENTRENADOR fuera de la sucursal del deportista la recibe null."""
+    """Comportamiento REAL hoy: el ENTRENADOR lista/ve sus deportistas (red de seguridad
+    por disciplina) y, como su JWT incluye TODAS las sucursales de la org (auth.py lo
+    hace a propósito), `_puede_ver_ficha` da True -> el coach SÍ ve la ficha médica.
+
+    NOTA: el gating fino "el coach NO ve la ficha de otra sucursal" requiere que el token
+    LIMITE las sucursales del entrenador (épica futura); hoy el entrenador trae todas, así
+    que aquí solo afirmamos lo que el auth produce de verdad: el coach ve al deportista
+    (200) y su ficha (campo presente, con datos si el deportista los tiene).
+    """
     client = _client_or_skip()
     admin_token = _login_admin(client)
 
-    # Buscar un deportista con ficha médica (del seed).
-    lista = client.get(
+    # ADMIN: el contrato del detalle incluye `ficha_medica`.
+    lista_admin = client.get(
         "/api/v1/deportistas?page_size=50",
         headers={"Authorization": f"Bearer {admin_token}"},
     ).json()
-    if not lista["items"]:
+    if not lista_admin["items"]:
         pytest.skip("No hay deportistas; ¿seed ejecutado?")
-
-    deportista_id = lista["items"][0]["id"]
     detalle_admin = client.get(
-        f"/api/v1/deportistas/{deportista_id}",
+        f"/api/v1/deportistas/{lista_admin['items'][0]['id']}",
         headers={"Authorization": f"Bearer {admin_token}"},
     ).json()
-    # ADMIN debe ver la ficha si el deportista la tiene.
     assert "ficha_medica" in detalle_admin
 
-    # Login entrenador; si su token no incluye la sucursal del deportista, ficha = null.
+    # ENTRENADOR: tomar el deportista de SU PROPIA lista (siempre visible bajo la red
+    # de seguridad por disciplina), no de la del admin.
     coach = client.post(
         "/api/v1/auth/login",
         json={"email": "coach@latinosport.bo", "password": "coach1234"},
@@ -217,13 +223,17 @@ def test_ficha_medica_gateada_por_rol() -> None:
     if coach.status_code != 200:
         pytest.skip("Entrenador no sembrado")
     coach_token = coach.json()["access_token"]
-    detalle_coach = client.get(
-        f"/api/v1/deportistas/{deportista_id}",
-        headers={"Authorization": f"Bearer {coach_token}"},
-    )
-    assert detalle_coach.status_code == 200
-    # No afirmamos null duro (el seed da todas las sucursales al token); afirmamos
-    # que el campo existe y respeta el contrato (presente, posiblemente null).
+    coach_headers = {"Authorization": f"Bearer {coach_token}"}
+
+    lista_coach = client.get("/api/v1/deportistas?page_size=50", headers=coach_headers).json()
+    if not lista_coach["items"]:
+        pytest.skip("El entrenador no ve deportistas; ¿seed con disciplinas?")
+
+    deportista_id = lista_coach["items"][0]["id"]
+    detalle_coach = client.get(f"/api/v1/deportistas/{deportista_id}", headers=coach_headers)
+    # 200 (visible) y el contrato del detalle expone `ficha_medica` (no 404 genérico del
+    # scoping viejo: la red de seguridad solo bloquea si hay conflicto real de disciplina).
+    assert detalle_coach.status_code == 200, detalle_coach.text
     assert "ficha_medica" in detalle_coach.json()
 
 

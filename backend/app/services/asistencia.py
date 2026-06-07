@@ -23,7 +23,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, date, datetime, time
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.asistencia import Asistencia
@@ -83,8 +83,10 @@ def listar_categorias(
     las disciplinas que tiene asignadas. Devuelve `[(Categoria, total_deportistas)]`
     ordenado por nombre.
 
-    `disciplina_ids`: `None` = ve todas (ADMIN); set vacío = no ve ninguna; set con
-    ids = solo categorías de esas disciplinas (aditivo sobre el filtro de sucursal).
+    `disciplina_ids` (red de seguridad): `None` = ve todas (ADMIN); set **vacío** = NO
+    se filtra por disciplina (cae al comportamiento por sucursal); set con ids = solo
+    categorías de esas disciplinas, pero las de disciplina **NULL siempre son visibles**
+    (aditivo sobre el filtro de sucursal).
     """
     permitidas = _sucursales_permitidas(role, sucursal_ids)
 
@@ -99,10 +101,10 @@ def listar_categorias(
             return []
         stmt = stmt.where(Categoria.sucursal_id.in_(permitidas))
 
-    if disciplina_ids is not None:
-        if not disciplina_ids:
-            return []
-        stmt = stmt.where(Categoria.disciplina_id.in_(disciplina_ids))
+    if disciplina_ids:  # no None y no vacío -> filtra; NULL siempre visible
+        stmt = stmt.where(
+            or_(Categoria.disciplina_id.is_(None), Categoria.disciplina_id.in_(disciplina_ids))
+        )
 
     rows = db.execute(stmt).all()
     return [(cat, int(total)) for (cat, total) in rows]
@@ -119,9 +121,11 @@ def _cargar_categoria_con_scope(
     """Carga la categoría aplicando el scoping por rol.
 
     404 si no existe (en la org del contexto); 403 (`CategoriaFuera`) si está fuera de
-    las sucursales permitidas del entrenador o de las disciplinas que tiene asignadas.
-    `disciplina_ids` None = ADMIN (ve todas). Protege roster/guardar/sesiones, que
-    pasan todos por aquí.
+    las sucursales permitidas del entrenador. Red de seguridad por disciplina: 403 SOLO
+    si `disciplina_ids` NO está vacío Y la categoría tiene una disciplina que no es del
+    entrenador; categoría con disciplina NULL siempre pasa. `disciplina_ids` None =
+    ADMIN (ve todas); set vacío = sin filtro de disciplina. Protege
+    roster/guardar/sesiones, que pasan todos por aquí.
     """
     cat = db.execute(select(Categoria).where(Categoria.id == categoria_id)).scalar_one_or_none()
     if cat is None:
@@ -130,7 +134,7 @@ def _cargar_categoria_con_scope(
     permitidas = _sucursales_permitidas(role, sucursal_ids)
     if permitidas is not None and cat.sucursal_id not in permitidas:
         raise CategoriaFuera("Categoría fuera del alcance del rol")
-    if disciplina_ids is not None and cat.disciplina_id not in disciplina_ids:
+    if disciplina_ids and cat.disciplina_id is not None and cat.disciplina_id not in disciplina_ids:
         raise CategoriaFuera("Categoría fuera del alcance del rol")
     return cat
 
