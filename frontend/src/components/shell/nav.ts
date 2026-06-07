@@ -24,7 +24,7 @@ export const NAV_GROUPS: NavGroup[] = [
     title: 'Gestión',
     items: [
       { id: 'panel', label: 'Panel', icon: '◧', to: '/panel', enabled: true }, // Panel de cobranza
-      { id: 'alumnos', label: 'Alumnos', icon: '◉', to: '/alumnos', enabled: true },
+      { id: 'deportistas', label: 'Deportistas', icon: '◉', to: '/deportistas', enabled: true },
       // Solicitudes (auto-registro EN SISTEMA): visible a ADMIN y ENTRENADOR
       // (sin `roles`). El backend filtra la cola por rol; aprobar/rechazar es solo ADMIN.
       { id: 'solicitudes', label: 'Solicitudes', icon: '✎', to: '/solicitudes', enabled: true },

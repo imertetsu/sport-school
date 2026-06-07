@@ -11,8 +11,8 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.core.tenant import CurrentUser, require_role, set_tenant_context
-from app.models.alumno import Alumno
 from app.models.categoria import Categoria
+from app.models.deportista import Deportista
 from app.models.sucursal import Sucursal
 from app.schemas.catalogo import SucursalCreate, SucursalOut, SucursalUpdate
 
@@ -77,9 +77,9 @@ def borrar_sucursal(
 ) -> Response:
     """Borra una sucursal SOLO si no está en uso (ADMIN). Otra org ⇒ 404.
 
-    Las FKs `categoria.sucursal_id` y `alumno.sucursal_id` están en CASCADE: borrar
-    sin protección arrastraría categorías y alumnos en silencio. Por eso se exige
-    409 si la sucursal tiene categorías **o** alumnos asociados; NO se borra en
+    Las FKs `categoria.sucursal_id` y `deportista.sucursal_id` están en CASCADE: borrar
+    sin protección arrastraría categorías y deportistas en silencio. Por eso se exige
+    409 si la sucursal tiene categorías **o** deportistas asociados; NO se borra en
     cascada.
     """
     suc = _get_sucursal_o_404(db, sucursal_id)
@@ -87,15 +87,15 @@ def borrar_sucursal(
     n_categorias = db.execute(
         select(func.count()).select_from(Categoria).where(Categoria.sucursal_id == sucursal_id)
     ).scalar_one()
-    n_alumnos = db.execute(
-        select(func.count()).select_from(Alumno).where(Alumno.sucursal_id == sucursal_id)
+    n_deportistas = db.execute(
+        select(func.count()).select_from(Deportista).where(Deportista.sucursal_id == sucursal_id)
     ).scalar_one()
 
-    if n_categorias or n_alumnos:
+    if n_categorias or n_deportistas:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                f"La sucursal tiene {n_categorias} categoría(s) y {n_alumnos} alumno(s) "
+                f"La sucursal tiene {n_categorias} categoría(s) y {n_deportistas} deportista(s) "
                 "asignados; reasígnalos o elimínalos antes de borrarla."
             ),
         )

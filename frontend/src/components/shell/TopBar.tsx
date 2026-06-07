@@ -29,7 +29,7 @@ export function TopBar({ onToggleSidebar }: TopBarProps) {
   const role: Role = viewRole ?? 'ADMIN';
 
   function handleSearchKey(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === 'Enter') navigate('/alumnos');
+    if (e.key === 'Enter') navigate('/deportistas');
   }
 
   return (
@@ -74,11 +74,11 @@ export function TopBar({ onToggleSidebar }: TopBarProps) {
           </span>
           <input
             type="search"
-            placeholder="Buscar alumno, CI o…"
+            placeholder="Buscar deportista, CI o…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleSearchKey}
-            aria-label="Buscar alumno"
+            aria-label="Buscar deportista"
           />
         </div>
       </div>

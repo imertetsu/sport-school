@@ -27,13 +27,13 @@ function renderForm() {
   return { onClose, onSaved };
 }
 
-// Rellena alumno + tutor (mínimos) pero deja el consentimiento al criterio del test.
-// "Nombres" y "CI" aparecen dos veces (alumno y tutor): se resuelven por posición.
+// Rellena deportista + tutor (mínimos) pero deja el consentimiento al criterio del test.
+// "Nombres" y "CI" aparecen dos veces (deportista y tutor): se resuelven por posición.
 async function llenarMinimos(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText(/Apellido paterno/), 'Quispe');
   await user.type(screen.getByLabelText(/Fecha de nacimiento/), '2014-03-10');
   await user.type(screen.getByLabelText(/Disciplina/), 'Fútbol');
-  // [0] = alumno, [1] = tutor.
+  // [0] = deportista, [1] = tutor.
   const nombres = screen.getAllByLabelText(/^Nombres/);
   await user.type(nombres[0], 'Luis');
   await user.type(nombres[1], 'María Quispe');

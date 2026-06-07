@@ -49,7 +49,7 @@ class ComprobanteData:
     numero: str
     org_nombre: str
     moneda: str
-    alumno_nombre: str
+    deportista_nombre: str
     metodo: str
     fecha: datetime
     monto_total: Decimal

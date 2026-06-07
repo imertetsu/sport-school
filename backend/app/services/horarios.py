@@ -21,7 +21,7 @@ Generación y recordatorio (corren en el worker, por org, contexto fijado):
   `horario_id`/`entrenador_id`. Idempotente (UNIQUE de `sesion` + chequeo).
 - `enviar_recordatorios_clase`: sesiones cuya `fecha+hora_inicio` cae en la ventana
   `[ahora, ahora+horas]` y `recordatorio_enviado_en IS NULL` -> notifica (Noop) a
-  los tutores de los alumnos de la categoría y setea `recordatorio_enviado_en=now`.
+  los tutores de los deportistas de la categoría y setea `recordatorio_enviado_en=now`.
   Idempotente por esa marca.
 
 No se salta el contexto de tenant. La lógica pura de fechas (`fechas_de_horario`)
@@ -37,9 +37,9 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models.alumno import Alumno
-from app.models.alumno_tutor import AlumnoTutor
 from app.models.categoria import Categoria
+from app.models.deportista import Deportista
+from app.models.deportista_tutor import DeportistaTutor
 from app.models.entrenador import Entrenador
 from app.models.horario_clase import HorarioClase
 from app.models.sesion import Sesion
@@ -528,7 +528,7 @@ def enviar_recordatorios_clase(
 
     Sesiones (de horario, `hora` no nula) cuyo `fecha+hora` cae en
     `[ahora, ahora+horas]` y `recordatorio_enviado_en IS NULL`: notifica (Noop) a
-    los tutores de los alumnos de la categoría y setea `recordatorio_enviado_en`.
+    los tutores de los deportistas de la categoría y setea `recordatorio_enviado_en`.
     Re-correr no reenvía (la marca ya no es NULL). Devuelve cuántas notificó.
 
     Corre con `app.current_org` ya fijado (lo hace el worker por org). `ahora` es
@@ -579,13 +579,13 @@ def enviar_recordatorios_clase(
 
 
 def _tutores_de_categoria(db: Session, categoria_id: uuid.UUID) -> list[Tutor]:
-    """Tutores (distintos) de los alumnos de una categoría (para el recordatorio)."""
+    """Tutores (distintos) de los deportistas de una categoría (para el recordatorio)."""
     return list(
         db.execute(
             select(Tutor)
-            .join(AlumnoTutor, AlumnoTutor.tutor_id == Tutor.id)
-            .join(Alumno, Alumno.id == AlumnoTutor.alumno_id)
-            .where(Alumno.categoria_id == categoria_id)
+            .join(DeportistaTutor, DeportistaTutor.tutor_id == Tutor.id)
+            .join(Deportista, Deportista.id == DeportistaTutor.deportista_id)
+            .where(Deportista.categoria_id == categoria_id)
             .distinct()
         )
         .scalars()

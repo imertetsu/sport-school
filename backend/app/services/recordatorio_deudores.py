@@ -1,13 +1,13 @@
 """Digest de deudores al entrenador por WhatsApp (epic Recordatorio de deudores).
 
 Para cada entrenador ACTIVO y cada sucursal donde trabaja, arma la lista de
-**deudores** (alumno con ≥1 cuota `VENCIDO` impaga) de esa sucursal y se la envía por
+**deudores** (deportista con ≥1 cuota `VENCIDO` impaga) de esa sucursal y se la envía por
 WhatsApp: una plantilla pre-aprobada `resumen_deudores` con el resumen + un mensaje de
 texto libre con el detalle multilínea.
 
-Definición de deudor (CONTRATO 2): join `cuota → inscripcion → alumno`, `cuota.estado
-= 'VENCIDO'`, `alumno.sucursal_id = :sucursal`, saldo = `SUM(monto - monto_pagado)`,
-agrupado por alumno. NO se reimplementa la lógica de vencimiento: el cron
+Definición de deudor (CONTRATO 2): join `cuota → inscripcion → deportista`, `cuota.estado
+= 'VENCIDO'`, `deportista.sucursal_id = :sucursal`, saldo = `SUM(monto - monto_pagado)`,
+agrupado por deportista. NO se reimplementa la lógica de vencimiento: el cron
 `cobranza_diaria` ya marca `VENCIDO`.
 
 **Idempotencia (CONTRATO 1/5):** una fila `recordatorio_deudores` por
@@ -42,8 +42,8 @@ from app.domain.ports.whatsapp import (
     WhatsAppTemplateMessage,
     WhatsAppTextMessage,
 )
-from app.models.alumno import Alumno
 from app.models.cuota import Cuota
+from app.models.deportista import Deportista
 from app.models.entrenador import Entrenador
 from app.models.entrenador_sucursal import EntrenadorSucursal
 from app.models.inscripcion import Inscripcion
@@ -60,9 +60,9 @@ _LANG_CODE = "es"
 
 @dataclass(frozen=True)
 class Deudor:
-    """Un deudor (alumno con ≥1 cuota vencida) de una sucursal."""
+    """Un deudor (deportista con ≥1 cuota vencida) de una sucursal."""
 
-    alumno_id: uuid.UUID
+    deportista_id: uuid.UUID
     nombre: str
     num_cuotas_vencidas: int
     monto_adeudado: Decimal
@@ -95,32 +95,32 @@ def deudores_de_sucursal(db: Session, *, sucursal_id: uuid.UUID) -> list[Deudor]
     """Deudores de una sucursal (CONTRATO 2), ordenados por monto adeudado desc.
 
     Corre bajo el `app.current_org` del caller (RLS): **sin** `WHERE org_id`. Un
-    deudor = alumno con ≥1 `cuota.estado='VENCIDO'`; saldo = `SUM(monto -
+    deudor = deportista con ≥1 `cuota.estado='VENCIDO'`; saldo = `SUM(monto -
     monto_pagado)` (NO `monto`); `num_cuotas_vencidas` = `COUNT(cuota)`.
     """
     monto_adeudado = func.sum(Cuota.monto - Cuota.monto_pagado)
     num_cuotas = func.count(Cuota.id)
     stmt = (
         select(
-            Alumno.id,
-            Alumno.ap_paterno,
-            Alumno.ap_materno,
-            Alumno.nombres,
+            Deportista.id,
+            Deportista.ap_paterno,
+            Deportista.ap_materno,
+            Deportista.nombres,
             num_cuotas.label("num_cuotas_vencidas"),
             monto_adeudado.label("monto_adeudado"),
         )
         .select_from(Cuota)
         .join(Inscripcion, Inscripcion.id == Cuota.inscripcion_id)
-        .join(Alumno, Alumno.id == Inscripcion.alumno_id)
-        .where(Cuota.estado == "VENCIDO", Alumno.sucursal_id == sucursal_id)
-        .group_by(Alumno.id, Alumno.ap_paterno, Alumno.ap_materno, Alumno.nombres)
+        .join(Deportista, Deportista.id == Inscripcion.deportista_id)
+        .where(Cuota.estado == "VENCIDO", Deportista.sucursal_id == sucursal_id)
+        .group_by(Deportista.id, Deportista.ap_paterno, Deportista.ap_materno, Deportista.nombres)
         .order_by(monto_adeudado.desc())
     )
     deudores: list[Deudor] = []
     for row in db.execute(stmt).all():
         deudores.append(
             Deudor(
-                alumno_id=row.id,
+                deportista_id=row.id,
                 nombre=_nombre_completo(row.ap_paterno, row.ap_materno, row.nombres),
                 num_cuotas_vencidas=int(row.num_cuotas_vencidas),
                 monto_adeudado=Decimal(row.monto_adeudado),

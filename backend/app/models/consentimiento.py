@@ -1,4 +1,4 @@
-"""Modelo `consentimiento` (C1). Requisito duro para persistir un alumno (RNF-02)."""
+"""Modelo `consentimiento` (C1). Requisito duro para persistir un deportista (RNF-02)."""
 
 from __future__ import annotations
 
@@ -18,8 +18,8 @@ class Consentimiento(UUIDPkMixin, OrgScoped, TimestampMixin, Base):
     tutor_id: Mapped[uuid.UUID] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("tutor.id"), nullable=False, index=True
     )
-    alumno_id: Mapped[uuid.UUID] = mapped_column(
-        PG_UUID(as_uuid=True), ForeignKey("alumno.id"), nullable=False, index=True
+    deportista_id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("deportista.id"), nullable=False, index=True
     )
     version_terminos: Mapped[str] = mapped_column(String, nullable=False)
     canal: Mapped[str | None] = mapped_column(String, nullable=True)

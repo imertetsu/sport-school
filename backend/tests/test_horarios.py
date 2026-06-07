@@ -111,11 +111,11 @@ def test_schema_acepta_horario_valido() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Fixture de datos (org + 2 sucursales A/B + categoría A/B + alumnos/tutores)
+# Fixture de datos (org + 2 sucursales A/B + categoría A/B + deportistas/tutores)
 # --------------------------------------------------------------------------- #
 @pytest.fixture()
 def hor_fixture(owner_engine: Engine) -> Iterator[dict]:
-    """Org + sucursales A/B + categoría A/B + 2 alumnos en A (con tutores).
+    """Org + sucursales A/B + categoría A/B + 2 deportistas en A (con tutores).
 
     Devuelve ids. Limpia al final (orden FK-safe).
     """
@@ -158,7 +158,7 @@ def hor_fixture(owner_engine: Engine) -> Iterator[dict]:
         for al_id, nom in ((al_a1, "Ana"), (al_a2, "Bruno")):
             conn.execute(
                 text(
-                    "INSERT INTO alumno (id, org_id, sucursal_id, categoria_id, nombres, "
+                    "INSERT INTO deportista (id, org_id, sucursal_id, categoria_id, nombres, "
                     "created_at, updated_at) "
                     "VALUES (:id,:org,:suc,:cat,:nom,now(),now())"
                 ),
@@ -181,7 +181,7 @@ def hor_fixture(owner_engine: Engine) -> Iterator[dict]:
         for al_id, tut_id in ((al_a1, tut_1), (al_a2, tut_2)):
             conn.execute(
                 text(
-                    "INSERT INTO alumno_tutor (id, org_id, alumno_id, tutor_id, "
+                    "INSERT INTO deportista_tutor (id, org_id, deportista_id, tutor_id, "
                     "responsable_pago, created_at, updated_at) "
                     "VALUES (:id,:org,:al,:tut,true,now(),now())"
                 ),
@@ -207,9 +207,9 @@ def hor_fixture(owner_engine: Engine) -> Iterator[dict]:
         conn.execute(text("DELETE FROM asistencia WHERE org_id = :o"), {"o": str(org)})
         conn.execute(text("DELETE FROM sesion WHERE org_id = :o"), {"o": str(org)})
         conn.execute(text("DELETE FROM horario_clase WHERE org_id = :o"), {"o": str(org)})
-        conn.execute(text("DELETE FROM alumno_tutor WHERE org_id = :o"), {"o": str(org)})
+        conn.execute(text("DELETE FROM deportista_tutor WHERE org_id = :o"), {"o": str(org)})
         conn.execute(text("DELETE FROM tutor WHERE org_id = :o"), {"o": str(org)})
-        conn.execute(text("DELETE FROM alumno WHERE org_id = :o"), {"o": str(org)})
+        conn.execute(text("DELETE FROM deportista WHERE org_id = :o"), {"o": str(org)})
         conn.execute(text("DELETE FROM categoria WHERE org_id = :o"), {"o": str(org)})
         conn.execute(text("DELETE FROM sucursal WHERE org_id = :o"), {"o": str(org)})
         conn.execute(text("DELETE FROM organizacion WHERE id = :o"), {"o": str(org)})

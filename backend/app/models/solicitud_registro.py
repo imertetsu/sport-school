@@ -1,7 +1,7 @@
 """Modelo `solicitud_registro` (C1) — cola de auto-registro EN SISTEMA.
 
-Captura (logueada) de un alumno por entrenador/admin → cola PENDIENTE → el admin
-aprueba (crea el alumno real reutilizando `app/services/alumno.py`) o rechaza.
+Captura (logueada) de un deportista por entrenador/admin → cola PENDIENTE → el admin
+aprueba (crea el deportista real reutilizando `app/services/deportista.py`) o rechaza.
 
 NO hay token ni link público: es una pantalla dentro del sistema, autenticada y
 con contexto de tenant fijado (RLS por `org_id`). La migración 0008 (db-dev) es la
@@ -29,7 +29,7 @@ class SolicitudRegistro(UUIDPkMixin, OrgScoped, Base):
     # Estado de la cola: PENDIENTE | APROBADA | RECHAZADA (CHECK en BD, def PENDIENTE).
     estado: Mapped[str] = mapped_column(String, nullable=False, default="PENDIENTE")
 
-    # --- Datos del alumno (capturados) ---
+    # --- Datos del deportista (capturados) ---
     ap_paterno: Mapped[str | None] = mapped_column(String, nullable=True)
     ap_materno: Mapped[str | None] = mapped_column(String, nullable=True)
     nombres: Mapped[str] = mapped_column(String, nullable=False)
@@ -64,8 +64,8 @@ class SolicitudRegistro(UUIDPkMixin, OrgScoped, Base):
     )
 
     # --- Resultado de la revisión ---
-    alumno_id: Mapped[uuid.UUID | None] = mapped_column(
-        PG_UUID(as_uuid=True), ForeignKey("alumno.id"), nullable=True
+    deportista_id: Mapped[uuid.UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("deportista.id"), nullable=True
     )
     motivo_rechazo: Mapped[str | None] = mapped_column(Text, nullable=True)
     revisado_por: Mapped[uuid.UUID | None] = mapped_column(

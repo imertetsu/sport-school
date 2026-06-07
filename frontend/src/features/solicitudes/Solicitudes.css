@@ -13,7 +13,7 @@
 }
 
 /* Celdas de la cola */
-.solicitudes__alumno {
+.solicitudes__deportista {
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -117,7 +117,7 @@
   padding-top: var(--space-2);
 }
 
-/* Layout compartido reusado del alta de alumno (definido aquí para que el
+/* Layout compartido reusado del alta de deportista (definido aquí para que el
    feature no dependa del orden de carga de otros CSS). */
 .solicitudes .form-grid {
   display: grid;

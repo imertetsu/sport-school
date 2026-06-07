@@ -1,7 +1,7 @@
 """Seed idempotente de datos de ejemplo (estilo Bolivia).
 
 Crea: 1 organización (Bolivia/BOB), 1 usuario ADMIN, 1 usuario+entrenador, 2
-sucursales (Centro, Cala Cala), categorías (Sub-10/14/17) y ~8 alumnos con
+sucursales (Centro, Cala Cala), categorías (Sub-10/14/17) y ~8 deportistas con
 tutores + consentimiento + inscripción + ficha médica.
 
 IMPORTANTE (RLS): `organizacion` NO tiene RLS, así que se inserta directo. El
@@ -10,7 +10,7 @@ sesión (`set_config(..., true)` por transacción). Para que esto funcione con e
 rol `latinosport_app`, la migración de db-dev debe haber concedido los GRANTs (C2).
 
 Idempotencia: usa claves naturales (email de usuario, nombre de org/sucursal,
-CI de alumno) para no duplicar en re-ejecuciones.
+CI de deportista) para no duplicar en re-ejecuciones.
 
 Cómo correr (desde `backend/`, con la BD migrada):
     .venv\\Scripts\\python -m app.seed          # Windows
@@ -30,13 +30,13 @@ from sqlalchemy.orm import Session
 
 from app.core.db import SessionLocal
 from app.core.security import hash_password
-from app.models.alumno import Alumno
-from app.models.alumno_tutor import AlumnoTutor
 from app.models.asistencia import Asistencia
 from app.models.aviso import Aviso
 from app.models.categoria import Categoria
 from app.models.consentimiento import Consentimiento
 from app.models.cuota import Cuota
+from app.models.deportista import Deportista
+from app.models.deportista_tutor import DeportistaTutor
 from app.models.egreso import Egreso
 from app.models.entrenador import Entrenador
 from app.models.horario_clase import HorarioClase
@@ -147,7 +147,7 @@ def _get_or_create_categoria(
 
 
 # Datos de ejemplo (design-system.md): nombres bolivianos, CI "NNNNNNN LP".
-_ALUMNOS = [
+_DEPORTISTAS = [
     (
         "Quispe",
         "Mamani",
@@ -268,30 +268,30 @@ def _seed_cobranza(db: Session, org_id: uuid.UUID) -> dict[str, int]:
 def _seed_asistencia(db: Session, org_id: uuid.UUID) -> dict[str, int]:
     """Crea 1 sesión de ejemplo con asistencias para que el historial tenga datos.
 
-    Idempotente: toma la primera categoría (con alumnos) de la org, busca/crea la
+    Idempotente: toma la primera categoría (con deportistas) de la org, busca/crea la
     sesión por (categoria, fecha, hora=NULL) y hace upsert de una marca por
-    alumno (PRESENTE, con un AUSENTE para variedad). `registrado_por` = ADMIN.
+    deportista (PRESENTE, con un AUSENTE para variedad). `registrado_por` = ADMIN.
     """
-    # Categoría con al menos un alumno (orden estable por nombre).
+    # Categoría con al menos un deportista (orden estable por nombre).
     cat_row = db.execute(
-        select(Categoria, Alumno.id)
-        .join(Alumno, Alumno.categoria_id == Categoria.id)
+        select(Categoria, Deportista.id)
+        .join(Deportista, Deportista.categoria_id == Categoria.id)
         .order_by(Categoria.nombre)
     ).first()
     if cat_row is None:
         return {"sesiones": 0, "marcas": 0}
     categoria = cat_row[0]
 
-    alumnos = (
+    deportistas = (
         db.execute(
-            select(Alumno)
-            .where(Alumno.categoria_id == categoria.id)
-            .order_by(Alumno.ap_paterno, Alumno.nombres)
+            select(Deportista)
+            .where(Deportista.categoria_id == categoria.id)
+            .order_by(Deportista.ap_paterno, Deportista.nombres)
         )
         .scalars()
         .all()
     )
-    if not alumnos:
+    if not deportistas:
         return {"sesiones": 0, "marcas": 0}
 
     fecha = date.today()
@@ -314,21 +314,21 @@ def _seed_asistencia(db: Session, org_id: uuid.UUID) -> dict[str, int]:
         sesiones_creadas = 1
 
     existentes = {
-        a.alumno_id
+        a.deportista_id
         for a in db.execute(select(Asistencia).where(Asistencia.sesion_id == sesion.id))
         .scalars()
         .all()
     }
     marcas = 0
-    for i, alumno in enumerate(alumnos):
-        if alumno.id in existentes:
+    for i, deportista in enumerate(deportistas):
+        if deportista.id in existentes:
             continue
         estado = "AUSENTE" if i % 4 == 0 else "PRESENTE"  # mayoría presentes
         db.add(
             Asistencia(
                 org_id=org_id,
                 sesion_id=sesion.id,
-                alumno_id=alumno.id,
+                deportista_id=deportista.id,
                 estado=estado,
                 registrado_por=registrado_por,
             )
@@ -509,7 +509,7 @@ def _seed_solicitudes(db: Session, org_id: uuid.UUID) -> dict[str, int]:
 
     `creado_por` = entrenador (capturó la solicitud desde el sistema). Sugerencia
     de sucursal Centro + su primera categoría. Idempotente por clave natural
-    (org + CI del alumno propuesto). NO hay token/link público.
+    (org + CI del deportista propuesto). NO hay token/link público.
     """
     coach = db.execute(select(Usuario).where(Usuario.email == COACH_EMAIL)).scalar_one_or_none()
     centro = db.execute(
@@ -640,20 +640,22 @@ def seed() -> None:
                 rango_edad="Sub-17",
             )
 
-        # 6) Alumnos + tutores + consentimiento + inscripción + ficha médica.
+        # 6) Deportistas + tutores + consentimiento + inscripción + ficha médica.
         sucursales = [centro, cala_cala]
         cat_nombres = ["Sub-10 Principiante", "Sub-14 Intermedio", "Sub-17 Avanzado"]
         created = 0
-        for i, (ap_pat, ap_mat, nom, ci, fnac, disc, sangre, alergias, cond) in enumerate(_ALUMNOS):
+        for i, (ap_pat, ap_mat, nom, ci, fnac, disc, sangre, alergias, cond) in enumerate(
+            _DEPORTISTAS
+        ):
             existing = db.execute(
-                select(Alumno).where(Alumno.org_id == org_id, Alumno.ci == ci)
+                select(Deportista).where(Deportista.org_id == org_id, Deportista.ci == ci)
             ).scalar_one_or_none()
             if existing is not None:
                 continue
 
             suc = sucursales[i % 2]
             cat = cats[(suc.id, cat_nombres[i % 3])]
-            alumno = Alumno(
+            deportista = Deportista(
                 org_id=org_id,
                 sucursal_id=suc.id,
                 categoria_id=cat.id,
@@ -670,7 +672,7 @@ def seed() -> None:
                     "condiciones": cond,
                 },
             )
-            db.add(alumno)
+            db.add(deportista)
             db.flush()
 
             tutor = Tutor(
@@ -682,9 +684,9 @@ def seed() -> None:
             db.add(tutor)
             db.flush()
             db.add(
-                AlumnoTutor(
+                DeportistaTutor(
                     org_id=org_id,
-                    alumno_id=alumno.id,
+                    deportista_id=deportista.id,
                     tutor_id=tutor.id,
                     parentesco="Padre/Madre",
                     responsable_pago=True,
@@ -694,7 +696,7 @@ def seed() -> None:
                 Consentimiento(
                     org_id=org_id,
                     tutor_id=tutor.id,
-                    alumno_id=alumno.id,
+                    deportista_id=deportista.id,
                     version_terminos="v1",
                     canal="PRESENCIAL",
                     aceptado_en=datetime.now(UTC),
@@ -703,7 +705,7 @@ def seed() -> None:
             db.add(
                 Inscripcion(
                     org_id=org_id,
-                    alumno_id=alumno.id,
+                    deportista_id=deportista.id,
                     disciplina=disc,
                     fecha_inscripcion=date(2024, 2, 10),
                     monto_mensual=Decimal("250.00"),
@@ -737,7 +739,7 @@ def seed() -> None:
         print(
             f"Seed OK: org='{ORG_NOMBRE}' ({org_id}), admin={ADMIN_EMAIL}/{ADMIN_PASS}, "
             f"entrenador={COACH_EMAIL}/{COACH_PASS}, sucursales=2, "
-            f"alumnos nuevos={created} (de {len(_ALUMNOS)}). "
+            f"deportistas nuevos={created} (de {len(_DEPORTISTAS)}). "
             f"Cobranza: cuotas_creadas={cob['creadas']}, vencidas={cob['vencidas']}, "
             f"pagadas={cob['pagadas']}. "
             f"Asistencia: sesiones_creadas={asis['sesiones']}, marcas={asis['marcas']}. "

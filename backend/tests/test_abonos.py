@@ -119,7 +119,7 @@ def test_comprobante_pdf_parcial_con_credito_render() -> None:
         numero="abc",
         org_nombre="Club Test",
         moneda="BOB",
-        alumno_nombre="Juan Perez",
+        deportista_nombre="Juan Perez",
         metodo="EFECTIVO",
         fecha=datetime(2026, 6, 1, 10, 0),
         monto_total=Decimal("150.00"),
@@ -152,7 +152,7 @@ def test_comprobante_pdf_defaults_qr_igual_que_hoy() -> None:
         numero="qr1",
         org_nombre="Club Test",
         moneda="BOB",
-        alumno_nombre="Ana",
+        deportista_nombre="Ana",
         metodo="QR",
         fecha=datetime(2026, 6, 1, 10, 0),
         monto_total=Decimal("250.00"),
@@ -173,7 +173,7 @@ def test_comprobante_pdf_defaults_qr_igual_que_hoy() -> None:
 # =========================================================================== #
 @pytest.fixture()
 def abono_fixture(owner_engine: Engine) -> Iterator[dict]:
-    """Org + sucursal + alumno + inscripción + 2 cuotas PENDIENTE (mismo saldo).
+    """Org + sucursal + deportista + inscripción + 2 cuotas PENDIENTE (mismo saldo).
 
     Cuotas FIFO: c1 vence antes que c2, ambas monto 100, monto_pagado 0.
     Limpia al final (orden FK-safe, incluye `credito`). Skip si no hay BD.
@@ -213,14 +213,14 @@ def abono_fixture(owner_engine: Engine) -> Iterator[dict]:
         )
         conn.execute(
             text(
-                "INSERT INTO alumno (id, org_id, sucursal_id, nombres, created_at, updated_at) "
-                "VALUES (:id,:org,:suc,'Alumno Abono',now(),now())"
+                "INSERT INTO deportista (id, org_id, sucursal_id, nombres, created_at, updated_at) "
+                "VALUES (:id,:org,:suc,'Deportista Abono',now(),now())"
             ),
             {"id": str(al), "org": str(org), "suc": str(suc)},
         )
         conn.execute(
             text(
-                "INSERT INTO inscripcion (id, org_id, alumno_id, fecha_inscripcion, "
+                "INSERT INTO inscripcion (id, org_id, deportista_id, fecha_inscripcion, "
                 "monto_mensual, estado, created_at, updated_at) "
                 "VALUES (:id,:org,:al,:f,:m,'ACTIVA',now(),now())"
             ),
@@ -264,7 +264,7 @@ def abono_fixture(owner_engine: Engine) -> Iterator[dict]:
         conn.execute(text("DELETE FROM cuota WHERE org_id = :o"), {"o": str(org)})
         conn.execute(text("DELETE FROM inscripcion WHERE org_id = :o"), {"o": str(org)})
         conn.execute(text("DELETE FROM usuario WHERE org_id = :o"), {"o": str(org)})
-        conn.execute(text("DELETE FROM alumno WHERE org_id = :o"), {"o": str(org)})
+        conn.execute(text("DELETE FROM deportista WHERE org_id = :o"), {"o": str(org)})
         conn.execute(text("DELETE FROM sucursal WHERE org_id = :o"), {"o": str(org)})
         conn.execute(text("DELETE FROM organizacion WHERE id = :o"), {"o": str(org)})
 
@@ -585,14 +585,14 @@ def credito_dos_orgs(owner_engine: Engine) -> Iterator[dict]:
             )
             conn.execute(
                 text(
-                    "INSERT INTO alumno (id, org_id, sucursal_id, nombres, created_at, "
+                    "INSERT INTO deportista (id, org_id, sucursal_id, nombres, created_at, "
                     "updated_at) VALUES (:id,:org,:suc,'Al',now(),now())"
                 ),
                 {"id": str(al_id), "org": str(org_id), "suc": str(suc_id)},
             )
             conn.execute(
                 text(
-                    "INSERT INTO inscripcion (id, org_id, alumno_id, fecha_inscripcion, "
+                    "INSERT INTO inscripcion (id, org_id, deportista_id, fecha_inscripcion, "
                     "monto_mensual, estado, created_at, updated_at) "
                     "VALUES (:id,:org,:al,:f,100,'ACTIVA',now(),now())"
                 ),
@@ -612,7 +612,7 @@ def credito_dos_orgs(owner_engine: Engine) -> Iterator[dict]:
         for org_id in (org_a, org_b):
             conn.execute(text("DELETE FROM credito WHERE org_id=:o"), {"o": str(org_id)})
             conn.execute(text("DELETE FROM inscripcion WHERE org_id=:o"), {"o": str(org_id)})
-            conn.execute(text("DELETE FROM alumno WHERE org_id=:o"), {"o": str(org_id)})
+            conn.execute(text("DELETE FROM deportista WHERE org_id=:o"), {"o": str(org_id)})
             conn.execute(text("DELETE FROM sucursal WHERE org_id=:o"), {"o": str(org_id)})
             conn.execute(text("DELETE FROM organizacion WHERE id=:o"), {"o": str(org_id)})
 

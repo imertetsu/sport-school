@@ -1,8 +1,8 @@
-.nuevo-alumno {
+.nuevo-deportista {
   max-width: 760px;
 }
 
-.nuevo-alumno__form {
+.nuevo-deportista__form {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
@@ -84,7 +84,7 @@
   flex: 0 0 auto;
 }
 
-.nuevo-alumno__actions {
+.nuevo-deportista__actions {
   display: flex;
   justify-content: flex-end;
   gap: var(--space-3);

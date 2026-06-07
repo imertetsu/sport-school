@@ -33,10 +33,10 @@ describe('DataTable', () => {
         columns={columns}
         rows={[]}
         rowKey={(r) => r.id}
-        emptyMessage="Sin alumnos"
+        emptyMessage="Sin deportistas"
       />,
     );
-    expect(screen.getByText('Sin alumnos')).toBeInTheDocument();
+    expect(screen.getByText('Sin deportistas')).toBeInTheDocument();
   });
 
   it('muestra el estado de carga', () => {

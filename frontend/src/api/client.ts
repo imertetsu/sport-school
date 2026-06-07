@@ -5,10 +5,10 @@
 
 import { API_BASE_URL, API_PREFIX, TOKEN_STORAGE_KEY } from '@/config';
 import type {
-  AlumnoCreate,
-  AlumnoCreated,
-  AlumnoDetail,
-  AlumnosListResponse,
+  DeportistaCreate,
+  DeportistaCreated,
+  DeportistaDetail,
+  DeportistasListResponse,
   AsistenciaReporte,
   AvisoCreate,
   AvisoCreated,
@@ -47,7 +47,7 @@ import type {
   AprobarBody,
   EstadoSolicitud,
   RechazarBody,
-  SolicitudAlumnoCreado,
+  SolicitudDeportistaCreado,
   SolicitudCreate,
   SolicitudOut,
   SolicitudesPage,
@@ -239,17 +239,17 @@ export const api = {
       signal,
     });
   },
-  alumnos(
+  deportistas(
     params: { q?: string; sucursal_id?: string; page?: number; page_size?: number } = {},
     signal?: AbortSignal,
-  ): Promise<AlumnosListResponse> {
-    return request<AlumnosListResponse>('/alumnos', { query: params, signal });
+  ): Promise<DeportistasListResponse> {
+    return request<DeportistasListResponse>('/deportistas', { query: params, signal });
   },
-  alumno(id: string, signal?: AbortSignal): Promise<AlumnoDetail> {
-    return request<AlumnoDetail>(`/alumnos/${id}`, { signal });
+  deportista(id: string, signal?: AbortSignal): Promise<DeportistaDetail> {
+    return request<DeportistaDetail>(`/deportistas/${id}`, { signal });
   },
-  crearAlumno(data: AlumnoCreate, signal?: AbortSignal): Promise<AlumnoCreated> {
-    return request<AlumnoCreated>('/alumnos', { method: 'POST', body: data, signal });
+  crearDeportista(data: DeportistaCreate, signal?: AbortSignal): Promise<DeportistaCreated> {
+    return request<DeportistaCreated>('/deportistas', { method: 'POST', body: data, signal });
   },
 
   // ---- Cobranza (C4) ----
@@ -259,7 +259,7 @@ export const api = {
   cuotas(
     params: {
       estado?: EstadoCuota;
-      alumno_id?: string;
+      deportista_id?: string;
       sucursal_id?: string;
       page?: number;
       page_size?: number;
@@ -451,14 +451,14 @@ export const api = {
   crearSolicitud(body: SolicitudCreate, signal?: AbortSignal): Promise<SolicitudOut> {
     return request<SolicitudOut>('/solicitudes', { method: 'POST', body, signal });
   },
-  // POST /solicitudes/{id}/aprobar (ADMIN) -> crea el alumno real (reusa Alumnos) y lo devuelve.
-  // Marca APROBADA y set alumno_id. 409 si ya resuelta; 403 si no es ADMIN.
+  // POST /solicitudes/{id}/aprobar (ADMIN) -> crea el deportista real (reusa Deportistas) y lo devuelve.
+  // Marca APROBADA y set deportista_id. 409 si ya resuelta; 403 si no es ADMIN.
   aprobarSolicitud(
     id: string,
     body: AprobarBody,
     signal?: AbortSignal,
-  ): Promise<SolicitudAlumnoCreado> {
-    return request<SolicitudAlumnoCreado>(`/solicitudes/${id}/aprobar`, {
+  ): Promise<SolicitudDeportistaCreado> {
+    return request<SolicitudDeportistaCreado>(`/solicitudes/${id}/aprobar`, {
       method: 'POST',
       body,
       signal,
@@ -532,7 +532,7 @@ export const api = {
     return request<Sucursal>(`/sucursales/${id}`, { method: 'PUT', body, signal });
   },
   // DELETE /sucursales/{id} (ADMIN) -> 204. 409 (CONFLICT) si está en uso
-  // (categorías/alumnos); el cliente refleja el mensaje del backend, sin cascada.
+  // (categorías/deportistas); el cliente refleja el mensaje del backend, sin cascada.
   eliminarSucursal(id: string, signal?: AbortSignal): Promise<void> {
     return request<void>(`/sucursales/${id}`, { method: 'DELETE', signal });
   },
@@ -549,7 +549,7 @@ export const api = {
     return request<Categoria>(`/categorias/${id}`, { method: 'PUT', body, signal });
   },
   // DELETE /categorias/{id} (ADMIN) -> 204. 409 (CONFLICT) si está en uso
-  // (alumnos/horarios/sesiones); el cliente refleja el mensaje del backend.
+  // (deportistas/horarios/sesiones); el cliente refleja el mensaje del backend.
   eliminarCategoria(id: string, signal?: AbortSignal): Promise<void> {
     return request<void>(`/categorias/${id}`, { method: 'DELETE', signal });
   },

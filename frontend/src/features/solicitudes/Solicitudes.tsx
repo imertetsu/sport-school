@@ -94,10 +94,10 @@ export function Solicitudes() {
 
   const columns: Column<SolicitudOut>[] = [
     {
-      key: 'alumno',
-      header: 'Alumno',
+      key: 'deportista',
+      header: 'Deportista',
       render: (s) => (
-        <div className="solicitudes__alumno">
+        <div className="solicitudes__deportista">
           <span className="solicitudes__nombre">
             {`${s.ap_paterno} ${s.ap_materno}, ${s.nombres}`.trim()}
           </span>
@@ -112,7 +112,7 @@ export function Solicitudes() {
       header: 'Tutor',
       hideOnNarrow: true,
       render: (s) => (
-        <div className="solicitudes__alumno">
+        <div className="solicitudes__deportista">
           <span>{s.tutor.nombres}</span>
           <span className="solicitudes__sub">
             {s.tutor.telefono || '—'} · {s.tutor.parentesco || '—'}
@@ -139,7 +139,7 @@ export function Solicitudes() {
       header: 'Capturado',
       hideOnNarrow: true,
       render: (s) => (
-        <div className="solicitudes__alumno">
+        <div className="solicitudes__deportista">
           <span>{formatDate(s.created_at)}</span>
           {s.creado_por_nombre && (
             <span className="solicitudes__sub">por {s.creado_por_nombre}</span>

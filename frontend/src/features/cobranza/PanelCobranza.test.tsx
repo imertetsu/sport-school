@@ -44,13 +44,13 @@ import { PanelCobranza } from './PanelCobranza';
 
 const PANEL: PanelData = {
   ingresos_mes: { monto: '28450' },
-  alumnos_activos: { count: 142, sucursales: 2, disciplinas: 3 },
+  deportistas_activos: { count: 142, sucursales: 2, disciplinas: 3 },
   cuotas_pendientes: { count: 23, monto: '5290' },
   cuotas_vencidas: { count: 7, monto: '1680' },
   credito_total: '0',
   morosidad: [
     {
-      alumno_id: 'a1',
+      deportista_id: 'a1',
       nombre_completo: 'Mateo Quispe Mamani',
       categoria: 'Sub-14 Intermedio',
       monto: '250',
@@ -66,7 +66,7 @@ const CUOTAS: CuotasListResponse = {
   items: [
     {
       id: 'q1',
-      alumno: { id: 'a1', nombre_completo: 'Mateo Quispe Mamani' },
+      deportista: { id: 'a1', nombre_completo: 'Mateo Quispe Mamani' },
       sucursal: { nombre: 'Centro' },
       categoria: { nombre: 'Sub-14 Intermedio' },
       periodo_inicio: '2026-06-01',
@@ -79,7 +79,7 @@ const CUOTAS: CuotasListResponse = {
     },
     {
       id: 'q2',
-      alumno: { id: 'a2', nombre_completo: 'Valentina Condori Huanca' },
+      deportista: { id: 'a2', nombre_completo: 'Valentina Condori Huanca' },
       sucursal: { nombre: 'Cala Cala' },
       categoria: { nombre: 'Sub-10 Principiante' },
       periodo_inicio: '2026-06-01',
@@ -115,7 +115,7 @@ describe('PanelCobranza', () => {
   it('muestra los 4 KPIs con datos del panel', async () => {
     renderPanel();
     expect(await screen.findByText('Ingresos del mes')).toBeInTheDocument();
-    expect(screen.getByText('Alumnos activos')).toBeInTheDocument();
+    expect(screen.getByText('Deportistas activos')).toBeInTheDocument();
     expect(screen.getByText('Cuotas pendientes')).toBeInTheDocument();
     expect(screen.getByText('Cuotas vencidas')).toBeInTheDocument();
     // valores

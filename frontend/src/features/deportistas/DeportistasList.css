@@ -28,27 +28,27 @@
   font-weight: 500;
 }
 
-.alumno-cell {
+.deportista-cell {
   display: flex;
   align-items: center;
   gap: var(--space-3);
   min-width: 0;
 }
 
-.alumno-cell__text {
+.deportista-cell__text {
   display: flex;
   flex-direction: column;
   min-width: 0;
 }
 
-.alumno-cell__name {
+.deportista-cell__name {
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.alumno-cell__meta {
+.deportista-cell__meta {
   font-size: var(--fs-xs);
   color: var(--color-text-muted);
   white-space: nowrap;

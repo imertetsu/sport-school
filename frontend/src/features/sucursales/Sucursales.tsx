@@ -80,8 +80,8 @@ export function Sucursales() {
       if (activeId === id) setActiveId(null);
       recargar();
     } catch (err) {
-      // 409: la sucursal está en uso (categorías/alumnos). Mostramos el mensaje
-      // del backend ("…tiene N categorías / M alumnos…") sin borrar en cascada.
+      // 409: la sucursal está en uso (categorías/deportistas). Mostramos el mensaje
+      // del backend ("…tiene N categorías / M deportistas…") sin borrar en cascada.
       if (err instanceof ApiError) {
         if (err.status === 409) {
           setError(err.message);
@@ -191,7 +191,7 @@ export function Sucursales() {
           <span>
             ¿Eliminar la sucursal “
             {sucursales.find((s) => s.id === confirmId)?.nombre ?? ''}”? No se podrá
-            si tiene categorías o alumnos asignados.
+            si tiene categorías o deportistas asignados.
           </span>
           <div className="sucursales__confirm-actions">
             <Button

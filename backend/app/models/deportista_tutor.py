@@ -1,4 +1,4 @@
-"""Modelo puente N:M `alumno_tutor` (C1). UNIQUE(alumno_id, tutor_id)."""
+"""Modelo puente N:M `deportista_tutor` (C1). UNIQUE(deportista_id, tutor_id)."""
 
 from __future__ import annotations
 
@@ -11,12 +11,12 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.models.base import Base, OrgScoped, TimestampMixin, UUIDPkMixin
 
 
-class AlumnoTutor(UUIDPkMixin, OrgScoped, TimestampMixin, Base):
-    __tablename__ = "alumno_tutor"
-    __table_args__ = (UniqueConstraint("alumno_id", "tutor_id", name="uq_alumno_tutor"),)
+class DeportistaTutor(UUIDPkMixin, OrgScoped, TimestampMixin, Base):
+    __tablename__ = "deportista_tutor"
+    __table_args__ = (UniqueConstraint("deportista_id", "tutor_id", name="uq_deportista_tutor"),)
 
-    alumno_id: Mapped[uuid.UUID] = mapped_column(
-        PG_UUID(as_uuid=True), ForeignKey("alumno.id"), nullable=False, index=True
+    deportista_id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("deportista.id"), nullable=False, index=True
     )
     tutor_id: Mapped[uuid.UUID] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("tutor.id"), nullable=False, index=True

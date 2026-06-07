@@ -1,8 +1,8 @@
-"""Schemas de Alumnos (contrato C5).
+"""Schemas de Deportistas (contrato C5).
 
 Las formas de respuesta (list item, detalle, nested) son **espejo exacto** de C5;
 frontend-dev tipa contra ellas. La validación dura (≥1 tutor + consentimiento
-obligatorio) vive en `AlumnoCreate` y produce 422 (RF-USR-04 / RNF-02).
+obligatorio) vive en `DeportistaCreate` y produce 422 (RF-USR-04 / RNF-02).
 """
 
 from __future__ import annotations
@@ -41,7 +41,7 @@ class FichaMedica(BaseModel):
 
 
 class TutorIn(BaseModel):
-    """Tutor en el alta de alumno (C5)."""
+    """Tutor en el alta de deportista (C5)."""
 
     nombres: str
     telefono: str | None = None
@@ -51,7 +51,7 @@ class TutorIn(BaseModel):
 
 
 class TutorOut(BaseModel):
-    """Tutor en el detalle del alumno (incluye datos del puente alumno_tutor)."""
+    """Tutor en el detalle del deportista (incluye datos del puente deportista_tutor)."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -101,8 +101,8 @@ class InscripcionOut(BaseModel):
 # --------------------------------------------------------------------------- #
 # Create / Update
 # --------------------------------------------------------------------------- #
-class AlumnoCreate(BaseModel):
-    """Body de `POST /alumnos` (C5).
+class DeportistaCreate(BaseModel):
+    """Body de `POST /deportistas` (C5).
 
     Validación dura: `tutores` con **≥1** elemento y `consentimiento` obligatorio.
     Pydantic produce 422 si falta cualquiera de los dos.
@@ -131,8 +131,8 @@ class AlumnoCreate(BaseModel):
         return value
 
 
-class AlumnoUpdate(BaseModel):
-    """Body de `PUT /alumnos/{id}` (C5). No toca tutores en este slice."""
+class DeportistaUpdate(BaseModel):
+    """Body de `PUT /deportistas/{id}` (C5). No toca tutores en este slice."""
 
     sucursal_id: uuid.UUID | None = None
     categoria_id: uuid.UUID | None = None
@@ -149,8 +149,8 @@ class AlumnoUpdate(BaseModel):
 # --------------------------------------------------------------------------- #
 # Respuestas de lista / detalle (formas exactas C5)
 # --------------------------------------------------------------------------- #
-class AlumnoListItem(BaseModel):
-    """Item de `GET /alumnos` (C5)."""
+class DeportistaListItem(BaseModel):
+    """Item de `GET /deportistas` (C5)."""
 
     id: uuid.UUID
     ap_paterno: str | None = None
@@ -163,8 +163,8 @@ class AlumnoListItem(BaseModel):
     sucursal: SucursalRef
 
 
-class AlumnoDetailOut(BaseModel):
-    """Perfil completo de `GET /alumnos/{id}` (C5).
+class DeportistaDetailOut(BaseModel):
+    """Perfil completo de `GET /deportistas/{id}` (C5).
 
     `ficha_medica` se incluye solo si el rol tiene acceso (RNF-02); si no, `null`.
     """

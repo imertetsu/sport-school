@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, ApiError } from '@/api/client';
-import type { AlumnoListItem } from '@/api/types';
+import type { DeportistaListItem } from '@/api/types';
 import {
   Avatar,
   Badge,
@@ -13,7 +13,7 @@ import {
 import { useSucursales } from '@/components/shell/SucursalContext';
 import { useSearch } from '@/components/shell/SearchContext';
 import { nivelLabel } from '@/lib/format';
-import './AlumnosList.css';
+import './DeportistasList.css';
 
 function useDebounced<T>(value: T, delay = 300): T {
   const [debounced, setDebounced] = useState(value);
@@ -24,13 +24,13 @@ function useDebounced<T>(value: T, delay = 300): T {
   return debounced;
 }
 
-export function AlumnosList() {
+export function DeportistasList() {
   const navigate = useNavigate();
   const { selected: sucursalId } = useSucursales();
   const { query } = useSearch();
   const debouncedQuery = useDebounced(query.trim());
 
-  const [items, setItems] = useState<AlumnoListItem[]>([]);
+  const [items, setItems] = useState<DeportistaListItem[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -41,7 +41,7 @@ export function AlumnosList() {
     setLoading(true);
     setError(null);
     api
-      .alumnos(
+      .deportistas(
         {
           q: debouncedQuery || undefined,
           sucursal_id: sucursalId || undefined,
@@ -58,7 +58,7 @@ export function AlumnosList() {
       .catch((err) => {
         if (!active) return;
         if (err instanceof DOMException && err.name === 'AbortError') return;
-        setError(err instanceof ApiError ? err.message : 'No se pudieron cargar los alumnos');
+        setError(err instanceof ApiError ? err.message : 'No se pudieron cargar los deportistas');
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -69,21 +69,21 @@ export function AlumnosList() {
     };
   }, [debouncedQuery, sucursalId]);
 
-  const columns = useMemo<Column<AlumnoListItem>[]>(
+  const columns = useMemo<Column<DeportistaListItem>[]>(
     () => [
       {
-        key: 'alumno',
-        header: 'Alumno',
+        key: 'deportista',
+        header: 'Deportista',
         render: (a) => {
           const cat = a.categoria
             ? `${a.categoria.nombre} ${nivelLabel(a.categoria.nivel)}`.trim()
             : 'Sin categoría';
           return (
-            <div className="alumno-cell">
+            <div className="deportista-cell">
               <Avatar name={a.nombre_completo} size="md" />
-              <div className="alumno-cell__text">
-                <span className="alumno-cell__name">{a.nombre_completo}</span>
-                <span className="alumno-cell__meta">
+              <div className="deportista-cell__text">
+                <span className="deportista-cell__name">{a.nombre_completo}</span>
+                <span className="deportista-cell__meta">
                   {cat} · {a.disciplina}
                 </span>
               </div>
@@ -118,17 +118,17 @@ export function AlumnosList() {
   );
 
   return (
-    <div className="alumnos-list">
+    <div className="deportistas-list">
       <header className="page-head">
         <div>
-          <h1 className="page-head__title">Alumnos</h1>
+          <h1 className="page-head__title">Deportistas</h1>
           <p className="page-head__subtitle">
-            {loading ? 'Cargando…' : `${total} alumno${total === 1 ? '' : 's'}`}
+            {loading ? 'Cargando…' : `${total} deportista${total === 1 ? '' : 's'}`}
             {sucursalId ? ' en la sucursal seleccionada' : ''}
           </p>
         </div>
-        <Button variant="primary" onClick={() => navigate('/alumnos/nuevo')}>
-          + Nuevo alumno
+        <Button variant="primary" onClick={() => navigate('/deportistas/nuevo')}>
+          + Nuevo deportista
         </Button>
       </header>
 
@@ -140,16 +140,16 @@ export function AlumnosList() {
 
       <Card padded={false}>
         <DataTable
-          ariaLabel="Lista de alumnos"
+          ariaLabel="Lista de deportistas"
           columns={columns}
           rows={items}
           rowKey={(a) => a.id}
           loading={loading}
-          onRowClick={(a) => navigate(`/alumnos/${a.id}`)}
+          onRowClick={(a) => navigate(`/deportistas/${a.id}`)}
           emptyMessage={
             debouncedQuery || sucursalId
-              ? 'Sin alumnos para este filtro'
-              : 'Aún no hay alumnos registrados'
+              ? 'Sin deportistas para este filtro'
+              : 'Aún no hay deportistas registrados'
           }
         />
       </Card>

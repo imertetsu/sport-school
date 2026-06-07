@@ -60,11 +60,11 @@ def test_pct_presente_redondea_a_un_decimal() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Fixture de datos con BD (1 org, 1 sucursal, 1 categoría, 2 alumnos)
+# Fixture de datos con BD (1 org, 1 sucursal, 1 categoría, 2 deportistas)
 # --------------------------------------------------------------------------- #
 @pytest.fixture()
 def rep_fixture(owner_engine: Engine) -> Iterator[dict]:
-    """Org + sucursal + categoría + 2 alumnos + 1 usuario; pago e inscripción.
+    """Org + sucursal + categoría + 2 deportistas + 1 usuario; pago e inscripción.
 
     Siembra (saltando RLS): un pago CONFIRMADO en marzo 2026 + una sesión con
     asistencia (1 PRESENTE, 1 AUSENTE). Limpia al final en orden FK-safe.
@@ -113,7 +113,7 @@ def rep_fixture(owner_engine: Engine) -> Iterator[dict]:
         for al_id, nom in ((al1, "Ana"), (al2, "Bruno")):
             conn.execute(
                 text(
-                    "INSERT INTO alumno (id, org_id, sucursal_id, categoria_id, nombres, "
+                    "INSERT INTO deportista (id, org_id, sucursal_id, categoria_id, nombres, "
                     "created_at, updated_at) "
                     "VALUES (:id,:org,:suc,:cat,:nom,now(),now())"
                 ),
@@ -153,7 +153,7 @@ def rep_fixture(owner_engine: Engine) -> Iterator[dict]:
         for al_id, estado in ((al1, "PRESENTE"), (al2, "AUSENTE")):
             conn.execute(
                 text(
-                    "INSERT INTO asistencia (id, org_id, sesion_id, alumno_id, estado, "
+                    "INSERT INTO asistencia (id, org_id, sesion_id, deportista_id, estado, "
                     "registrado_por, created_at, updated_at) "
                     "VALUES (:id,:org,:ses,:al,:estado,:reg,now(),now())"
                 ),
@@ -180,7 +180,7 @@ def rep_fixture(owner_engine: Engine) -> Iterator[dict]:
         conn.execute(text("DELETE FROM asistencia WHERE org_id = :o"), {"o": str(org)})
         conn.execute(text("DELETE FROM sesion WHERE org_id = :o"), {"o": str(org)})
         conn.execute(text("DELETE FROM pago WHERE org_id = :o"), {"o": str(org)})
-        conn.execute(text("DELETE FROM alumno WHERE org_id = :o"), {"o": str(org)})
+        conn.execute(text("DELETE FROM deportista WHERE org_id = :o"), {"o": str(org)})
         conn.execute(text("DELETE FROM categoria WHERE org_id = :o"), {"o": str(org)})
         conn.execute(text("DELETE FROM sucursal WHERE org_id = :o"), {"o": str(org)})
         conn.execute(text("DELETE FROM usuario WHERE org_id = :o"), {"o": str(org)})

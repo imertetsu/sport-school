@@ -11,8 +11,8 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.core.tenant import CurrentUser, require_role, set_tenant_context
-from app.models.alumno import Alumno
 from app.models.categoria import Categoria
+from app.models.deportista import Deportista
 from app.models.horario_clase import HorarioClase
 from app.models.sesion import Sesion
 from app.models.sucursal import Sucursal
@@ -101,13 +101,13 @@ def borrar_categoria(
 
     `horario_clase.categoria_id` y `sesion.categoria_id` están en CASCADE; borrar
     sin protección arrastraría horarios y sesiones (y con ellas la asistencia).
-    `alumno.categoria_id` es SET NULL (no se borra, pero quedaría huérfano). Por eso
-    se exige 409 si la categoría tiene alumnos, horarios o sesiones; NO cascada.
+    `deportista.categoria_id` es SET NULL (no se borra, pero quedaría huérfano). Por eso
+    se exige 409 si la categoría tiene deportistas, horarios o sesiones; NO cascada.
     """
     cat = _get_categoria_o_404(db, categoria_id)
 
-    n_alumnos = db.execute(
-        select(func.count()).select_from(Alumno).where(Alumno.categoria_id == categoria_id)
+    n_deportistas = db.execute(
+        select(func.count()).select_from(Deportista).where(Deportista.categoria_id == categoria_id)
     ).scalar_one()
     n_horarios = db.execute(
         select(func.count())
@@ -118,11 +118,11 @@ def borrar_categoria(
         select(func.count()).select_from(Sesion).where(Sesion.categoria_id == categoria_id)
     ).scalar_one()
 
-    if n_alumnos or n_horarios or n_sesiones:
+    if n_deportistas or n_horarios or n_sesiones:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                f"La categoría tiene {n_alumnos} alumno(s), {n_horarios} horario(s) y "
+                f"La categoría tiene {n_deportistas} deportista(s), {n_horarios} horario(s) y "
                 f"{n_sesiones} sesión(es) asociados; reasígnalos antes de borrarla."
             ),
         )

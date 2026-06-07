@@ -25,7 +25,7 @@ class GenerarOut(BaseModel):
 # --------------------------------------------------------------------------- #
 # Cuotas (lista paginada)
 # --------------------------------------------------------------------------- #
-class AlumnoRef(BaseModel):
+class DeportistaRef(BaseModel):
     id: uuid.UUID
     nombre_completo: str
 
@@ -46,7 +46,7 @@ class CuotaItem(BaseModel):
     """
 
     id: uuid.UUID
-    alumno: AlumnoRef
+    deportista: DeportistaRef
     sucursal: SucursalNombre | None = None
     categoria: CategoriaNombre | None = None
     periodo_inicio: date
@@ -74,7 +74,7 @@ class IngresosMes(BaseModel):
     monto: Decimal
 
 
-class AlumnosActivos(BaseModel):
+class DeportistasActivos(BaseModel):
     count: int
     sucursales: int
     disciplinas: int
@@ -86,7 +86,7 @@ class CuotasAgg(BaseModel):
 
 
 class MorosidadItem(BaseModel):
-    alumno_id: uuid.UUID
+    deportista_id: uuid.UUID
     nombre_completo: str
     categoria: str | None = None
     monto: Decimal
@@ -101,7 +101,7 @@ class PanelOut(BaseModel):
     """
 
     ingresos_mes: IngresosMes
-    alumnos_activos: AlumnosActivos
+    deportistas_activos: DeportistasActivos
     cuotas_pendientes: CuotasAgg
     cuotas_vencidas: CuotasAgg
     morosidad: list[MorosidadItem]

@@ -25,23 +25,23 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.db import get_db
 from app.core.tenant import CurrentUser, require_role, set_tenant_context
-from app.models.alumno import Alumno
 from app.models.categoria import Categoria
 from app.models.credito import Credito
 from app.models.cuota import Cuota
+from app.models.deportista import Deportista
 from app.models.inscripcion import Inscripcion
 from app.models.organizacion import Organizacion
 from app.models.pago import Pago
 from app.models.pago_cuota import PagoCuota
 from app.models.sucursal import Sucursal
 from app.schemas.cobranza import (
-    AlumnoRef,
-    AlumnosActivos,
     CategoriaNombre,
     CuotaAplicada,
     CuotaItem,
     CuotasAgg,
     CuotasPage,
+    DeportistaRef,
+    DeportistasActivos,
     GenerarOut,
     IngresosMes,
     MorosidadItem,
@@ -67,7 +67,7 @@ from app.services.recordatorios import enviar_recordatorio_cuota
 router = APIRouter(prefix="/cobranza", tags=["cobranza"])
 
 
-def _nombre_completo(a: Alumno) -> str:
+def _nombre_completo(a: Deportista) -> str:
     partes = [a.ap_paterno, a.ap_materno, a.nombres]
     return " ".join(p for p in partes if p).strip() or a.nombres
 
@@ -91,27 +91,27 @@ def generar(
 @router.get("/cuotas", response_model=CuotasPage)
 def listar_cuotas(
     estado: str | None = Query(default=None),
-    alumno_id: uuid.UUID | None = Query(default=None),
+    deportista_id: uuid.UUID | None = Query(default=None),
     sucursal_id: uuid.UUID | None = Query(default=None),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     _user: CurrentUser = Depends(set_tenant_context),
     db: Session = Depends(get_db),
 ) -> CuotasPage:
-    """Lista cuotas de la org con datos de alumno/sucursal/categoría (C4)."""
+    """Lista cuotas de la org con datos de deportista/sucursal/categoría (C4)."""
     base = (
-        select(Cuota, Alumno, Sucursal, Categoria)
+        select(Cuota, Deportista, Sucursal, Categoria)
         .join(Inscripcion, Inscripcion.id == Cuota.inscripcion_id)
-        .join(Alumno, Alumno.id == Inscripcion.alumno_id)
-        .join(Sucursal, Sucursal.id == Alumno.sucursal_id)
-        .outerjoin(Categoria, Categoria.id == Alumno.categoria_id)
+        .join(Deportista, Deportista.id == Inscripcion.deportista_id)
+        .join(Sucursal, Sucursal.id == Deportista.sucursal_id)
+        .outerjoin(Categoria, Categoria.id == Deportista.categoria_id)
     )
     if estado:
         base = base.where(Cuota.estado == estado)
-    if alumno_id is not None:
-        base = base.where(Alumno.id == alumno_id)
+    if deportista_id is not None:
+        base = base.where(Deportista.id == deportista_id)
     if sucursal_id is not None:
-        base = base.where(Alumno.sucursal_id == sucursal_id)
+        base = base.where(Deportista.sucursal_id == sucursal_id)
 
     total = db.execute(select(func.count()).select_from(base.subquery())).scalar_one()
 
@@ -133,11 +133,13 @@ def listar_cuotas(
             metodos.setdefault(cid, metodo)
 
     items: list[CuotaItem] = []
-    for cuota, alumno, sucursal, categoria in rows:
+    for cuota, deportista, sucursal, categoria in rows:
         items.append(
             CuotaItem(
                 id=cuota.id,
-                alumno=AlumnoRef(id=alumno.id, nombre_completo=_nombre_completo(alumno)),
+                deportista=DeportistaRef(
+                    id=deportista.id, nombre_completo=_nombre_completo(deportista)
+                ),
                 sucursal=SucursalNombre(nombre=sucursal.nombre) if sucursal else None,
                 categoria=CategoriaNombre(nombre=categoria.nombre) if categoria else None,
                 periodo_inicio=cuota.periodo_inicio,
@@ -173,16 +175,16 @@ def panel(
         )
     ).scalar_one()
 
-    # Alumnos activos: con inscripción ACTIVA. Sucursales/disciplinas distintas.
+    # Deportistas activos: con inscripción ACTIVA. Sucursales/disciplinas distintas.
     activos = db.execute(
-        select(func.count(func.distinct(Inscripcion.alumno_id))).where(
+        select(func.count(func.distinct(Inscripcion.deportista_id))).where(
             Inscripcion.estado == "ACTIVA"
         )
     ).scalar_one()
     sucursales_count = db.execute(
-        select(func.count(func.distinct(Alumno.sucursal_id)))
+        select(func.count(func.distinct(Deportista.sucursal_id)))
         .select_from(Inscripcion)
-        .join(Alumno, Alumno.id == Inscripcion.alumno_id)
+        .join(Deportista, Deportista.id == Inscripcion.deportista_id)
         .where(Inscripcion.estado == "ACTIVA")
     ).scalar_one()
     disciplinas_count = db.execute(
@@ -208,27 +210,27 @@ def panel(
     # Crédito a favor: Σ saldos de crédito de la org (KPI nuevo, abonos).
     credito_total = db.execute(select(func.coalesce(func.sum(Credito.saldo), 0))).scalar_one()
 
-    # Morosidad: por alumno, cuotas VENCIDO, con SALDO total adeudado (no monto
+    # Morosidad: por deportista, cuotas VENCIDO, con SALDO total adeudado (no monto
     # nominal) y días de mora (desde el vencimiento más antiguo).
     moros_rows = db.execute(
         select(
-            Alumno.id,
-            Alumno.ap_paterno,
-            Alumno.ap_materno,
-            Alumno.nombres,
+            Deportista.id,
+            Deportista.ap_paterno,
+            Deportista.ap_materno,
+            Deportista.nombres,
             Categoria.nombre,
             func.sum(saldo_expr),
             func.min(Cuota.vence_el),
         )
         .join(Inscripcion, Inscripcion.id == Cuota.inscripcion_id)
-        .join(Alumno, Alumno.id == Inscripcion.alumno_id)
-        .outerjoin(Categoria, Categoria.id == Alumno.categoria_id)
+        .join(Deportista, Deportista.id == Inscripcion.deportista_id)
+        .outerjoin(Categoria, Categoria.id == Deportista.categoria_id)
         .where(Cuota.estado == "VENCIDO")
         .group_by(
-            Alumno.id,
-            Alumno.ap_paterno,
-            Alumno.ap_materno,
-            Alumno.nombres,
+            Deportista.id,
+            Deportista.ap_paterno,
+            Deportista.ap_materno,
+            Deportista.nombres,
             Categoria.nombre,
         )
         .order_by(func.min(Cuota.vence_el).asc())
@@ -242,7 +244,7 @@ def panel(
         dias = (hoy - vence_min).days if vence_min else 0
         morosidad.append(
             MorosidadItem(
-                alumno_id=al_id,
+                deportista_id=al_id,
                 nombre_completo=nombre,
                 categoria=cat_nombre,
                 monto=monto,
@@ -252,7 +254,7 @@ def panel(
 
     return PanelOut(
         ingresos_mes=IngresosMes(monto=ingresos),
-        alumnos_activos=AlumnosActivos(
+        deportistas_activos=DeportistasActivos(
             count=activos, sucursales=sucursales_count, disciplinas=disciplinas_count
         ),
         cuotas_pendientes=CuotasAgg(count=pend[0], monto=pend[1]),

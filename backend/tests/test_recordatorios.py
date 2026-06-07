@@ -49,12 +49,12 @@ def _sembrar_org_con_cuota(
     tutor_telefono: str | None,
     tutor_responsable: bool,
 ) -> dict:
-    """Org + sucursal + alumno + inscripción + 1 cuota, opcionalmente tutor.
+    """Org + sucursal + deportista + inscripción + 1 cuota, opcionalmente tutor.
 
     - `estado_cuota`: 'PENDIENTE' (próximo vencimiento) | 'VENCIDO' (morosidad).
     - `con_tutor=False` ⇒ no hay tutor (resuelve a sin_telefono).
     - `con_tutor=True` + `tutor_telefono=None` ⇒ tutor responsable SIN teléfono.
-    - `tutor_responsable` controla `alumno_tutor.responsable_pago`.
+    - `tutor_responsable` controla `deportista_tutor.responsable_pago`.
 
     La org usa `ON CONFLICT (id) DO NOTHING` (mismo patrón que el resto de la
     suite). Devuelve los ids sembrados.
@@ -83,7 +83,7 @@ def _sembrar_org_con_cuota(
     )
     conn.execute(
         text(
-            "INSERT INTO alumno (id, org_id, sucursal_id, nombres, ap_paterno, "
+            "INSERT INTO deportista (id, org_id, sucursal_id, nombres, ap_paterno, "
             "created_at, updated_at) "
             "VALUES (:id,:org,:suc,'Camila','Rojas',now(),now())"
         ),
@@ -91,7 +91,7 @@ def _sembrar_org_con_cuota(
     )
     conn.execute(
         text(
-            "INSERT INTO inscripcion (id, org_id, alumno_id, fecha_inscripcion, "
+            "INSERT INTO inscripcion (id, org_id, deportista_id, fecha_inscripcion, "
             "monto_mensual, estado, created_at, updated_at) "
             "VALUES (:id,:org,:al,:f,:m,'ACTIVA',now(),now())"
         ),
@@ -127,7 +127,7 @@ def _sembrar_org_con_cuota(
         )
         conn.execute(
             text(
-                "INSERT INTO alumno_tutor (id, org_id, alumno_id, tutor_id, parentesco, "
+                "INSERT INTO deportista_tutor (id, org_id, deportista_id, tutor_id, parentesco, "
                 "responsable_pago, created_at, updated_at) "
                 "VALUES (:id,:org,:al,:tut,'Madre',:resp,now(),now())"
             ),
@@ -140,7 +140,7 @@ def _sembrar_org_con_cuota(
             },
         )
 
-    return {"suc": suc, "alumno": al, "inscripcion": insc, "cuota": cuota, "tutor": tutor}
+    return {"suc": suc, "deportista": al, "inscripcion": insc, "cuota": cuota, "tutor": tutor}
 
 
 def _limpiar_org(conn, org: uuid.UUID) -> None:
@@ -151,9 +151,9 @@ def _limpiar_org(conn, org: uuid.UUID) -> None:
     conn.execute(text("DELETE FROM credito WHERE org_id = :o"), {"o": str(org)})
     conn.execute(text("DELETE FROM cuota WHERE org_id = :o"), {"o": str(org)})
     conn.execute(text("DELETE FROM inscripcion WHERE org_id = :o"), {"o": str(org)})
-    conn.execute(text("DELETE FROM alumno_tutor WHERE org_id = :o"), {"o": str(org)})
+    conn.execute(text("DELETE FROM deportista_tutor WHERE org_id = :o"), {"o": str(org)})
     conn.execute(text("DELETE FROM tutor WHERE org_id = :o"), {"o": str(org)})
-    conn.execute(text("DELETE FROM alumno WHERE org_id = :o"), {"o": str(org)})
+    conn.execute(text("DELETE FROM deportista WHERE org_id = :o"), {"o": str(org)})
     conn.execute(text("DELETE FROM sucursal WHERE org_id = :o"), {"o": str(org)})
     conn.execute(text("DELETE FROM organizacion WHERE id = :o"), {"o": str(org)})
 

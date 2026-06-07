@@ -54,11 +54,11 @@ def test_entrenador_sin_sucursales_no_ve_nada() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Fixture de datos (2 sucursales A/B, 1 categoría + alumnos cada una)
+# Fixture de datos (2 sucursales A/B, 1 categoría + deportistas cada una)
 # --------------------------------------------------------------------------- #
 @pytest.fixture()
 def asis_fixture(owner_engine: Engine) -> Iterator[dict]:
-    """Org + sucursales A/B + categoría A/B + 2 alumnos en A, 1 en B + 1 usuario.
+    """Org + sucursales A/B + categoría A/B + 2 deportistas en A, 1 en B + 1 usuario.
 
     Devuelve ids. Limpia al final (orden FK-safe: asistencia -> sesion -> ...).
     """
@@ -116,7 +116,7 @@ def asis_fixture(owner_engine: Engine) -> Iterator[dict]:
         ):
             conn.execute(
                 text(
-                    "INSERT INTO alumno (id, org_id, sucursal_id, categoria_id, nombres, "
+                    "INSERT INTO deportista (id, org_id, sucursal_id, categoria_id, nombres, "
                     "created_at, updated_at) "
                     "VALUES (:id,:org,:suc,:cat,:nom,now(),now())"
                 ),
@@ -144,7 +144,7 @@ def asis_fixture(owner_engine: Engine) -> Iterator[dict]:
     with owner_engine.begin() as conn:
         conn.execute(text("DELETE FROM asistencia WHERE org_id = :o"), {"o": str(org)})
         conn.execute(text("DELETE FROM sesion WHERE org_id = :o"), {"o": str(org)})
-        conn.execute(text("DELETE FROM alumno WHERE org_id = :o"), {"o": str(org)})
+        conn.execute(text("DELETE FROM deportista WHERE org_id = :o"), {"o": str(org)})
         conn.execute(text("DELETE FROM categoria WHERE org_id = :o"), {"o": str(org)})
         conn.execute(text("DELETE FROM sucursal WHERE org_id = :o"), {"o": str(org)})
         conn.execute(text("DELETE FROM usuario WHERE org_id = :o"), {"o": str(org)})
@@ -164,7 +164,7 @@ def test_roster_sin_sesion_estados_null(app_engine: Engine, asis_fixture: dict) 
     org = asis_fixture["org"]
     with Session(app_engine) as db:
         _set_org(db, org)
-        cat, sesion, alumnos, estados = svc.obtener_roster(
+        cat, sesion, deportistas, estados = svc.obtener_roster(
             db,
             categoria_id=asis_fixture["cat_a"],
             fecha=date(2026, 6, 1),
@@ -173,7 +173,7 @@ def test_roster_sin_sesion_estados_null(app_engine: Engine, asis_fixture: dict) 
         )
     assert sesion is None
     assert estados == {}
-    assert {a.id for a in alumnos} == {asis_fixture["al_a1"], asis_fixture["al_a2"]}
+    assert {a.id for a in deportistas} == {asis_fixture["al_a1"], asis_fixture["al_a2"]}
     assert cat.id == asis_fixture["cat_a"]
 
 
@@ -246,7 +246,7 @@ def test_guardar_y_reguardar_idempotente(app_engine: Engine, asis_fixture: dict)
             text("SELECT count(*) FROM asistencia WHERE sesion_id=:s"), {"s": str(sesion_id)}
         ).scalar_one()
         bruno = conn.execute(
-            text("SELECT estado FROM asistencia WHERE sesion_id=:s AND alumno_id=:a"),
+            text("SELECT estado FROM asistencia WHERE sesion_id=:s AND deportista_id=:a"),
             {"s": str(sesion_id), "a": str(asis_fixture["al_a2"])},
         ).scalar_one()
     assert n_ses2 == 1, "Re-guardar no debe crear otra sesión"
@@ -266,7 +266,7 @@ def test_guardar_y_reguardar_idempotente(app_engine: Engine, asis_fixture: dict)
             {"s": str(sesion_id)},
         ).scalar_one()
     assert n_ses == 1, "No debe duplicar la sesión"
-    assert n_asis == 2, "No debe duplicar filas de asistencia (UNIQUE sesion_id, alumno_id)"
+    assert n_asis == 2, "No debe duplicar filas de asistencia (UNIQUE sesion_id, deportista_id)"
     assert presentes == 2, "El re-guardado debe ACTUALIZAR el estado de Bruno"
 
 
@@ -281,7 +281,7 @@ def test_entrenador_no_ve_categoria_de_otra_sucursal(
     with Session(app_engine) as db:
         _set_org(db, org)
         # Su propia categoría (Cat A) sí la ve.
-        cat, _sesion, _alumnos, _estados = svc.obtener_roster(
+        cat, _sesion, _deportistas, _estados = svc.obtener_roster(
             db,
             categoria_id=asis_fixture["cat_a"],
             fecha=date(2026, 6, 3),
@@ -317,7 +317,7 @@ def test_entrenador_no_ve_categoria_de_otra_sucursal(
 
 @pytest.mark.db
 def test_categorias_listadas_por_rol(app_engine: Engine, asis_fixture: dict) -> None:
-    """ADMIN ve A y B; ENTRENADOR (Suc A) solo A, con total_alumnos correcto."""
+    """ADMIN ve A y B; ENTRENADOR (Suc A) solo A, con total_deportistas correcto."""
     org = asis_fixture["org"]
     with Session(app_engine) as db:
         _set_org(db, org)
@@ -332,4 +332,4 @@ def test_categorias_listadas_por_rol(app_engine: Engine, asis_fixture: dict) -> 
 
     coach_ids = {c.id: t for (c, t) in coach}
     assert set(coach_ids) == {asis_fixture["cat_a"]}, "ENTRENADOR solo ve su sucursal"
-    assert coach_ids[asis_fixture["cat_a"]] == 2, "Cat A tiene 2 alumnos"
+    assert coach_ids[asis_fixture["cat_a"]] == 2, "Cat A tiene 2 deportistas"

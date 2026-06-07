@@ -1,6 +1,6 @@
 """Adaptador de comprobante PDF con **fpdf2** — implementa `ComprobanteService` (C5).
 
-Renderiza un PDF con: nombre de la org, alumno, cuota(s) cubiertas, monto,
+Renderiza un PDF con: nombre de la org, deportista, cuota(s) cubiertas, monto,
 método, fecha y número de comprobante. Sin I/O de BD: recibe `ComprobanteData`
 (dominio) y devuelve bytes; el router lo sirve on-the-fly en
 `GET …/comprobantes/{id}.pdf`.
@@ -38,11 +38,11 @@ class PdfComprobanteService(ComprobanteService):
         pdf.cell(0, 6, f"Metodo: {_ascii(data.metodo)}", new_x="LMARGIN", new_y="NEXT")
         pdf.ln(4)
 
-        # Datos del alumno.
+        # Datos del deportista.
         pdf.set_font("Helvetica", "B", 11)
-        pdf.cell(0, 7, "Alumno", new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(0, 7, "Deportista", new_x="LMARGIN", new_y="NEXT")
         pdf.set_font("Helvetica", "", 10)
-        pdf.cell(0, 6, _ascii(data.alumno_nombre), new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(0, 6, _ascii(data.deportista_nombre), new_x="LMARGIN", new_y="NEXT")
         pdf.ln(4)
 
         # Tabla de cuotas cubiertas (con Aplicado / Saldo — abonos parciales).

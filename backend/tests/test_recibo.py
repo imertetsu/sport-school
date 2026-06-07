@@ -54,7 +54,7 @@ def _comprobante_data(numero_recibo: str = "REC-000007") -> ComprobanteData:
         numero=str(uuid.uuid4()),
         org_nombre="Escuela de Prueba",
         moneda="BOB",
-        alumno_nombre="Juan Perez",
+        deportista_nombre="Juan Perez",
         metodo="EFECTIVO",
         fecha=datetime(2026, 6, 6, 10, 30, tzinfo=UTC),
         monto_total=Decimal("250.00"),
@@ -75,7 +75,7 @@ def test_comprobante_data_emisor_default_es_marca() -> None:
         numero="x",
         org_nombre="Org",
         moneda="BOB",
-        alumno_nombre="A",
+        deportista_nombre="A",
         metodo="QR",
         fecha=datetime(2026, 1, 1, tzinfo=UTC),
         monto_total=Decimal("0"),
@@ -102,7 +102,7 @@ def test_pdf_conserva_aplicado_saldo_y_credito_de_abonos() -> None:
         numero=str(uuid.uuid4()),
         org_nombre="Escuela",
         moneda="BOB",
-        alumno_nombre="Ana",
+        deportista_nombre="Ana",
         metodo="EFECTIVO",
         fecha=datetime(2026, 6, 6, tzinfo=UTC),
         monto_total=Decimal("100.00"),
@@ -130,7 +130,7 @@ def test_pdf_conserva_aplicado_saldo_y_credito_de_abonos() -> None:
 # Con BD: correlativo por org, independencia, idempotencia, RLS
 # --------------------------------------------------------------------------- #
 def _sembrar_org_con_cuota(conn, *, org: uuid.UUID, monto: Decimal) -> uuid.UUID:
-    """Siembra org + sucursal + alumno + inscripción + 1 cuota PENDIENTE. -> cuota_id."""
+    """Siembra org + sucursal + deportista + inscripción + 1 cuota PENDIENTE. -> cuota_id."""
     suc = uuid.uuid4()
     al = uuid.uuid4()
     insc = uuid.uuid4()
@@ -153,14 +153,14 @@ def _sembrar_org_con_cuota(conn, *, org: uuid.UUID, monto: Decimal) -> uuid.UUID
     )
     conn.execute(
         text(
-            "INSERT INTO alumno (id, org_id, sucursal_id, nombres, created_at, updated_at) "
-            "VALUES (:id,:org,:suc,'Alumno Recibo',now(),now())"
+            "INSERT INTO deportista (id, org_id, sucursal_id, nombres, created_at, updated_at) "
+            "VALUES (:id,:org,:suc,'Deportista Recibo',now(),now())"
         ),
         {"id": str(al), "org": str(org), "suc": str(suc)},
     )
     conn.execute(
         text(
-            "INSERT INTO inscripcion (id, org_id, alumno_id, fecha_inscripcion, "
+            "INSERT INTO inscripcion (id, org_id, deportista_id, fecha_inscripcion, "
             "monto_mensual, estado, created_at, updated_at) "
             "VALUES (:id,:org,:al,:f,:m,'ACTIVA',now(),now())"
         ),
@@ -230,7 +230,7 @@ def recibo_fixture(owner_engine: Engine) -> Iterator[dict]:
             conn.execute(text("DELETE FROM credito WHERE org_id = :o"), {"o": str(org_id)})
             conn.execute(text("DELETE FROM cuota WHERE org_id = :o"), {"o": str(org_id)})
             conn.execute(text("DELETE FROM inscripcion WHERE org_id = :o"), {"o": str(org_id)})
-            conn.execute(text("DELETE FROM alumno WHERE org_id = :o"), {"o": str(org_id)})
+            conn.execute(text("DELETE FROM deportista WHERE org_id = :o"), {"o": str(org_id)})
             conn.execute(text("DELETE FROM usuario WHERE org_id = :o"), {"o": str(org_id)})
             conn.execute(text("DELETE FROM sucursal WHERE org_id = :o"), {"o": str(org_id)})
             conn.execute(text("DELETE FROM recibo_contador WHERE org_id = :o"), {"o": str(org_id)})

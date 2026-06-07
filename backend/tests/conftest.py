@@ -68,7 +68,7 @@ def owner_engine() -> Iterator[Engine]:
 
 @pytest.fixture()
 def two_orgs(owner_engine: Engine):
-    """Crea 2 organizaciones con 1 alumno cada una (como owner, saltando RLS).
+    """Crea 2 organizaciones con 1 deportista cada una (como owner, saltando RLS).
 
     Limpia al final. Devuelve `(org_a_id, org_b_id)`.
     """
@@ -98,22 +98,22 @@ def two_orgs(owner_engine: Engine):
                 {"id": str(suc_id), "org": str(org_id)},
             )
         for org_id, suc_id, al_id, nom in (
-            (org_a, suc_a, al_a, "Alumno A"),
-            (org_b, suc_b, al_b, "Alumno B"),
+            (org_a, suc_a, al_a, "Deportista A"),
+            (org_b, suc_b, al_b, "Deportista B"),
         ):
             conn.execute(
                 text(
-                    "INSERT INTO alumno (id, org_id, sucursal_id, nombres, "
+                    "INSERT INTO deportista (id, org_id, sucursal_id, nombres, "
                     "created_at, updated_at) "
                     "VALUES (:id, :org, :suc, :nom, now(), now())"
                 ),
                 {"id": str(al_id), "org": str(org_id), "suc": str(suc_id), "nom": nom},
             )
 
-    yield {"org_a": org_a, "org_b": org_b, "alumno_a": al_a, "alumno_b": al_b}
+    yield {"org_a": org_a, "org_b": org_b, "deportista_a": al_a, "deportista_b": al_b}
 
     with owner_engine.begin() as conn:
         for org_id in (org_a, org_b):
-            conn.execute(text("DELETE FROM alumno WHERE org_id = :o"), {"o": str(org_id)})
+            conn.execute(text("DELETE FROM deportista WHERE org_id = :o"), {"o": str(org_id)})
             conn.execute(text("DELETE FROM sucursal WHERE org_id = :o"), {"o": str(org_id)})
             conn.execute(text("DELETE FROM organizacion WHERE id = :o"), {"o": str(org_id)})

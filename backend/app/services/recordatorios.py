@@ -18,7 +18,7 @@ Ciclo por tipo:
   vencimiento de la cuota).
 - `MOROSIDAD` → `hoy.strftime("%Y-%m")` (máx. 1 morosidad por cuota por mes).
 
-Resolución del destinatario: cuota → inscripcion → alumno → alumno_tutor
+Resolución del destinatario: cuota → inscripcion → deportista → deportista_tutor
 (`responsable_pago=True`) → `tutor.telefono`. Sin tutor con teléfono ⇒ se registra
 una fila `FALLIDO`/`sin_telefono` (idempotente igual), NO se llama al puerto ni se
 crea QR. Corre bajo el `app.current_org` ya fijado por el caller (RLS); este módulo
@@ -38,9 +38,9 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.domain.ports.whatsapp import WhatsAppPort, WhatsAppTemplateMessage
-from app.models.alumno import Alumno
-from app.models.alumno_tutor import AlumnoTutor
 from app.models.cuota import Cuota
+from app.models.deportista import Deportista
+from app.models.deportista_tutor import DeportistaTutor
 from app.models.inscripcion import Inscripcion
 from app.models.organizacion import Organizacion
 from app.models.recordatorio_pago import RecordatorioPago
@@ -76,17 +76,20 @@ def _ciclo(tipo: str, *, cuota: Cuota, hoy: date) -> str:
     return cuota.vence_el.isoformat()
 
 
-def _tutor_responsable(db: Session, alumno_id: uuid.UUID) -> Tutor | None:
-    """Tutor `responsable_pago=True` del alumno (el primero, si hay varios)."""
+def _tutor_responsable(db: Session, deportista_id: uuid.UUID) -> Tutor | None:
+    """Tutor `responsable_pago=True` del deportista (el primero, si hay varios)."""
     return db.execute(
         select(Tutor)
-        .join(AlumnoTutor, AlumnoTutor.tutor_id == Tutor.id)
-        .where(AlumnoTutor.alumno_id == alumno_id, AlumnoTutor.responsable_pago.is_(True))
+        .join(DeportistaTutor, DeportistaTutor.tutor_id == Tutor.id)
+        .where(
+            DeportistaTutor.deportista_id == deportista_id,
+            DeportistaTutor.responsable_pago.is_(True),
+        )
         .limit(1)
     ).scalar_one_or_none()
 
 
-def _nombre_completo(a: Alumno) -> str:
+def _nombre_completo(a: Deportista) -> str:
     partes = [a.ap_paterno, a.ap_materno, a.nombres]
     return " ".join(p for p in partes if p).strip() or a.nombres
 
@@ -151,16 +154,18 @@ def enviar_recordatorio_cuota(
     """
     ciclo = _ciclo(tipo, cuota=cuota, hoy=hoy)
 
-    # 2) Destinatario: cuota -> inscripcion -> alumno -> tutor responsable de pago.
+    # 2) Destinatario: cuota -> inscripcion -> deportista -> tutor responsable de pago.
     insc = db.execute(
         select(Inscripcion).where(Inscripcion.id == cuota.inscripcion_id)
     ).scalar_one_or_none()
-    alumno = (
-        db.execute(select(Alumno).where(Alumno.id == insc.alumno_id)).scalar_one_or_none()
+    deportista = (
+        db.execute(
+            select(Deportista).where(Deportista.id == insc.deportista_id)
+        ).scalar_one_or_none()
         if insc is not None
         else None
     )
-    tutor = _tutor_responsable(db, alumno.id) if alumno is not None else None
+    tutor = _tutor_responsable(db, deportista.id) if deportista is not None else None
     telefono = tutor.telefono if (tutor is not None and tutor.telefono) else None
 
     if telefono is None:
@@ -222,9 +227,9 @@ def enviar_recordatorio_cuota(
     db.flush()
 
     # 5) Plantilla pre-aprobada. body_params posicionales (RNF-07):
-    #    {{1}} nombre alumno, {{2}} monto, {{3}} escuela, {{4}} vence (DD/MM/YYYY),
+    #    {{1}} nombre deportista, {{2}} monto, {{3}} escuela, {{4}} vence (DD/MM/YYYY),
     #    {{5}} payload del QR (deep-link de cobro).
-    nombre = _nombre_completo(alumno) if alumno is not None else "—"
+    nombre = _nombre_completo(deportista) if deportista is not None else "—"
     monto: Decimal = cuota.monto
     vence_el_ddmmyyyy = cuota.vence_el.strftime("%d/%m/%Y")
     msg = WhatsAppTemplateMessage(

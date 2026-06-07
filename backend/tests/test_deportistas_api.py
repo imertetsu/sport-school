@@ -1,6 +1,6 @@
-"""Tests de la API de Alumnos (contratos C4/C5).
+"""Tests de la API de Deportistas (contratos C4/C5).
 
-- `test_alumno_create_schema_*`: validación dura de tutor+consentimiento a nivel
+- `test_deportista_create_schema_*`: validación dura de tutor+consentimiento a nivel
   schema (no requiere BD; cubre el 422 lógico de RF-USR-04).
 - Tests marcados `db`: flujo end-to-end (login -> listar -> crear sin tutor 422 ->
   ficha médica gateada). Requieren BD migrada + seed. Skip si no hay BD.
@@ -15,7 +15,7 @@ import os
 from typing import Any
 
 import pytest
-from app.schemas.alumno import AlumnoCreate
+from app.schemas.deportista import DeportistaCreate
 from pydantic import ValidationError
 
 # --------------------------------------------------------------------------- #
@@ -23,28 +23,28 @@ from pydantic import ValidationError
 # --------------------------------------------------------------------------- #
 _BASE_BODY: dict[str, Any] = {
     "sucursal_id": "11111111-1111-1111-1111-111111111111",
-    "nombres": "Test Alumno",
+    "nombres": "Test Deportista",
     "consentimiento": {"version_terminos": "v1", "canal": "PRESENCIAL"},
 }
 
 
-def test_alumno_create_schema_ok() -> None:
+def test_deportista_create_schema_ok() -> None:
     body = dict(_BASE_BODY)
     body["tutores"] = [{"nombres": "Tutor 1", "telefono": "777", "parentesco": "Padre"}]
-    obj = AlumnoCreate(**body)  # type: ignore[arg-type]
+    obj = DeportistaCreate(**body)  # type: ignore[arg-type]
     assert len(obj.tutores) == 1
     assert obj.consentimiento.version_terminos == "v1"
 
 
-def test_alumno_create_schema_sin_tutor_falla() -> None:
+def test_deportista_create_schema_sin_tutor_falla() -> None:
     """Sin tutores (lista vacía) -> ValidationError (=> 422 en la API)."""
     body = dict(_BASE_BODY)
     body["tutores"] = []
     with pytest.raises(ValidationError):
-        AlumnoCreate(**body)  # type: ignore[arg-type]
+        DeportistaCreate(**body)  # type: ignore[arg-type]
 
 
-def test_alumno_create_schema_sin_consentimiento_falla() -> None:
+def test_deportista_create_schema_sin_consentimiento_falla() -> None:
     """Sin consentimiento -> ValidationError (=> 422 en la API)."""
     body = {
         "sucursal_id": _BASE_BODY["sucursal_id"],
@@ -52,7 +52,7 @@ def test_alumno_create_schema_sin_consentimiento_falla() -> None:
         "tutores": [{"nombres": "Tutor 1"}],
     }
     with pytest.raises(ValidationError):
-        AlumnoCreate(**body)  # type: ignore[arg-type]
+        DeportistaCreate(**body)  # type: ignore[arg-type]
 
 
 # --------------------------------------------------------------------------- #
@@ -78,11 +78,11 @@ def _login_admin(client) -> str:
 
 
 @pytest.mark.db
-def test_login_y_listar_alumnos() -> None:
+def test_login_y_listar_deportistas() -> None:
     client = _client_or_skip()
     token = _login_admin(client)
     resp = client.get(
-        "/api/v1/alumnos",
+        "/api/v1/deportistas",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 200
@@ -94,19 +94,19 @@ def test_login_y_listar_alumnos() -> None:
 @pytest.mark.db
 def test_listar_sin_token_401() -> None:
     client = _client_or_skip()
-    resp = client.get("/api/v1/alumnos")
+    resp = client.get("/api/v1/deportistas")
     assert resp.status_code == 401
 
 
 @pytest.mark.db
-def test_crear_alumno_sin_tutor_422() -> None:
+def test_crear_deportista_sin_tutor_422() -> None:
     client = _client_or_skip()
     token = _login_admin(client)
     # tomamos una sucursal real
     suc = client.get("/api/v1/sucursales", headers={"Authorization": f"Bearer {token}"}).json()
     sucursal_id = suc[0]["id"] if suc else "11111111-1111-1111-1111-111111111111"
     resp = client.post(
-        "/api/v1/alumnos",
+        "/api/v1/deportistas",
         headers={"Authorization": f"Bearer {token}"},
         json={
             "sucursal_id": sucursal_id,
@@ -120,27 +120,27 @@ def test_crear_alumno_sin_tutor_422() -> None:
 
 @pytest.mark.db
 def test_ficha_medica_gateada_por_rol() -> None:
-    """ADMIN ve ficha_medica; ENTRENADOR fuera de la sucursal del alumno la recibe null."""
+    """ADMIN ve ficha_medica; ENTRENADOR fuera de la sucursal del deportista la recibe null."""
     client = _client_or_skip()
     admin_token = _login_admin(client)
 
-    # Buscar un alumno con ficha médica (del seed).
+    # Buscar un deportista con ficha médica (del seed).
     lista = client.get(
-        "/api/v1/alumnos?page_size=50",
+        "/api/v1/deportistas?page_size=50",
         headers={"Authorization": f"Bearer {admin_token}"},
     ).json()
     if not lista["items"]:
-        pytest.skip("No hay alumnos; ¿seed ejecutado?")
+        pytest.skip("No hay deportistas; ¿seed ejecutado?")
 
-    alumno_id = lista["items"][0]["id"]
+    deportista_id = lista["items"][0]["id"]
     detalle_admin = client.get(
-        f"/api/v1/alumnos/{alumno_id}",
+        f"/api/v1/deportistas/{deportista_id}",
         headers={"Authorization": f"Bearer {admin_token}"},
     ).json()
-    # ADMIN debe ver la ficha si el alumno la tiene.
+    # ADMIN debe ver la ficha si el deportista la tiene.
     assert "ficha_medica" in detalle_admin
 
-    # Login entrenador; si su token no incluye la sucursal del alumno, ficha = null.
+    # Login entrenador; si su token no incluye la sucursal del deportista, ficha = null.
     coach = client.post(
         "/api/v1/auth/login",
         json={"email": "coach@latinosport.bo", "password": "coach1234"},
@@ -149,7 +149,7 @@ def test_ficha_medica_gateada_por_rol() -> None:
         pytest.skip("Entrenador no sembrado")
     coach_token = coach.json()["access_token"]
     detalle_coach = client.get(
-        f"/api/v1/alumnos/{alumno_id}",
+        f"/api/v1/deportistas/{deportista_id}",
         headers={"Authorization": f"Bearer {coach_token}"},
     )
     assert detalle_coach.status_code == 200

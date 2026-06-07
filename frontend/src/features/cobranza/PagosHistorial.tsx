@@ -59,13 +59,13 @@ export function PagosHistorial() {
   const columns = useMemo<Column<CuotaListItem>[]>(
     () => [
       {
-        key: 'alumno',
-        header: 'Alumno',
+        key: 'deportista',
+        header: 'Deportista',
         render: (c) => (
           <div className="cuota-cell">
-            <Avatar name={c.alumno.nombre_completo} size="md" />
+            <Avatar name={c.deportista.nombre_completo} size="md" />
             <div className="cuota-cell__text">
-              <span className="cuota-cell__name">{c.alumno.nombre_completo}</span>
+              <span className="cuota-cell__name">{c.deportista.nombre_completo}</span>
               <span className="cuota-cell__meta">{c.categoria.nombre}</span>
             </div>
           </div>

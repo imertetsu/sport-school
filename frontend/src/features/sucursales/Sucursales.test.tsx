@@ -128,7 +128,7 @@ describe('Sucursales — CRUD (ADMIN)', () => {
   it('baja con 409 (en uso): muestra el aviso del backend y no borra en cascada', async () => {
     const user = userEvent.setup();
     eliminarSucursalMock.mockRejectedValue(
-      new ApiError(409, 'La sucursal tiene 2 categorías / 5 alumnos asignados', null),
+      new ApiError(409, 'La sucursal tiene 2 categorías / 5 deportistas asignados', null),
     );
     render(<Sucursales />);
     await screen.findByText('Centro');
@@ -149,7 +149,7 @@ describe('Sucursales — CRUD (ADMIN)', () => {
     const alerts = await screen.findAllByRole('alert');
     expect(
       alerts.some((a) =>
-        a.textContent?.includes('La sucursal tiene 2 categorías / 5 alumnos asignados'),
+        a.textContent?.includes('La sucursal tiene 2 categorías / 5 deportistas asignados'),
       ),
     ).toBe(true);
   });
@@ -205,7 +205,7 @@ describe('Sucursales — CRUD (ADMIN)', () => {
   it('baja de categoría con 409: muestra el aviso del backend', async () => {
     const user = userEvent.setup();
     eliminarCategoriaMock.mockRejectedValue(
-      new ApiError(409, 'La categoría tiene 3 alumnos asignados', null),
+      new ApiError(409, 'La categoría tiene 3 deportistas asignados', null),
     );
     render(<Sucursales />);
     await screen.findByText('Centro');
@@ -227,7 +227,7 @@ describe('Sucursales — CRUD (ADMIN)', () => {
     const alerts = await screen.findAllByRole('alert');
     expect(
       alerts.some((a) =>
-        a.textContent?.includes('La categoría tiene 3 alumnos asignados'),
+        a.textContent?.includes('La categoría tiene 3 deportistas asignados'),
       ),
     ).toBe(true);
   });

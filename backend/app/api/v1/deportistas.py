@@ -1,10 +1,10 @@
-"""Router de Alumnos (contrato C5) — la vertical de este epic.
+"""Router de Deportistas (contrato C5) — la vertical de este epic.
 
 - GET lista: filtros `q`, `sucursal_id`, paginación.
 - GET detalle: arma el perfil completo; **`ficha_medica` gateada por rol** (RNF-02).
 - POST: validación dura (≥1 tutor + consentimiento => 422 vía schema) y crea
-  alumno + tutores + alumno_tutor + consentimiento (+inscripción).
-- PUT: actualiza datos del alumno (no toca tutores en este slice).
+  deportista + tutores + deportista_tutor + consentimiento (+inscripción).
+- PUT: actualiza datos del deportista (no toca tutores en este slice).
 
 Todo corre con contexto de tenant fijado (RLS). No se salta el contexto.
 """
@@ -20,35 +20,35 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.core.tenant import CurrentUser, set_tenant_context
-from app.models.alumno import Alumno
-from app.models.alumno_tutor import AlumnoTutor
 from app.models.categoria import Categoria
 from app.models.consentimiento import Consentimiento
+from app.models.deportista import Deportista
+from app.models.deportista_tutor import DeportistaTutor
 from app.models.inscripcion import Inscripcion
 from app.models.sucursal import Sucursal
 from app.models.tutor import Tutor
-from app.schemas.alumno import (
-    AlumnoCreate,
-    AlumnoDetailOut,
-    AlumnoListItem,
-    AlumnoUpdate,
+from app.schemas.common import Page
+from app.schemas.deportista import (
     CategoriaRef,
     ConsentimientoOut,
+    DeportistaCreate,
+    DeportistaDetailOut,
+    DeportistaListItem,
+    DeportistaUpdate,
     FichaMedica,
     InscripcionOut,
     SucursalRef,
     TutorOut,
 )
-from app.schemas.common import Page
-from app.services import alumno as alumno_svc
+from app.services import deportista as deportista_svc
 
-router = APIRouter(prefix="/alumnos", tags=["alumnos"])
+router = APIRouter(prefix="/deportistas", tags=["deportistas"])
 
 
 # --------------------------------------------------------------------------- #
 # Helpers
 # --------------------------------------------------------------------------- #
-def _nombre_completo(a: Alumno) -> str:
+def _nombre_completo(a: Deportista) -> str:
     partes = [a.ap_paterno, a.ap_materno, a.nombres]
     return " ".join(p for p in partes if p).strip()
 
@@ -61,43 +61,43 @@ def _calc_edad(fecha_nac: date | None) -> int | None:
     return edad
 
 
-def _puede_ver_ficha(user: CurrentUser, alumno: Alumno) -> bool:
+def _puede_ver_ficha(user: CurrentUser, deportista: Deportista) -> bool:
     """Gating de ficha médica (C5 / RNF-02).
 
-    ADMIN siempre; ENTRENADOR solo si la sucursal del alumno está en sus
+    ADMIN siempre; ENTRENADOR solo si la sucursal del deportista está en sus
     `sucursal_ids` del token.
     """
     if user.role == "ADMIN":
         return True
     if user.role == "ENTRENADOR":
-        return str(alumno.sucursal_id) in set(user.sucursal_ids)
+        return str(deportista.sucursal_id) in set(user.sucursal_ids)
     return False
 
 
 # --------------------------------------------------------------------------- #
-# GET /alumnos  (lista paginada)
+# GET /deportistas  (lista paginada)
 # --------------------------------------------------------------------------- #
-@router.get("", response_model=Page[AlumnoListItem])
-def list_alumnos(
+@router.get("", response_model=Page[DeportistaListItem])
+def list_deportistas(
     q: str | None = Query(default=None),
     sucursal_id: uuid.UUID | None = Query(default=None),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     _user: CurrentUser = Depends(set_tenant_context),
     db: Session = Depends(get_db),
-) -> Page[AlumnoListItem]:
-    """Lista alumnos de la org con filtros y paginación (C5). RLS aísla por org."""
-    base = select(Alumno)
+) -> Page[DeportistaListItem]:
+    """Lista deportistas de la org con filtros y paginación (C5). RLS aísla por org."""
+    base = select(Deportista)
     if sucursal_id is not None:
-        base = base.where(Alumno.sucursal_id == sucursal_id)
+        base = base.where(Deportista.sucursal_id == sucursal_id)
     if q:
         like = f"%{q.strip()}%"
         base = base.where(
             or_(
-                Alumno.nombres.ilike(like),
-                Alumno.ap_paterno.ilike(like),
-                Alumno.ap_materno.ilike(like),
-                Alumno.ci.ilike(like),
+                Deportista.nombres.ilike(like),
+                Deportista.ap_paterno.ilike(like),
+                Deportista.ap_materno.ilike(like),
+                Deportista.ci.ilike(like),
             )
         )
 
@@ -105,7 +105,7 @@ def list_alumnos(
 
     rows = (
         db.execute(
-            base.order_by(Alumno.ap_paterno, Alumno.nombres)
+            base.order_by(Deportista.ap_paterno, Deportista.nombres)
             .offset((page - 1) * page_size)
             .limit(page_size)
         )
@@ -133,12 +133,12 @@ def list_alumnos(
         else {}
     )
 
-    items: list[AlumnoListItem] = []
+    items: list[DeportistaListItem] = []
     for a in rows:
         suc = sucursales.get(a.sucursal_id)
         cat = categorias.get(a.categoria_id) if a.categoria_id else None
         items.append(
-            AlumnoListItem(
+            DeportistaListItem(
                 id=a.id,
                 ap_paterno=a.ap_paterno,
                 ap_materno=a.ap_materno,
@@ -157,41 +157,47 @@ def list_alumnos(
 
 
 # --------------------------------------------------------------------------- #
-# GET /alumnos/{id}  (detalle)
+# GET /deportistas/{id}  (detalle)
 # --------------------------------------------------------------------------- #
-@router.get("/{alumno_id}", response_model=AlumnoDetailOut)
-def get_alumno(
-    alumno_id: uuid.UUID,
+@router.get("/{deportista_id}", response_model=DeportistaDetailOut)
+def get_deportista(
+    deportista_id: uuid.UUID,
     user: CurrentUser = Depends(set_tenant_context),
     db: Session = Depends(get_db),
-) -> AlumnoDetailOut:
-    """Perfil completo del alumno (C5). `ficha_medica` gateada por rol/sucursal."""
-    alumno = db.execute(select(Alumno).where(Alumno.id == alumno_id)).scalar_one_or_none()
-    if alumno is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Alumno no encontrado")
+) -> DeportistaDetailOut:
+    """Perfil completo del deportista (C5). `ficha_medica` gateada por rol/sucursal."""
+    deportista = db.execute(
+        select(Deportista).where(Deportista.id == deportista_id)
+    ).scalar_one_or_none()
+    if deportista is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Deportista no encontrado"
+        )
 
-    suc = db.execute(select(Sucursal).where(Sucursal.id == alumno.sucursal_id)).scalar_one_or_none()
+    suc = db.execute(
+        select(Sucursal).where(Sucursal.id == deportista.sucursal_id)
+    ).scalar_one_or_none()
     cat = None
-    if alumno.categoria_id is not None:
+    if deportista.categoria_id is not None:
         cat = db.execute(
-            select(Categoria).where(Categoria.id == alumno.categoria_id)
+            select(Categoria).where(Categoria.id == deportista.categoria_id)
         ).scalar_one_or_none()
 
     insc = (
         db.execute(
             select(Inscripcion)
-            .where(Inscripcion.alumno_id == alumno.id)
+            .where(Inscripcion.deportista_id == deportista.id)
             .order_by(Inscripcion.fecha_inscripcion.desc())
         )
         .scalars()
         .first()
     )
 
-    # Tutores vía puente alumno_tutor (parentesco/responsable_pago del puente).
+    # Tutores vía puente deportista_tutor (parentesco/responsable_pago del puente).
     tutor_rows = db.execute(
-        select(Tutor, AlumnoTutor)
-        .join(AlumnoTutor, AlumnoTutor.tutor_id == Tutor.id)
-        .where(AlumnoTutor.alumno_id == alumno.id)
+        select(Tutor, DeportistaTutor)
+        .join(DeportistaTutor, DeportistaTutor.tutor_id == Tutor.id)
+        .where(DeportistaTutor.deportista_id == deportista.id)
     ).all()
     tutores = [
         TutorOut(
@@ -208,7 +214,7 @@ def get_alumno(
     cons = (
         db.execute(
             select(Consentimiento)
-            .where(Consentimiento.alumno_id == alumno.id)
+            .where(Consentimiento.deportista_id == deportista.id)
             .order_by(Consentimiento.aceptado_en.desc())
         )
         .scalars()
@@ -216,20 +222,20 @@ def get_alumno(
     )
 
     ficha = None
-    if alumno.ficha_medica and _puede_ver_ficha(user, alumno):
-        ficha = FichaMedica(**alumno.ficha_medica)
+    if deportista.ficha_medica and _puede_ver_ficha(user, deportista):
+        ficha = FichaMedica(**deportista.ficha_medica)
 
-    return AlumnoDetailOut(
-        id=alumno.id,
-        ap_paterno=alumno.ap_paterno,
-        ap_materno=alumno.ap_materno,
-        nombres=alumno.nombres,
-        nombre_completo=_nombre_completo(alumno),
-        ci=alumno.ci,
-        fecha_nac=alumno.fecha_nac,
-        edad=_calc_edad(alumno.fecha_nac),
-        disciplina=alumno.disciplina,
-        contacto_emergencia=alumno.contacto_emergencia,
+    return DeportistaDetailOut(
+        id=deportista.id,
+        ap_paterno=deportista.ap_paterno,
+        ap_materno=deportista.ap_materno,
+        nombres=deportista.nombres,
+        nombre_completo=_nombre_completo(deportista),
+        ci=deportista.ci,
+        fecha_nac=deportista.fecha_nac,
+        edad=_calc_edad(deportista.fecha_nac),
+        disciplina=deportista.disciplina,
+        contacto_emergencia=deportista.contacto_emergencia,
         sucursal=SucursalRef(id=suc.id, nombre=suc.nombre),  # type: ignore[union-attr]
         categoria=(CategoriaRef(id=cat.id, nombre=cat.nombre, nivel=cat.nivel) if cat else None),
         inscripcion=(
@@ -257,45 +263,49 @@ def get_alumno(
 
 
 # --------------------------------------------------------------------------- #
-# POST /alumnos  (alta con validación dura)
+# POST /deportistas  (alta con validación dura)
 # --------------------------------------------------------------------------- #
-@router.post("", response_model=AlumnoDetailOut, status_code=status.HTTP_201_CREATED)
-def create_alumno(
-    body: AlumnoCreate,
+@router.post("", response_model=DeportistaDetailOut, status_code=status.HTTP_201_CREATED)
+def create_deportista(
+    body: DeportistaCreate,
     user: CurrentUser = Depends(set_tenant_context),
     db: Session = Depends(get_db),
-) -> AlumnoDetailOut:
-    """Crea alumno + tutores + puente + consentimiento (+inscripción) (C5).
+) -> DeportistaDetailOut:
+    """Crea deportista + tutores + puente + consentimiento (+inscripción) (C5).
 
-    La validación dura (≥1 tutor + consentimiento) la garantiza `AlumnoCreate`
+    La validación dura (≥1 tutor + consentimiento) la garantiza `DeportistaCreate`
     (Pydantic => 422 si falta). Aquí asumimos el body ya válido. La creación vive
-    en `app/services/alumno.py` (reutilizable, p. ej. al aprobar una solicitud).
+    en `app/services/deportista.py` (reutilizable, p. ej. al aprobar una solicitud).
     """
-    alumno = alumno_svc.crear_alumno(db, body, org_id=uuid.UUID(user.org_id))
-    return get_alumno(alumno_id=alumno.id, user=user, db=db)
+    deportista = deportista_svc.crear_deportista(db, body, org_id=uuid.UUID(user.org_id))
+    return get_deportista(deportista_id=deportista.id, user=user, db=db)
 
 
 # --------------------------------------------------------------------------- #
-# PUT /alumnos/{id}  (actualiza datos del alumno)
+# PUT /deportistas/{id}  (actualiza datos del deportista)
 # --------------------------------------------------------------------------- #
-@router.put("/{alumno_id}", response_model=AlumnoDetailOut)
-def update_alumno(
-    alumno_id: uuid.UUID,
-    body: AlumnoUpdate,
+@router.put("/{deportista_id}", response_model=DeportistaDetailOut)
+def update_deportista(
+    deportista_id: uuid.UUID,
+    body: DeportistaUpdate,
     user: CurrentUser = Depends(set_tenant_context),
     db: Session = Depends(get_db),
-) -> AlumnoDetailOut:
-    """Actualiza datos del alumno (no toca tutores en este slice) (C5)."""
-    alumno = db.execute(select(Alumno).where(Alumno.id == alumno_id)).scalar_one_or_none()
-    if alumno is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Alumno no encontrado")
+) -> DeportistaDetailOut:
+    """Actualiza datos del deportista (no toca tutores en este slice) (C5)."""
+    deportista = db.execute(
+        select(Deportista).where(Deportista.id == deportista_id)
+    ).scalar_one_or_none()
+    if deportista is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Deportista no encontrado"
+        )
 
     data = body.model_dump(exclude_unset=True)
     if "ficha_medica" in data:
         fm = data.pop("ficha_medica")
-        alumno.ficha_medica = fm  # ya es dict (model_dump) o None
+        deportista.ficha_medica = fm  # ya es dict (model_dump) o None
     for field_name, value in data.items():
-        setattr(alumno, field_name, value)
+        setattr(deportista, field_name, value)
 
     db.flush()
-    return get_alumno(alumno_id=alumno.id, user=user, db=db)
+    return get_deportista(deportista_id=deportista.id, user=user, db=db)

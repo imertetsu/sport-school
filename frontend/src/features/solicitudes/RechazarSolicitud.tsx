@@ -65,7 +65,7 @@ export function RechazarSolicitud({ solicitud, onClose, onRejected }: RechazarSo
         <Card title="Rechazar solicitud">
           <p className="solicitudes__modal-lead">
             La solicitud de <strong>{nombreCompleto}</strong> quedará rechazada. No se
-            creará ningún alumno.
+            creará ningún deportista.
           </p>
           {formError && (
             <div className="page-error" role="alert">

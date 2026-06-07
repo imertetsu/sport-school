@@ -24,19 +24,19 @@ const CATEGORIAS: CategoriaAsistencia[] = [
     nombre: 'Sub-14 Intermedio',
     nivel: 'INTERMEDIO',
     sucursal: { id: 's1', nombre: 'Centro' },
-    total_alumnos: 3,
+    total_deportistas: 3,
   },
 ];
 
-// Roster fresco: sin sesión guardada (estado=null por alumno).
+// Roster fresco: sin sesión guardada (estado=null por deportista).
 const ROSTER_FRESCO: RosterOut = {
   sesion_id: null,
   categoria: { id: 'cat1', nombre: 'Sub-14 Intermedio' },
   fecha: '2026-06-05',
   items: [
-    { alumno_id: 'a1', nombre_completo: 'Mateo Quispe Mamani', estado: null },
-    { alumno_id: 'a2', nombre_completo: 'Valentina Condori Huanca', estado: null },
-    { alumno_id: 'a3', nombre_completo: 'Santiago Vargas Apaza', estado: null },
+    { deportista_id: 'a1', nombre_completo: 'Mateo Quispe Mamani', estado: null },
+    { deportista_id: 'a2', nombre_completo: 'Valentina Condori Huanca', estado: null },
+    { deportista_id: 'a3', nombre_completo: 'Santiago Vargas Apaza', estado: null },
   ],
   resumen: { presentes: 0, ausentes: 0, total: 3 },
 };
@@ -47,9 +47,9 @@ const ROSTER_GUARDADO: RosterOut = {
   categoria: { id: 'cat1', nombre: 'Sub-14 Intermedio' },
   fecha: '2026-06-05',
   items: [
-    { alumno_id: 'a1', nombre_completo: 'Mateo Quispe Mamani', estado: 'PRESENTE' },
-    { alumno_id: 'a2', nombre_completo: 'Valentina Condori Huanca', estado: 'AUSENTE' },
-    { alumno_id: 'a3', nombre_completo: 'Santiago Vargas Apaza', estado: 'PRESENTE' },
+    { deportista_id: 'a1', nombre_completo: 'Mateo Quispe Mamani', estado: 'PRESENTE' },
+    { deportista_id: 'a2', nombre_completo: 'Valentina Condori Huanca', estado: 'AUSENTE' },
+    { deportista_id: 'a3', nombre_completo: 'Santiago Vargas Apaza', estado: 'PRESENTE' },
   ],
   resumen: { presentes: 2, ausentes: 1, total: 3 },
 };
@@ -99,7 +99,7 @@ describe('TomarAsistencia', () => {
     ).toHaveAttribute('aria-pressed', 'true');
   });
 
-  it('al recargar refleja lo guardado (presente/ausente por alumno)', async () => {
+  it('al recargar refleja lo guardado (presente/ausente por deportista)', async () => {
     // El roster ya tiene una sesión guardada.
     rosterMock.mockResolvedValue(ROSTER_GUARDADO);
     render(<TomarAsistencia />);

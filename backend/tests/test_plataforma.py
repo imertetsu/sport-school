@@ -199,12 +199,12 @@ def test_escuelas_requiere_superadmin(plataforma_admin: dict) -> None:
 
 @pytest_db
 def test_superadmin_no_ve_tablas_tenant(plataforma_admin: dict) -> None:
-    """RLS fail-closed: con token SUPERADMIN, /alumnos no expone datos (GUC no fijado)."""
+    """RLS fail-closed: con token SUPERADMIN, /deportistas no expone datos (GUC no fijado)."""
     client = _client_or_skip()
     token = _platform_token(client, plataforma_admin)
-    resp = client.get("/api/v1/alumnos", headers={"Authorization": f"Bearer {token}"})
-    # /alumnos exige rol ADMIN/ENTRENADOR -> SUPERADMIN no pasa el require_role (403),
-    # y aunque pasara, RLS daría 0 filas. Lo crítico: NUNCA expone alumnos de una org.
+    resp = client.get("/api/v1/deportistas", headers={"Authorization": f"Bearer {token}"})
+    # /deportistas exige rol ADMIN/ENTRENADOR -> SUPERADMIN no pasa el require_role (403),
+    # y aunque pasara, RLS daría 0 filas. Lo crítico: NUNCA expone deportistas de una org.
     assert resp.status_code in (403, 200)
     if resp.status_code == 200:
         assert resp.json().get("items") == []
@@ -535,10 +535,10 @@ def _set_org(conn: Any, org: uuid.UUID) -> None:
 @pytest_db
 def test_superadmin_rls_fail_closed_sobre_tabla_tenant(app_engine: Engine, two_orgs: dict) -> None:
     """CRÍTICO: el camino del super admin (Session SIN `app.current_org`) deja RLS
-    fail-closed sobre `alumno`.
+    fail-closed sobre `deportista`.
 
     `require_superadmin` NUNCA fija el GUC; aquí lo reproducimos abriendo una sesión
-    del rol app sin contexto de tenant. Aunque `two_orgs` sembró 1 alumno por org
+    del rol app sin contexto de tenant. Aunque `two_orgs` sembró 1 deportista por org
     (como owner, saltando RLS), una query sin GUC debe devolver 0 filas (NULLIF →
     NULL → 0). Si esto devolviera >0, el super admin podría ver datos de cualquier
     escuela: fuga de tenant.
@@ -546,9 +546,11 @@ def test_superadmin_rls_fail_closed_sobre_tabla_tenant(app_engine: Engine, two_o
     with Session(app_engine, expire_on_commit=False) as db:
         # Sin set_config('app.current_org', ...): es EXACTAMENTE lo que ocurre bajo
         # require_superadmin (no encadena set_tenant_context).
-        n_alumnos = db.execute(text("SELECT count(*) FROM alumno")).scalar_one()
+        n_deportistas = db.execute(text("SELECT count(*) FROM deportista")).scalar_one()
         n_insc = db.execute(text("SELECT count(*) FROM inscripcion")).scalar_one()
-    assert n_alumnos == 0, "sin contexto de tenant, alumno debe devolver 0 filas (fail-closed)"
+    assert n_deportistas == 0, (
+        "sin contexto de tenant, deportista debe devolver 0 filas (fail-closed)"
+    )
     assert n_insc == 0, "fail-closed también en otras tablas tenant"
 
 

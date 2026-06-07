@@ -5,8 +5,8 @@ Cubre:
   rechazo de token alterado, forma de `url_recibo`.
 - **CRUD Sucursales/Categorías** (`@db`, vía TestClient + JWT real): alta/edición/
   baja ADMIN; RLS (INSERT con el org del token; sin contexto = 0 filas).
-- **DELETE protegido** (`@db`): borrar sucursal con alumnos ⇒ 409 y NADA se borró
-  (ni la sucursal ni el alumno).
+- **DELETE protegido** (`@db`): borrar sucursal con deportistas ⇒ 409 y NADA se borró
+  (ni la sucursal ni el deportista).
 - **Recibo enlace** (`@db`): token válido + pago CONFIRMADO ⇒ 200 PDF; token
   inválido ⇒ 404; pago NO confirmado ⇒ 404.
 - **Recibo envío** (`@db`): `enviar_recibo_whatsapp` deja un mensaje en `.sent` con
@@ -104,12 +104,12 @@ def _limpiar_org(conn, org: uuid.UUID) -> None:
         "credito",
         "cuota",
         "inscripcion",
-        "alumno_tutor",
+        "deportista_tutor",
         "tutor",
         "asistencia",
         "sesion",
         "horario_clase",
-        "alumno",
+        "deportista",
         "consentimiento",
         "categoria",
         "sucursal",
@@ -261,10 +261,10 @@ def test_rls_sucursal_sin_contexto_cero_filas(app_engine: Engine, org_admin: dic
 
 
 # --------------------------------------------------------------------------- #
-# DELETE protegido: sucursal con alumno ⇒ 409 y NADA se borra
+# DELETE protegido: sucursal con deportista ⇒ 409 y NADA se borra
 # --------------------------------------------------------------------------- #
 @pytest.mark.db
-def test_delete_sucursal_con_alumno_409_no_borra(
+def test_delete_sucursal_con_deportista_409_no_borra(
     app_engine: Engine, owner_engine: Engine, org_admin: dict
 ) -> None:
     org = org_admin["org"]
@@ -274,14 +274,14 @@ def test_delete_sucursal_con_alumno_409_no_borra(
         conn.execute(
             text(
                 "INSERT INTO sucursal (id, org_id, nombre, created_at, updated_at) "
-                "VALUES (:id,:org,'Con Alumnos',now(),now())"
+                "VALUES (:id,:org,'Con Deportistas',now(),now())"
             ),
             {"id": str(suc), "org": str(org)},
         )
         conn.execute(
             text(
-                "INSERT INTO alumno (id, org_id, sucursal_id, nombres, created_at, updated_at) "
-                "VALUES (:id,:org,:suc,'Alumno X',now(),now())"
+                "INSERT INTO deportista (id, org_id, sucursal_id, nombres, created_at, updated_at) "
+                "VALUES (:id,:org,:suc,'Deportista X',now(),now())"
             ),
             {"id": str(al), "org": str(org), "suc": str(suc)},
         )
@@ -290,19 +290,19 @@ def test_delete_sucursal_con_alumno_409_no_borra(
     headers = {"Authorization": f"Bearer {org_admin['token']}"}
     resp = client.delete(f"/api/v1/sucursales/{suc}", headers=headers)
     assert resp.status_code == 409
-    assert "alumno" in resp.json()["detail"].lower()
+    assert "deportista" in resp.json()["detail"].lower()
 
-    # NADA se borró: la sucursal sigue, el alumno sigue (no cascada).
+    # NADA se borró: la sucursal sigue, el deportista sigue (no cascada).
     with app_engine.begin() as conn:
         _set_org(conn, org)
         n_suc = conn.execute(
             text("SELECT count(*) FROM sucursal WHERE id = :i"), {"i": str(suc)}
         ).scalar_one()
         n_al = conn.execute(
-            text("SELECT count(*) FROM alumno WHERE id = :i"), {"i": str(al)}
+            text("SELECT count(*) FROM deportista WHERE id = :i"), {"i": str(al)}
         ).scalar_one()
     assert n_suc == 1, "la sucursal NO debe borrarse cuando está en uso"
-    assert n_al == 1, "el alumno NO debe borrarse en cascada"
+    assert n_al == 1, "el deportista NO debe borrarse en cascada"
 
 
 # --------------------------------------------------------------------------- #
@@ -311,7 +311,7 @@ def test_delete_sucursal_con_alumno_409_no_borra(
 def _sembrar_pago_confirmado(
     owner_engine: Engine, app_engine: Engine, *, org: uuid.UUID, user: uuid.UUID
 ) -> dict:
-    """Org + sucursal + alumno + tutor responsable + inscripción + cuota, y confirma
+    """Org + sucursal + deportista + tutor responsable + inscripción + cuota, y confirma
     un pago EFECTIVO (que asigna numero_recibo). Devuelve ids + pago_id."""
     suc = uuid.uuid4()
     al = uuid.uuid4()
@@ -329,7 +329,7 @@ def _sembrar_pago_confirmado(
         )
         conn.execute(
             text(
-                "INSERT INTO alumno (id, org_id, sucursal_id, nombres, ap_paterno, "
+                "INSERT INTO deportista (id, org_id, sucursal_id, nombres, ap_paterno, "
                 "created_at, updated_at) VALUES (:id,:org,:suc,'Camila','Rojas',now(),now())"
             ),
             {"id": str(al), "org": str(org), "suc": str(suc)},
@@ -343,7 +343,7 @@ def _sembrar_pago_confirmado(
         )
         conn.execute(
             text(
-                "INSERT INTO alumno_tutor (id, org_id, alumno_id, tutor_id, parentesco, "
+                "INSERT INTO deportista_tutor (id, org_id, deportista_id, tutor_id, parentesco, "
                 "responsable_pago, created_at, updated_at) "
                 "VALUES (:id,:org,:al,:tut,'Madre',true,now(),now())"
             ),
@@ -351,7 +351,7 @@ def _sembrar_pago_confirmado(
         )
         conn.execute(
             text(
-                "INSERT INTO inscripcion (id, org_id, alumno_id, fecha_inscripcion, "
+                "INSERT INTO inscripcion (id, org_id, deportista_id, fecha_inscripcion, "
                 "monto_mensual, estado, created_at, updated_at) "
                 "VALUES (:id,:org,:al,:f,:m,'ACTIVA',now(),now())"
             ),
@@ -385,7 +385,7 @@ def _sembrar_pago_confirmado(
         pago_id = pago.id
         db.commit()
 
-    return {"suc": suc, "alumno": al, "tutor": tutor, "cuota": cuota, "pago": pago_id}
+    return {"suc": suc, "deportista": al, "tutor": tutor, "cuota": cuota, "pago": pago_id}
 
 
 @pytest.fixture()
@@ -491,7 +491,7 @@ def test_envio_recibo_sin_telefono_no_envia(
         )
         conn.execute(
             text(
-                "INSERT INTO alumno (id, org_id, sucursal_id, nombres, created_at, updated_at) "
+                "INSERT INTO deportista (id, org_id, sucursal_id, nombres, created_at, updated_at) "
                 "VALUES (:id,:org,:suc,'Sin Tel',now(),now())"
             ),
             {"id": str(al), "org": str(org), "suc": str(suc)},
@@ -506,7 +506,7 @@ def test_envio_recibo_sin_telefono_no_envia(
         )
         conn.execute(
             text(
-                "INSERT INTO alumno_tutor (id, org_id, alumno_id, tutor_id, "
+                "INSERT INTO deportista_tutor (id, org_id, deportista_id, tutor_id, "
                 "responsable_pago, created_at, updated_at) "
                 "VALUES (:id,:org,:al,:tut,true,now(),now())"
             ),
@@ -514,7 +514,7 @@ def test_envio_recibo_sin_telefono_no_envia(
         )
         conn.execute(
             text(
-                "INSERT INTO inscripcion (id, org_id, alumno_id, monto_mensual, estado, "
+                "INSERT INTO inscripcion (id, org_id, deportista_id, monto_mensual, estado, "
                 "created_at, updated_at) VALUES (:id,:org,:al,:m,'ACTIVA',now(),now())"
             ),
             {"id": str(insc), "org": str(org), "al": str(al), "m": monto},
@@ -592,8 +592,8 @@ def test_webhook_qr_duplicado_recibo_una_vez(
         )
         conn.execute(
             text(
-                "INSERT INTO alumno (id, org_id, sucursal_id, nombres, created_at, updated_at) "
-                "VALUES (:id,:org,:suc,'QR Alumno',now(),now())"
+                "INSERT INTO deportista (id, org_id, sucursal_id, nombres, created_at, updated_at) "
+                "VALUES (:id,:org,:suc,'QR Deportista',now(),now())"
             ),
             {"id": str(al), "org": str(org), "suc": str(suc)},
         )
@@ -606,7 +606,7 @@ def test_webhook_qr_duplicado_recibo_una_vez(
         )
         conn.execute(
             text(
-                "INSERT INTO alumno_tutor (id, org_id, alumno_id, tutor_id, "
+                "INSERT INTO deportista_tutor (id, org_id, deportista_id, tutor_id, "
                 "responsable_pago, created_at, updated_at) "
                 "VALUES (:id,:org,:al,:tut,true,now(),now())"
             ),
@@ -614,7 +614,7 @@ def test_webhook_qr_duplicado_recibo_una_vez(
         )
         conn.execute(
             text(
-                "INSERT INTO inscripcion (id, org_id, alumno_id, monto_mensual, estado, "
+                "INSERT INTO inscripcion (id, org_id, deportista_id, monto_mensual, estado, "
                 "created_at, updated_at) VALUES (:id,:org,:al,:m,'ACTIVA',now(),now())"
             ),
             {"id": str(insc), "org": str(org), "al": str(al), "m": monto},

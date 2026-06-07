@@ -1,7 +1,7 @@
 """Router de Asistencia (contrato C2). Bearer + contexto de tenant (RLS).
 
 Endpoints:
-- GET  /asistencia/categorias   -> categorías visibles por rol (+ total_alumnos)
+- GET  /asistencia/categorias   -> categorías visibles por rol (+ total_deportistas)
 - GET  /asistencia/roster       -> get-or-create lógico (NO crea sesión)
 - POST /asistencia/guardar      -> idempotente (crea sesión + upsert de marcas)
 - GET  /asistencia/sesiones     -> historial paginado por categoría
@@ -54,7 +54,7 @@ def list_categorias(
     user: CurrentUser = Depends(set_tenant_context),
     db: Session = Depends(get_db),
 ) -> list[CategoriaAsistencia]:
-    """Categorías visibles por rol con su total de alumnos (C2)."""
+    """Categorías visibles por rol con su total de deportistas (C2)."""
     rows = svc.listar_categorias(db, role=user.role, sucursal_ids=user.sucursal_ids)
 
     # Precarga sucursales referenciadas (evita N+1).
@@ -80,7 +80,7 @@ def list_categorias(
                     id=cat.sucursal_id,
                     nombre=suc.nombre if suc else "",
                 ),
-                total_alumnos=total,
+                total_deportistas=total,
             )
         )
     return out
@@ -98,10 +98,10 @@ def get_roster(
 ) -> RosterOut:
     """Roster de la categoría para una fecha (get-or-create lógico) (C2).
 
-    NO crea sesión: si aún no hay, `sesion_id=null` y `estado=null` por alumno.
+    NO crea sesión: si aún no hay, `sesion_id=null` y `estado=null` por deportista.
     """
     try:
-        cat, sesion, alumnos, estados = svc.obtener_roster(
+        cat, sesion, deportistas, estados = svc.obtener_roster(
             db,
             categoria_id=categoria_id,
             fecha=fecha,
@@ -113,11 +113,11 @@ def get_roster(
 
     items = [
         RosterItem(
-            alumno_id=a.id,
+            deportista_id=a.id,
             nombre_completo=svc.nombre_completo(a),
             estado=estados.get(a.id),  # type: ignore[arg-type]
         )
-        for a in alumnos
+        for a in deportistas
     ]
     presentes, ausentes, total = svc.contar_resumen([it.estado for it in items])
 
@@ -150,7 +150,7 @@ def guardar(
             categoria_id=body.categoria_id,
             fecha=body.fecha,
             hora=body.hora,
-            marcas=[(m.alumno_id, m.estado) for m in body.marcas],
+            marcas=[(m.deportista_id, m.estado) for m in body.marcas],
             registrado_por=uuid.UUID(user.user_id),
             role=user.role,
             sucursal_ids=user.sucursal_ids,
@@ -159,7 +159,7 @@ def guardar(
         raise _http_error(exc) from exc
 
     # Releer el roster guardado (refleja exactamente el estado persistido).
-    _cat, _sesion, alumnos, estados = svc.obtener_roster(
+    _cat, _sesion, deportistas, estados = svc.obtener_roster(
         db,
         categoria_id=body.categoria_id,
         fecha=body.fecha,
@@ -168,11 +168,11 @@ def guardar(
     )
     items = [
         RosterItem(
-            alumno_id=a.id,
+            deportista_id=a.id,
             nombre_completo=svc.nombre_completo(a),
             estado=estados.get(a.id),  # type: ignore[arg-type]
         )
-        for a in alumnos
+        for a in deportistas
     ]
     presentes, ausentes, total = svc.contar_resumen([it.estado for it in items])
 

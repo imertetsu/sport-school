@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import type { AlumnosListResponse } from '@/api/types';
+import type { DeportistasListResponse } from '@/api/types';
 
 // Mock del cliente API: los tests no llaman a la API real (VITE_API_URL).
-const alumnosMock = vi.fn();
+const deportistasMock = vi.fn();
 vi.mock('@/api/client', () => ({
   api: {
-    alumnos: (...args: unknown[]) => alumnosMock(...args),
+    deportistas: (...args: unknown[]) => deportistasMock(...args),
     sucursales: vi.fn(() => Promise.resolve([])),
   },
   ApiError: class ApiError extends Error {},
@@ -27,9 +27,9 @@ vi.mock('@/components/shell/SearchContext', () => ({
   useSearch: () => ({ query: '', setQuery: vi.fn() }),
 }));
 
-import { AlumnosList } from './AlumnosList';
+import { DeportistasList } from './DeportistasList';
 
-const MOCK_RESPONSE: AlumnosListResponse = {
+const MOCK_RESPONSE: DeportistasListResponse = {
   page: 1,
   page_size: 50,
   total: 2,
@@ -62,42 +62,42 @@ const MOCK_RESPONSE: AlumnosListResponse = {
 function renderList() {
   return render(
     <MemoryRouter>
-      <AlumnosList />
+      <DeportistasList />
     </MemoryRouter>,
   );
 }
 
-describe('AlumnosList', () => {
+describe('DeportistasList', () => {
   beforeEach(() => {
-    alumnosMock.mockReset();
+    deportistasMock.mockReset();
   });
   afterEach(() => {
     vi.clearAllMocks();
   });
 
-  it('renderiza los alumnos devueltos por la API mock', async () => {
-    alumnosMock.mockResolvedValue(MOCK_RESPONSE);
+  it('renderiza los deportistas devueltos por la API mock', async () => {
+    deportistasMock.mockResolvedValue(MOCK_RESPONSE);
     renderList();
 
     expect(await screen.findByText('Mateo Quispe Mamani')).toBeInTheDocument();
     expect(screen.getByText('Valentina Condori Huanca')).toBeInTheDocument();
     // categoría · disciplina
     expect(screen.getByText('Sub-14 Intermedio · Fútbol')).toBeInTheDocument();
-    // alumno sin categoría
+    // deportista sin categoría
     expect(screen.getByText('Sin categoría · Natación')).toBeInTheDocument();
     // sucursales
     expect(screen.getByText('Centro')).toBeInTheDocument();
     expect(screen.getByText('Cala Cala')).toBeInTheDocument();
   });
 
-  it('muestra el total de alumnos en el subtítulo', async () => {
-    alumnosMock.mockResolvedValue(MOCK_RESPONSE);
+  it('muestra el total de deportistas en el subtítulo', async () => {
+    deportistasMock.mockResolvedValue(MOCK_RESPONSE);
     renderList();
-    expect(await screen.findByText('2 alumnos')).toBeInTheDocument();
+    expect(await screen.findByText('2 deportistas')).toBeInTheDocument();
   });
 
   it('placeholder "—" en la columna estado (cobranza es otro epic)', async () => {
-    alumnosMock.mockResolvedValue(MOCK_RESPONSE);
+    deportistasMock.mockResolvedValue(MOCK_RESPONSE);
     const { container } = renderList();
     await screen.findByText('Mateo Quispe Mamani');
     const placeholders = container.querySelectorAll('.estado-placeholder');
@@ -105,10 +105,10 @@ describe('AlumnosList', () => {
   });
 
   it('muestra el mensaje vacío cuando no hay resultados', async () => {
-    alumnosMock.mockResolvedValue({ ...MOCK_RESPONSE, items: [], total: 0 });
+    deportistasMock.mockResolvedValue({ ...MOCK_RESPONSE, items: [], total: 0 });
     renderList();
     await waitFor(() =>
-      expect(screen.getByText('Aún no hay alumnos registrados')).toBeInTheDocument(),
+      expect(screen.getByText('Aún no hay deportistas registrados')).toBeInTheDocument(),
     );
   });
 });

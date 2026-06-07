@@ -14,7 +14,7 @@ import './RegistrarPago.css';
 const POLL_INTERVAL_MS = 2500;
 
 export interface RegistrarPagoProps {
-  // Cuota preseleccionada al abrir desde una fila; null = elegir alumno + cuota(s).
+  // Cuota preseleccionada al abrir desde una fila; null = elegir deportista + cuota(s).
   cuotaInicial?: CuotaListItem | null;
   onClose: () => void;
   // Se invoca cuando un pago queda CONFIRMADO (refresca panel/tabla).
@@ -22,9 +22,9 @@ export interface RegistrarPagoProps {
 }
 
 export function RegistrarPago({ cuotaInicial, onClose, onConfirmado }: RegistrarPagoProps) {
-  // --- Selección de alumno + cuotas ---
+  // --- Selección de deportista + cuotas ---
   const [busqueda, setBusqueda] = useState('');
-  const [cuotasAlumno, setCuotasAlumno] = useState<CuotaListItem[]>([]);
+  const [cuotasDeportista, setCuotasDeportista] = useState<CuotaListItem[]>([]);
   const [cargandoCuotas, setCargandoCuotas] = useState(false);
   // Cuota(s) elegida(s) para cobrar (ids).
   const [seleccion, setSeleccion] = useState<string[]>(
@@ -35,7 +35,7 @@ export function RegistrarPago({ cuotaInicial, onClose, onConfirmado }: Registrar
     cuotaInicial ? [cuotaInicial] : [],
   );
 
-  // Cargar cuotas pendientes del alumno de la cuota inicial (para multi-cuota).
+  // Cargar cuotas pendientes del deportista de la cuota inicial (para multi-cuota).
   useEffect(() => {
     if (!cuotaInicial) return;
     const controller = new AbortController();
@@ -43,7 +43,7 @@ export function RegistrarPago({ cuotaInicial, onClose, onConfirmado }: Registrar
     setCargandoCuotas(true);
     api
       .cuotas(
-        { alumno_id: cuotaInicial.alumno.id, page: 1, page_size: 50 },
+        { deportista_id: cuotaInicial.deportista.id, page: 1, page_size: 50 },
         controller.signal,
       )
       .then((res) => {
@@ -53,11 +53,11 @@ export function RegistrarPago({ cuotaInicial, onClose, onConfirmado }: Registrar
         const merged = cobrables.some((c) => c.id === cuotaInicial.id)
           ? cobrables
           : [cuotaInicial, ...cobrables];
-        setCuotasAlumno(merged);
+        setCuotasDeportista(merged);
         setCatalogo(merged);
       })
       .catch(() => {
-        if (active) setCuotasAlumno([cuotaInicial]);
+        if (active) setCuotasDeportista([cuotaInicial]);
       })
       .finally(() => {
         if (active) setCargandoCuotas(false);
@@ -68,12 +68,12 @@ export function RegistrarPago({ cuotaInicial, onClose, onConfirmado }: Registrar
     };
   }, [cuotaInicial]);
 
-  // Búsqueda de cuotas por nombre de alumno cuando se abre sin cuota inicial.
+  // Búsqueda de cuotas por nombre de deportista cuando se abre sin cuota inicial.
   useEffect(() => {
     if (cuotaInicial) return;
     const q = busqueda.trim();
     if (!q) {
-      setCuotasAlumno([]);
+      setCuotasDeportista([]);
       return;
     }
     const controller = new AbortController();
@@ -87,9 +87,9 @@ export function RegistrarPago({ cuotaInicial, onClose, onConfirmado }: Registrar
           const cobrables = res.items.filter(
             (c) =>
               c.estado !== 'PAGADO' &&
-              c.alumno.nombre_completo.toLowerCase().includes(q.toLowerCase()),
+              c.deportista.nombre_completo.toLowerCase().includes(q.toLowerCase()),
           );
-          setCuotasAlumno(cobrables);
+          setCuotasDeportista(cobrables);
           setCatalogo((prev) => {
             const byId = new Map(prev.map((c) => [c.id, c]));
             for (const c of cobrables) byId.set(c.id, c);
@@ -97,7 +97,7 @@ export function RegistrarPago({ cuotaInicial, onClose, onConfirmado }: Registrar
           });
         })
         .catch(() => {
-          if (active) setCuotasAlumno([]);
+          if (active) setCuotasDeportista([]);
         })
         .finally(() => {
           if (active) setCargandoCuotas(false);
@@ -115,12 +115,12 @@ export function RegistrarPago({ cuotaInicial, onClose, onConfirmado }: Registrar
     [catalogo],
   );
 
-  // RF-ABO-11: un pago aplica a cuotas de UNA sola inscripción/alumno (el crédito
-  // es por inscripción). El alumno de la selección actual ancla qué se puede sumar.
-  const alumnoSeleccionadoId = useMemo(() => {
+  // RF-ABO-11: un pago aplica a cuotas de UNA sola inscripción/deportista (el crédito
+  // es por inscripción). El deportista de la selección actual ancla qué se puede sumar.
+  const deportistaSeleccionadoId = useMemo(() => {
     for (const id of seleccion) {
       const c = catalogoById.get(id);
-      if (c) return c.alumno.id;
+      if (c) return c.deportista.id;
     }
     return null;
   }, [seleccion, catalogoById]);
@@ -131,11 +131,11 @@ export function RegistrarPago({ cuotaInicial, onClose, onConfirmado }: Registrar
         if (prev.includes(cuota.id)) {
           return prev.filter((x) => x !== cuota.id);
         }
-        // Si ya hay selección de otro alumno, la reemplazamos (no se mezclan alumnos).
+        // Si ya hay selección de otro deportista, la reemplazamos (no se mezclan deportistas).
         const ancla = prev
           .map((id) => catalogoById.get(id))
           .find((c): c is CuotaListItem => c != null);
-        if (ancla && ancla.alumno.id !== cuota.alumno.id) {
+        if (ancla && ancla.deportista.id !== cuota.deportista.id) {
           return [cuota.id];
         }
         return [...prev, cuota.id];
@@ -152,27 +152,27 @@ export function RegistrarPago({ cuotaInicial, onClose, onConfirmado }: Registrar
     }, 0);
   }, [seleccion, catalogoById]);
 
-  const listaCuotas = cuotasAlumno;
+  const listaCuotas = cuotasDeportista;
 
   const selector = (
     <div className="rp-selector">
       {!cuotaInicial && (
         <label className="rp-search">
-          <span className="rp-search__label">Alumno</span>
+          <span className="rp-search__label">Deportista</span>
           <input
             className="field__input"
             type="search"
             value={busqueda}
             onChange={(e) => setBusqueda(e.target.value)}
-            placeholder="Buscar alumno…"
+            placeholder="Buscar deportista…"
             autoFocus
           />
         </label>
       )}
       {cuotaInicial && (
-        <p className="rp-alumno">
-          <strong>{cuotaInicial.alumno.nombre_completo}</strong>
-          <span className="rp-alumno__meta">
+        <p className="rp-deportista">
+          <strong>{cuotaInicial.deportista.nombre_completo}</strong>
+          <span className="rp-deportista__meta">
             {cuotaInicial.categoria.nombre} · {cuotaInicial.sucursal.nombre}
           </span>
         </p>
@@ -185,21 +185,21 @@ export function RegistrarPago({ cuotaInicial, onClose, onConfirmado }: Registrar
         <p className="rp-empty">
           {cuotaInicial || busqueda.trim()
             ? 'Sin cuotas por cobrar.'
-            : 'Escribe el nombre de un alumno.'}
+            : 'Escribe el nombre de un deportista.'}
         </p>
       ) : (
         <ul className="rp-cuotas">
           {listaCuotas.map((c) => {
-            // RF-ABO-11: solo cuotas del alumno ya anclado son combinables.
+            // RF-ABO-11: solo cuotas del deportista ya anclado son combinables.
             const bloqueada =
-              alumnoSeleccionadoId != null && c.alumno.id !== alumnoSeleccionadoId;
+              deportistaSeleccionadoId != null && c.deportista.id !== deportistaSeleccionadoId;
             return (
               <li key={c.id}>
                 <label
                   className={`rp-cuota${bloqueada ? ' rp-cuota--disabled' : ''}`}
                   title={
                     bloqueada
-                      ? 'Solo puedes cobrar cuotas de un mismo alumno por pago.'
+                      ? 'Solo puedes cobrar cuotas de un mismo deportista por pago.'
                       : undefined
                   }
                 >
@@ -212,7 +212,7 @@ export function RegistrarPago({ cuotaInicial, onClose, onConfirmado }: Registrar
                   <span className="rp-cuota__body">
                     <span className="rp-cuota__top">
                       {!cuotaInicial && (
-                        <span className="rp-cuota__alumno">{c.alumno.nombre_completo}</span>
+                        <span className="rp-cuota__deportista">{c.deportista.nombre_completo}</span>
                       )}
                       <EstadoBadge estado={c.estado} />
                     </span>
@@ -460,7 +460,7 @@ function PagoQr({
     return (
       <div className="rp-method">
         <p className="rp-method__hint">
-          Genera un código QR para que el alumno pague. El estado se confirma automáticamente.
+          Genera un código QR para que el deportista pague. El estado se confirma automáticamente.
         </p>
         {error && (
           <div className="page-error" role="alert">

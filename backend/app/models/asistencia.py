@@ -1,7 +1,7 @@
-"""Modelo `asistencia` (C1) — la marca de un alumno en una sesión.
+"""Modelo `asistencia` (C1) — la marca de un deportista en una sesión.
 
 Tabla tenant con RLS por `org_id`. La idempotencia del guardado descansa en
-`UNIQUE(sesion_id, alumno_id)`: re-guardar la lista hace **upsert** (actualiza
+`UNIQUE(sesion_id, deportista_id)`: re-guardar la lista hace **upsert** (actualiza
 `estado`/`registrado_por`/`updated_at`), nunca duplica filas. `estado` tiene un
 CHECK PRESENTE|AUSENTE a nivel BD (ampliable a JUSTIFICADO sin romper esquema).
 
@@ -39,8 +39,8 @@ class Asistencia(UUIDPkMixin, OrgScoped, Base):
         nullable=False,
         index=True,
     )
-    alumno_id: Mapped[uuid.UUID] = mapped_column(
-        PG_UUID(as_uuid=True), ForeignKey("alumno.id"), nullable=False, index=True
+    deportista_id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("deportista.id"), nullable=False, index=True
     )
     estado: Mapped[str] = mapped_column(Text, nullable=False)  # PRESENTE | AUSENTE
     registrado_por: Mapped[uuid.UUID | None] = mapped_column(
@@ -57,7 +57,7 @@ class Asistencia(UUIDPkMixin, OrgScoped, Base):
     )
 
     __table_args__ = (
-        UniqueConstraint("sesion_id", "alumno_id", name="uq_asistencia_sesion_alumno"),
+        UniqueConstraint("sesion_id", "deportista_id", name="uq_asistencia_sesion_deportista"),
         CheckConstraint("estado IN ('PRESENTE','AUSENTE')", name="ck_asistencia_estado"),
         Index("ix_asistencia_org_id", "org_id"),
     )

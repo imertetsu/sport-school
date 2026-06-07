@@ -51,7 +51,7 @@ def _sembrar(
 ) -> dict:
     """Org + sucursal + entrenador (usuario+perfil) asignado a la sucursal.
 
-    Si `con_deudor`, agrega 1 alumno + inscripción + 1 cuota VENCIDA (monto 300, pagado
+    Si `con_deudor`, agrega 1 deportista + inscripción + 1 cuota VENCIDA (monto 300, pagado
     0 ⇒ saldo 300). Devuelve los ids sembrados.
     """
     suc = uuid.uuid4()
@@ -99,26 +99,26 @@ def _sembrar(
         {"id": str(uuid.uuid4()), "org": str(org), "ent": str(coach), "suc": str(suc)},
     )
 
-    alumno = None
+    deportista = None
     if con_deudor:
-        alumno = uuid.uuid4()
+        deportista = uuid.uuid4()
         insc = uuid.uuid4()
         cuota = uuid.uuid4()
         conn.execute(
             text(
-                "INSERT INTO alumno (id, org_id, sucursal_id, nombres, ap_paterno, "
+                "INSERT INTO deportista (id, org_id, sucursal_id, nombres, ap_paterno, "
                 "created_at, updated_at) "
                 "VALUES (:id,:org,:suc,'Juan','Perez',now(),now())"
             ),
-            {"id": str(alumno), "org": str(org), "suc": str(suc)},
+            {"id": str(deportista), "org": str(org), "suc": str(suc)},
         )
         conn.execute(
             text(
-                "INSERT INTO inscripcion (id, org_id, alumno_id, fecha_inscripcion, "
+                "INSERT INTO inscripcion (id, org_id, deportista_id, fecha_inscripcion, "
                 "monto_mensual, estado, created_at, updated_at) "
                 "VALUES (:id,:org,:al,:f,300,'ACTIVA',now(),now())"
             ),
-            {"id": str(insc), "org": str(org), "al": str(alumno), "f": date(2026, 1, 10)},
+            {"id": str(insc), "org": str(org), "al": str(deportista), "f": date(2026, 1, 10)},
         )
         conn.execute(
             text(
@@ -136,7 +136,7 @@ def _sembrar(
             },
         )
 
-    return {"suc": suc, "coach_user": coach_user, "coach": coach, "alumno": alumno}
+    return {"suc": suc, "coach_user": coach_user, "coach": coach, "deportista": deportista}
 
 
 def _limpiar(conn, org: uuid.UUID) -> None:
@@ -145,7 +145,7 @@ def _limpiar(conn, org: uuid.UUID) -> None:
     conn.execute(text("DELETE FROM entrenador_sucursal WHERE org_id = :o"), {"o": str(org)})
     conn.execute(text("DELETE FROM cuota WHERE org_id = :o"), {"o": str(org)})
     conn.execute(text("DELETE FROM inscripcion WHERE org_id = :o"), {"o": str(org)})
-    conn.execute(text("DELETE FROM alumno WHERE org_id = :o"), {"o": str(org)})
+    conn.execute(text("DELETE FROM deportista WHERE org_id = :o"), {"o": str(org)})
     conn.execute(text("DELETE FROM entrenador WHERE org_id = :o"), {"o": str(org)})
     conn.execute(text("DELETE FROM usuario WHERE org_id = :o"), {"o": str(org)})
     conn.execute(text("DELETE FROM sucursal WHERE org_id = :o"), {"o": str(org)})

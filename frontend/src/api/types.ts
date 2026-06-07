@@ -41,7 +41,7 @@ export interface Categoria {
   sucursal_id: string;
 }
 
-// Forma reducida de categoría embebida en alumno (sin rango_edad/sucursal_id).
+// Forma reducida de categoría embebida en deportista (sin rango_edad/sucursal_id).
 export interface CategoriaRef {
   id: string;
   nombre: string;
@@ -53,9 +53,9 @@ export interface SucursalRef {
   nombre: string;
 }
 
-// ---- C5: Alumnos ----
-// GET /alumnos -> item de lista
-export interface AlumnoListItem {
+// ---- C5: Deportistas ----
+// GET /deportistas -> item de lista
+export interface DeportistaListItem {
   id: string;
   ap_paterno: string;
   ap_materno: string;
@@ -74,9 +74,9 @@ export interface Paginated<T> {
   page_size: number;
 }
 
-export type AlumnosListResponse = Paginated<AlumnoListItem>;
+export type DeportistasListResponse = Paginated<DeportistaListItem>;
 
-// Tutor embebido en el perfil del alumno (GET /alumnos/{id})
+// Tutor embebido en el perfil del deportista (GET /deportistas/{id})
 export interface Tutor {
   id: string;
   nombres: string;
@@ -108,8 +108,8 @@ export interface FichaMedica {
   condiciones: string;
 }
 
-// GET /alumnos/{id} -> perfil completo
-export interface AlumnoDetail {
+// GET /deportistas/{id} -> perfil completo
+export interface DeportistaDetail {
   id: string;
   ap_paterno: string;
   ap_materno: string;
@@ -129,7 +129,7 @@ export interface AlumnoDetail {
   ficha_medica: FichaMedica | null;
 }
 
-// ---- C5: POST /alumnos (AlumnoCreate) ----
+// ---- C5: POST /deportistas (DeportistaCreate) ----
 export interface TutorCreate {
   nombres: string;
   telefono: string;
@@ -157,7 +157,7 @@ export interface FichaMedicaCreate {
   condiciones: string;
 }
 
-export interface AlumnoCreate {
+export interface DeportistaCreate {
   ap_paterno: string;
   ap_materno: string;
   nombres: string;
@@ -173,8 +173,8 @@ export interface AlumnoCreate {
   ficha_medica?: FichaMedicaCreate | null;
 }
 
-// AlumnoCreate produce un AlumnoDetail al crear.
-export type AlumnoCreated = AlumnoDetail;
+// DeportistaCreate produce un DeportistaDetail al crear.
+export type DeportistaCreated = DeportistaDetail;
 
 // ============================================================
 // C4: Cobranza (espejo EXACTO de los contratos del epic Cobranza)
@@ -188,9 +188,9 @@ export type MetodoPago = 'EFECTIVO' | 'QR';
 export type EstadoPago = 'PENDIENTE' | 'CONFIRMADO' | 'FALLIDO';
 
 // --- GET /cobranza/cuotas -> item de lista ---
-// {id, alumno:{id,nombre_completo}, sucursal:{nombre}, categoria:{nombre},
+// {id, deportista:{id,nombre_completo}, sucursal:{nombre}, categoria:{nombre},
 //  periodo_inicio, vence_el, monto, estado, ultimo_metodo|null}
-export interface CuotaAlumnoRef {
+export interface CuotaDeportistaRef {
   id: string;
   nombre_completo: string;
 }
@@ -205,7 +205,7 @@ export interface CuotaCategoriaRef {
 
 export interface CuotaListItem {
   id: string;
-  alumno: CuotaAlumnoRef;
+  deportista: CuotaDeportistaRef;
   sucursal: CuotaSucursalRef;
   categoria: CuotaCategoriaRef;
   periodo_inicio: string; // date
@@ -221,14 +221,14 @@ export interface CuotaListItem {
 export type CuotasListResponse = Paginated<CuotaListItem>;
 
 // --- GET /cobranza/panel ---
-// {ingresos_mes:{monto}, alumnos_activos:{count, sucursales, disciplinas},
+// {ingresos_mes:{monto}, deportistas_activos:{count, sucursales, disciplinas},
 //  cuotas_pendientes:{count, monto}, cuotas_vencidas:{count, monto},
-//  morosidad:[{alumno_id, nombre_completo, categoria, monto, dias_mora}]}
+//  morosidad:[{deportista_id, nombre_completo, categoria, monto, dias_mora}]}
 export interface PanelIngresosMes {
   monto: string;
 }
 
-export interface PanelAlumnosActivos {
+export interface PanelDeportistasActivos {
   count: number;
   sucursales: number;
   disciplinas: number;
@@ -240,7 +240,7 @@ export interface PanelCuotasAgg {
 }
 
 export interface MorosidadItem {
-  alumno_id: string;
+  deportista_id: string;
   nombre_completo: string;
   categoria: string;
   monto: string;
@@ -249,7 +249,7 @@ export interface MorosidadItem {
 
 export interface PanelCobranza {
   ingresos_mes: PanelIngresosMes;
-  alumnos_activos: PanelAlumnosActivos;
+  deportistas_activos: PanelDeportistasActivos;
   // Abonos: cuotas_pendientes/cuotas_vencidas suman SALDO (no monto nominal); el
   // backend ya lo calcula así. credito_total = Σ credito.saldo de la org.
   cuotas_pendientes: PanelCuotasAgg;
@@ -343,19 +343,19 @@ export interface RecordatorioOut {
 export type EstadoAsistencia = 'PRESENTE' | 'AUSENTE';
 
 // --- GET /asistencia/categorias -> categorías visibles por rol ---
-// [{id, nombre, nivel, sucursal:{id,nombre}, total_alumnos}]
+// [{id, nombre, nivel, sucursal:{id,nombre}, total_deportistas}]
 export interface CategoriaAsistencia {
   id: string;
   nombre: string;
   nivel: Nivel;
   sucursal: SucursalRef;
-  total_alumnos: number;
+  total_deportistas: number;
 }
 
 // --- GET /asistencia/roster?categoria_id=&fecha=YYYY-MM-DD ---
-// item por alumno; estado=null si aún no hay sesión guardada.
+// item por deportista; estado=null si aún no hay sesión guardada.
 export interface RosterItem {
-  alumno_id: string;
+  deportista_id: string;
   nombre_completo: string;
   estado: EstadoAsistencia | null;
 }
@@ -381,10 +381,10 @@ export interface RosterOut {
 }
 
 // --- POST /asistencia/guardar (body) ---
-// {categoria_id, fecha, hora?, marcas:[{alumno_id, estado}]} -> idempotente.
+// {categoria_id, fecha, hora?, marcas:[{deportista_id, estado}]} -> idempotente.
 // Devuelve el roster guardado (RosterOut).
 export interface MarcaAsistencia {
-  alumno_id: string;
+  deportista_id: string;
   estado: EstadoAsistencia;
 }
 
@@ -639,7 +639,7 @@ export interface HorarioCreate {
 export type HorarioCreated = HorarioOut;
 
 // ============================================================
-// C2/C3: Auto-registro de alumno — Solicitudes (espejo EXACTO de los contratos
+// C2/C3: Auto-registro de deportista — Solicitudes (espejo EXACTO de los contratos
 // C2/C3 del epic Auto-registro, versión EN SISTEMA). Toda la API es autenticada
 // (NADA público, sin token/link). Captura: ADMIN o ENTRENADOR. Aprobar/rechazar:
 // solo ADMIN. No inventar campos: si falta algo, es hand-off a backend-dev.
@@ -655,7 +655,7 @@ export interface SolicitudFichaMedica {
 }
 
 // Datos del tutor capturados en la solicitud (sin responsable_pago: lo decide el
-// admin al aprobar reutilizando la creación de alumno).
+// admin al aprobar reutilizando la creación de deportista).
 export interface SolicitudTutorCreate {
   nombres: string;
   telefono: string;
@@ -697,7 +697,7 @@ export interface SolicitudTutor {
 
 // --- GET /solicitudes (item) y GET /solicitudes/{id} — C3 (SolicitudOut) ---
 // datos enviados + estado + creado_por_nombre + sucursal/categoria sugeridas +
-// created_at + alumno_id|null + motivo_rechazo|null.
+// created_at + deportista_id|null + motivo_rechazo|null.
 export interface SolicitudOut {
   id: string;
   estado: EstadoSolicitud;
@@ -714,7 +714,7 @@ export interface SolicitudOut {
   categoria_sugerida: CategoriaRef | null;
   creado_por_nombre: string | null;
   created_at: string; // timestamptz
-  alumno_id: string | null; // set al aprobar
+  deportista_id: string | null; // set al aprobar
   motivo_rechazo: string | null; // set al rechazar
 }
 
@@ -722,7 +722,7 @@ export interface SolicitudOut {
 export type SolicitudesPage = Paginated<SolicitudOut>;
 
 // --- POST /solicitudes/{id}/aprobar (ADMIN) body — C3 ---
-// Crea el alumno real reutilizando la lógica del epic Alumnos. 409 si ya resuelta.
+// Crea el deportista real reutilizando la lógica del epic Deportistas. 409 si ya resuelta.
 export interface AprobarBody {
   sucursal_id: string; // requerido
   categoria_id?: string | null;
@@ -730,8 +730,8 @@ export interface AprobarBody {
   modo_cobro?: ModoCobro | null;
 }
 
-// POST /solicitudes/{id}/aprobar devuelve el alumno creado.
-export type SolicitudAlumnoCreado = AlumnoDetail;
+// POST /solicitudes/{id}/aprobar devuelve el deportista creado.
+export type SolicitudDeportistaCreado = DeportistaDetail;
 
 // --- POST /solicitudes/{id}/rechazar (ADMIN) body — C3 ---
 // 409 si ya resuelta. Devuelve la solicitud actualizada (RECHAZADA).

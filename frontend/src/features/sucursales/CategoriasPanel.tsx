@@ -18,7 +18,7 @@ export interface CategoriasPanelProps {
 
 // Gestión de categorías de una sucursal (SOLO ADMIN). Lista sus categorías
 // (GET /categorias?sucursal_id=) con alta/edición/baja. La baja está protegida:
-// 409 si la categoría está en uso (alumnos/horarios/sesiones) -> mensaje del
+// 409 si la categoría está en uso (deportistas/horarios/sesiones) -> mensaje del
 // backend inline, sin cascada. Se monta como sección dentro de Sucursales.
 export function CategoriasPanel({ sucursal }: CategoriasPanelProps) {
   const [categorias, setCategorias] = useState<Categoria[]>([]);
@@ -87,7 +87,7 @@ export function CategoriasPanel({ sucursal }: CategoriasPanelProps) {
       setConfirmId(null);
       recargar();
     } catch (err) {
-      // 409: la categoría está en uso (alumnos/horarios/sesiones). Mostramos el
+      // 409: la categoría está en uso (deportistas/horarios/sesiones). Mostramos el
       // mensaje del backend inline, sin borrar en cascada.
       if (err instanceof ApiError) {
         if (err.status === 409) {
@@ -191,7 +191,7 @@ export function CategoriasPanel({ sucursal }: CategoriasPanelProps) {
           <span>
             ¿Eliminar la categoría “
             {categorias.find((c) => c.id === confirmId)?.nombre ?? ''}”? No se podrá
-            si tiene alumnos, horarios o sesiones asociados.
+            si tiene deportistas, horarios o sesiones asociados.
           </span>
           <div className="sucursales__confirm-actions">
             <Button

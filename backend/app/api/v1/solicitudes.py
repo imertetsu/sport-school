@@ -8,7 +8,7 @@ Endpoints:
 - GET  /solicitudes                  -> cola, scoped por rol (ADMIN todas;
                                         ENTRENADOR solo sus sucursales)
 - GET  /solicitudes/{id}             -> detalle (scoped)
-- POST /solicitudes/{id}/aprobar     -> solo ADMIN; crea el alumno real
+- POST /solicitudes/{id}/aprobar     -> solo ADMIN; crea el deportista real
 - POST /solicitudes/{id}/rechazar    -> solo ADMIN
 
 El gateo a solo-ADMIN (aprobar/rechazar) usa `require_role("ADMIN")` (se encadena
@@ -23,10 +23,10 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from app.api.v1.alumnos import get_alumno
+from app.api.v1.deportistas import get_deportista
 from app.core.db import get_db
 from app.core.tenant import CurrentUser, require_role, set_tenant_context
-from app.schemas.alumno import AlumnoDetailOut
+from app.schemas.deportista import DeportistaDetailOut
 from app.schemas.registro import (
     AprobarBody,
     RechazarBody,
@@ -122,22 +122,22 @@ def get_solicitud(
 
 
 # --------------------------------------------------------------------------- #
-# POST /solicitudes/{id}/aprobar  (solo ADMIN -> crea el alumno real)
+# POST /solicitudes/{id}/aprobar  (solo ADMIN -> crea el deportista real)
 # --------------------------------------------------------------------------- #
-@router.post("/{solicitud_id}/aprobar", response_model=AlumnoDetailOut)
+@router.post("/{solicitud_id}/aprobar", response_model=DeportistaDetailOut)
 def aprobar_solicitud(
     solicitud_id: uuid.UUID,
     body: AprobarBody,
     user: CurrentUser = Depends(require_role("ADMIN")),
     db: Session = Depends(get_db),
-) -> AlumnoDetailOut:
-    """Aprueba la solicitud y crea el alumno real (C3, solo ADMIN).
+) -> DeportistaDetailOut:
+    """Aprueba la solicitud y crea el deportista real (C3, solo ADMIN).
 
-    Reutiliza la creación de Alumnos. Marca APROBADA + `alumno_id`. 409 si la
-    solicitud ya está resuelta. Devuelve el alumno creado.
+    Reutiliza la creación de Deportistas. Marca APROBADA + `deportista_id`. 409 si la
+    solicitud ya está resuelta. Devuelve el deportista creado.
     """
     try:
-        alumno = svc.aprobar(
+        deportista = svc.aprobar(
             db,
             solicitud_id,
             body,
@@ -146,7 +146,7 @@ def aprobar_solicitud(
         )
     except svc.RegistroError as exc:
         raise _http_error(exc) from exc
-    return get_alumno(alumno_id=alumno.id, user=user, db=db)
+    return get_deportista(deportista_id=deportista.id, user=user, db=db)
 
 
 # --------------------------------------------------------------------------- #

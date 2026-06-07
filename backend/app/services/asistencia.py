@@ -8,10 +8,10 @@ llamador, RLS):
   (el router lo traduce a 403). Categoría inexistente → `CategoriaNoEncontrada`
   (404).
 - **get-or-create roster**: NO crea sesión hasta guardar. Si no hay sesión para
-  (categoria, fecha), `sesion_id=null` y `estado=null` por alumno.
+  (categoria, fecha), `sesion_id=null` y `estado=null` por deportista.
 - **guardar idempotente**: crea la sesión si no existe (por categoria+fecha+hora,
   garantizado por `UNIQUE(categoria_id, fecha, hora)`) y hace **upsert** de
-  `asistencia` por `(sesion_id, alumno_id)` con `registrado_por=<user>` y
+  `asistencia` por `(sesion_id, deportista_id)` con `registrado_por=<user>` y
   `updated_at` refrescado. Re-guardar no duplica filas (UNIQUE).
 - **historial**: sesiones de una categoría con contadores presentes/ausentes.
 
@@ -26,9 +26,9 @@ from datetime import UTC, date, datetime, time
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models.alumno import Alumno
 from app.models.asistencia import Asistencia
 from app.models.categoria import Categoria
+from app.models.deportista import Deportista
 from app.models.sesion import Sesion
 
 
@@ -44,8 +44,8 @@ class CategoriaFuera(AsistenciaError):
     """La categoría está fuera del alcance del rol (sucursal) -> 403."""
 
 
-def nombre_completo(a: Alumno) -> str:
-    """Nombre completo del alumno (apellidos + nombres), sin huecos."""
+def nombre_completo(a: Deportista) -> str:
+    """Nombre completo del deportista (apellidos + nombres), sin huecos."""
     partes = [a.ap_paterno, a.ap_materno, a.nombres]
     return " ".join(p for p in partes if p).strip() or a.nombres
 
@@ -73,16 +73,16 @@ def _sucursales_permitidas(role: str, sucursal_ids: list[str]) -> set[uuid.UUID]
 def listar_categorias(
     db: Session, *, role: str, sucursal_ids: list[str]
 ) -> list[tuple[Categoria, int]]:
-    """Categorías visibles por rol con su `total_alumnos` (C2).
+    """Categorías visibles por rol con su `total_deportistas` (C2).
 
     ADMIN: todas las de la org (RLS); ENTRENADOR: solo las de sus sucursales.
-    Devuelve `[(Categoria, total_alumnos)]` ordenado por nombre.
+    Devuelve `[(Categoria, total_deportistas)]` ordenado por nombre.
     """
     permitidas = _sucursales_permitidas(role, sucursal_ids)
 
     stmt = (
-        select(Categoria, func.count(Alumno.id))
-        .outerjoin(Alumno, Alumno.categoria_id == Categoria.id)
+        select(Categoria, func.count(Deportista.id))
+        .outerjoin(Deportista, Deportista.categoria_id == Categoria.id)
         .group_by(Categoria.id)
         .order_by(Categoria.nombre)
     )
@@ -128,12 +128,12 @@ def _buscar_sesion(
     return db.execute(stmt).scalars().first()
 
 
-def _alumnos_de_categoria(db: Session, categoria_id: uuid.UUID) -> list[Alumno]:
+def _deportistas_de_categoria(db: Session, categoria_id: uuid.UUID) -> list[Deportista]:
     return list(
         db.execute(
-            select(Alumno)
-            .where(Alumno.categoria_id == categoria_id)
-            .order_by(Alumno.ap_paterno, Alumno.ap_materno, Alumno.nombres)
+            select(Deportista)
+            .where(Deportista.categoria_id == categoria_id)
+            .order_by(Deportista.ap_paterno, Deportista.ap_materno, Deportista.nombres)
         )
         .scalars()
         .all()
@@ -147,16 +147,16 @@ def obtener_roster(
     fecha: date,
     role: str,
     sucursal_ids: list[str],
-) -> tuple[Categoria, Sesion | None, list[Alumno], dict[uuid.UUID, str]]:
+) -> tuple[Categoria, Sesion | None, list[Deportista], dict[uuid.UUID, str]]:
     """Devuelve datos crudos del roster (get-or-create lógico, NO crea sesión).
 
-    Retorna `(categoria, sesion|None, alumnos, estados_por_alumno)`. Si no hay
+    Retorna `(categoria, sesion|None, deportistas, estados_por_deportista)`. Si no hay
     sesión para (categoria, fecha) -> `sesion=None` y el dict de estados vacío.
     """
     cat = _cargar_categoria_con_scope(
         db, categoria_id=categoria_id, role=role, sucursal_ids=sucursal_ids
     )
-    alumnos = _alumnos_de_categoria(db, categoria_id)
+    deportistas = _deportistas_de_categoria(db, categoria_id)
 
     # Para el roster usamos la sesión "del día" (hora NULL es la canónica); si
     # existe alguna sesión ese día tomamos la primera por hora para reflejar lo
@@ -174,12 +174,14 @@ def obtener_roster(
     estados: dict[uuid.UUID, str] = {}
     if sesion is not None:
         rows = db.execute(
-            select(Asistencia.alumno_id, Asistencia.estado).where(Asistencia.sesion_id == sesion.id)
+            select(Asistencia.deportista_id, Asistencia.estado).where(
+                Asistencia.sesion_id == sesion.id
+            )
         ).all()
         for al_id, est in rows:
             estados[al_id] = est
 
-    return cat, sesion, alumnos, estados
+    return cat, sesion, deportistas, estados
 
 
 # --------------------------------------------------------------------------- #
@@ -220,7 +222,7 @@ def guardar_asistencia(
 ) -> tuple[Categoria, Sesion]:
     """Crea/recupera la sesión y hace upsert de las marcas (idempotente) (C2).
 
-    Solo se aplican marcas de alumnos que pertenecen a la categoría (defensa en
+    Solo se aplican marcas de deportistas que pertenecen a la categoría (defensa en
     profundidad sobre los ids del body). `registrado_por`/`updated_at` quedan como
     auditoría (RNF-03). Devuelve `(categoria, sesion)`.
     """
@@ -232,28 +234,28 @@ def guardar_asistencia(
         db, org_id=org_id, categoria_id=categoria_id, fecha=fecha, hora=hora
     )
 
-    # Alumnos válidos de la categoría (ignora ids ajenos / de otra categoría).
-    alumnos_validos = {a.id for a in _alumnos_de_categoria(db, categoria_id)}
+    # Deportistas válidos de la categoría (ignora ids ajenos / de otra categoría).
+    deportistas_validos = {a.id for a in _deportistas_de_categoria(db, categoria_id)}
 
-    # Asistencias ya existentes para esta sesión (upsert por alumno_id).
+    # Asistencias ya existentes para esta sesión (upsert por deportista_id).
     existentes = {
-        a.alumno_id: a
+        a.deportista_id: a
         for a in db.execute(select(Asistencia).where(Asistencia.sesion_id == sesion.id))
         .scalars()
         .all()
     }
 
     ahora = datetime.now(UTC)
-    for alumno_id, estado in marcas:
-        if alumno_id not in alumnos_validos:
+    for deportista_id, estado in marcas:
+        if deportista_id not in deportistas_validos:
             continue
-        existente = existentes.get(alumno_id)
+        existente = existentes.get(deportista_id)
         if existente is None:
             db.add(
                 Asistencia(
                     org_id=org_id,
                     sesion_id=sesion.id,
-                    alumno_id=alumno_id,
+                    deportista_id=deportista_id,
                     estado=estado,
                     registrado_por=registrado_por,
                 )
@@ -327,7 +329,7 @@ def listar_sesiones(
 def contar_resumen(estados: list[str | None]) -> tuple[int, int, int]:
     """Cuenta `(presentes, ausentes, total)` de una lista de estados.
 
-    `total` es la cantidad de alumnos (filas), no solo los marcados — refleja el
+    `total` es la cantidad de deportistas (filas), no solo los marcados — refleja el
     contador "Total" de la pantalla. Función pura (sin I/O), fácil de testear.
     """
     presentes = sum(1 for e in estados if e == "PRESENTE")

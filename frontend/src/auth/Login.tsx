@@ -19,7 +19,7 @@ export function Login() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const from = (location.state as LocationState | null)?.from?.pathname ?? '/alumnos';
+  const from = (location.state as LocationState | null)?.from?.pathname ?? '/deportistas';
 
   // Si ya hay sesión, no mostrar el login.
   if (token && !loading) {

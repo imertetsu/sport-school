@@ -4,7 +4,7 @@ import type {
   AprobarBody,
   Categoria,
   ModoCobro,
-  SolicitudAlumnoCreado,
+  SolicitudDeportistaCreado,
   SolicitudOut,
   Sucursal,
 } from '@/api/types';
@@ -16,8 +16,8 @@ export interface AprobarSolicitudProps {
   // Sucursales del alcance del admin (de useSucursales).
   sucursales: Sucursal[];
   onClose: () => void;
-  // El padre refresca la cola con el alumno creado.
-  onApproved: (alumno: SolicitudAlumnoCreado) => void;
+  // El padre refresca la cola con el deportista creado.
+  onApproved: (deportista: SolicitudDeportistaCreado) => void;
 }
 
 const MODO_COBRO_OPCIONES: { value: ModoCobro; label: string }[] = [
@@ -27,7 +27,7 @@ const MODO_COBRO_OPCIONES: { value: ModoCobro; label: string }[] = [
 
 // Modal de aprobación (solo ADMIN): confirma sucursal (req), categoría (opc) y,
 // si se indica monto_mensual, crea también la inscripción. Al aprobar, el backend
-// crea el alumno real reutilizando la lógica del epic Alumnos. 409 si ya resuelta.
+// crea el deportista real reutilizando la lógica del epic Deportistas. 409 si ya resuelta.
 export function AprobarSolicitud({
   solicitud,
   sucursales,
@@ -115,8 +115,8 @@ export function AprobarSolicitud({
 
     setSubmitting(true);
     try {
-      const alumno = await api.aprobarSolicitud(solicitud.id, body);
-      onApproved(alumno);
+      const deportista = await api.aprobarSolicitud(solicitud.id, body);
+      onApproved(deportista);
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.isValidation) {
@@ -152,7 +152,7 @@ export function AprobarSolicitud({
       <div className="solicitudes__modal">
         <Card title="Aprobar solicitud">
           <p className="solicitudes__modal-lead">
-            Se creará el alumno <strong>{nombreCompleto}</strong> con su tutor y
+            Se creará el deportista <strong>{nombreCompleto}</strong> con su tutor y
             consentimiento.
           </p>
           {formError && (
@@ -224,7 +224,7 @@ export function AprobarSolicitud({
                 Cancelar
               </Button>
               <Button type="submit" variant="primary" disabled={submitting}>
-                {submitting ? 'Aprobando…' : 'Aprobar y crear alumno'}
+                {submitting ? 'Aprobando…' : 'Aprobar y crear deportista'}
               </Button>
             </div>
           </form>

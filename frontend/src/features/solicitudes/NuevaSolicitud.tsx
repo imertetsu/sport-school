@@ -21,10 +21,10 @@ export interface NuevaSolicitudProps {
 const CONSENT_VERSION = 'v1';
 
 // Formulario de captura de solicitud (modal, ADMIN o ENTRENADOR). Reusa la
-// estructura del alta de alumno (datos alumno + ficha médica + tutor +
+// estructura del alta de deportista (datos deportista + ficha médica + tutor +
 // consentimiento). El backend es la fuente de verdad: refleja sus 422/403.
 export function NuevaSolicitud({ sucursales, onClose, onSaved }: NuevaSolicitudProps) {
-  // Datos del alumno
+  // Datos del deportista
   const [apPaterno, setApPaterno] = useState('');
   const [apMaterno, setApMaterno] = useState('');
   const [nombres, setNombres] = useState('');
@@ -201,7 +201,7 @@ export function NuevaSolicitud({ sucursales, onClose, onSaved }: NuevaSolicitudP
           )}
           <form onSubmit={handleSubmit} noValidate className="solicitudes__modal-form">
             <fieldset className="solicitudes__fieldset">
-              <legend className="solicitudes__legend">Datos del alumno</legend>
+              <legend className="solicitudes__legend">Datos del deportista</legend>
               <div className="form-grid">
                 <Field
                   label="Apellido paterno"
@@ -364,7 +364,7 @@ export function NuevaSolicitud({ sucursales, onClose, onSaved }: NuevaSolicitudP
               />
               <span>
                 El tutor acepta los términos y otorga su consentimiento para la
-                inscripción del alumno. <strong>(Obligatorio)</strong>
+                inscripción del deportista. <strong>(Obligatorio)</strong>
               </span>
             </label>
             {fieldErrors.consentimiento && (

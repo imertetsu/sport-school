@@ -18,7 +18,7 @@ describe('KPICard', () => {
   });
 
   it('muestra placeholder mientras carga y oculta la pista', () => {
-    render(<KPICard label="Alumnos activos" value="142" hint="en 2 sucursales" loading />);
+    render(<KPICard label="Deportistas activos" value="142" hint="en 2 sucursales" loading />);
     expect(screen.getByText('…')).toBeInTheDocument();
     expect(screen.queryByText('en 2 sucursales')).not.toBeInTheDocument();
   });

@@ -61,7 +61,7 @@ const PAGE: SolicitudesPage = {
       categoria_sugerida: null,
       creado_por_nombre: 'Carlos Coach',
       created_at: '2026-06-05T10:00:00Z',
-      alumno_id: null,
+      deportista_id: null,
       motivo_rechazo: null,
     },
   ],

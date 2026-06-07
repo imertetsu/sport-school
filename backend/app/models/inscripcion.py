@@ -16,8 +16,8 @@ from app.models.base import Base, OrgScoped, TimestampMixin, UUIDPkMixin
 class Inscripcion(UUIDPkMixin, OrgScoped, TimestampMixin, Base):
     __tablename__ = "inscripcion"
 
-    alumno_id: Mapped[uuid.UUID] = mapped_column(
-        PG_UUID(as_uuid=True), ForeignKey("alumno.id"), nullable=False, index=True
+    deportista_id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("deportista.id"), nullable=False, index=True
     )
     disciplina: Mapped[str | None] = mapped_column(String, nullable=True)
     fecha_inscripcion: Mapped[date] = mapped_column(Date, nullable=False)

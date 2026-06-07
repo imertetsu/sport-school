@@ -175,7 +175,7 @@ export function PanelCobranza() {
         const base = recordatorioNotice(res.motivo, res.enviado);
         setRecordatorioNota({
           ...base,
-          text: `${cuota.alumno.nombre_completo}: ${base.text}`,
+          text: `${cuota.deportista.nombre_completo}: ${base.text}`,
         });
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') return;
@@ -198,13 +198,13 @@ export function PanelCobranza() {
   const columns = useMemo<Column<CuotaListItem>[]>(
     () => [
       {
-        key: 'alumno',
-        header: 'Alumno',
+        key: 'deportista',
+        header: 'Deportista',
         render: (c) => (
           <div className="cuota-cell">
-            <Avatar name={c.alumno.nombre_completo} size="md" />
+            <Avatar name={c.deportista.nombre_completo} size="md" />
             <div className="cuota-cell__text">
-              <span className="cuota-cell__name">{c.alumno.nombre_completo}</span>
+              <span className="cuota-cell__name">{c.deportista.nombre_completo}</span>
               <span className="cuota-cell__meta">{c.categoria.nombre}</span>
             </div>
           </div>
@@ -298,7 +298,7 @@ export function PanelCobranza() {
   );
 
   const ingresos = panel?.ingresos_mes.monto;
-  const activos = panel?.alumnos_activos;
+  const activos = panel?.deportistas_activos;
   const pendientes = panel?.cuotas_pendientes;
   const vencidas = panel?.cuotas_vencidas;
   // Abonos: saldo a favor acumulado (Σ credito.saldo de la org). Solo se muestra
@@ -333,7 +333,7 @@ export function PanelCobranza() {
           loading={!panel && !panelError}
         />
         <KPICard
-          label="Alumnos activos"
+          label="Deportistas activos"
           value={activos ? String(activos.count) : '—'}
           hint={
             activos
@@ -432,11 +432,11 @@ export function PanelCobranza() {
             {!panel ? (
               <p className="moras__empty">Cargando…</p>
             ) : panel.morosidad.length === 0 ? (
-              <p className="moras__empty">Sin alumnos en mora.</p>
+              <p className="moras__empty">Sin deportistas en mora.</p>
             ) : (
               <ul className="moras">
                 {panel.morosidad.map((m) => (
-                  <li key={m.alumno_id} className="moras__item">
+                  <li key={m.deportista_id} className="moras__item">
                     <div className="moras__text">
                       <span className="moras__name">{m.nombre_completo}</span>
                       <span className="moras__meta">{m.categoria}</span>

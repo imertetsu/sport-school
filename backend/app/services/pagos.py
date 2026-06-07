@@ -28,10 +28,10 @@ from app.core.config import settings
 from app.domain.cobranza.abono_engine import distribuir_abono
 from app.domain.ports.invoice import ComprobanteData, ComprobanteService, CuotaLinea
 from app.domain.ports.notification import NotificationService
-from app.models.alumno import Alumno
 from app.models.conciliacion_pendiente import ConciliacionPendiente
 from app.models.credito import Credito
 from app.models.cuota import Cuota
+from app.models.deportista import Deportista
 from app.models.inscripcion import Inscripcion
 from app.models.organizacion import Organizacion
 from app.models.pago import Pago
@@ -139,7 +139,7 @@ def _cuotas_de_pago(db: Session, pago_id: uuid.UUID) -> list[Cuota]:
 # --------------------------------------------------------------------------- #
 # Comprobante + notificación
 # --------------------------------------------------------------------------- #
-def _alumno_de_cuotas(db: Session, cuotas: list[Cuota]) -> Alumno | None:
+def _deportista_de_cuotas(db: Session, cuotas: list[Cuota]) -> Deportista | None:
     if not cuotas:
         return None
     insc = db.execute(
@@ -147,10 +147,12 @@ def _alumno_de_cuotas(db: Session, cuotas: list[Cuota]) -> Alumno | None:
     ).scalar_one_or_none()
     if insc is None:
         return None
-    return db.execute(select(Alumno).where(Alumno.id == insc.alumno_id)).scalar_one_or_none()
+    return db.execute(
+        select(Deportista).where(Deportista.id == insc.deportista_id)
+    ).scalar_one_or_none()
 
 
-def _nombre_completo(a: Alumno) -> str:
+def _nombre_completo(a: Deportista) -> str:
     partes = [a.ap_paterno, a.ap_materno, a.nombres]
     return " ".join(p for p in partes if p).strip() or a.nombres
 
@@ -165,7 +167,7 @@ def construir_comprobante_data(db: Session, *, pago: Pago, org: Organizacion) ->
     que hoy).
     """
     cuotas = _cuotas_de_pago(db, pago.id)
-    alumno = _alumno_de_cuotas(db, cuotas)
+    deportista = _deportista_de_cuotas(db, cuotas)
 
     aplicados: dict[uuid.UUID, Decimal] = {
         row.cuota_id: row.monto_aplicado
@@ -193,7 +195,7 @@ def construir_comprobante_data(db: Session, *, pago: Pago, org: Organizacion) ->
         numero=str(pago.id),
         org_nombre=org.nombre,
         moneda=org.moneda,
-        alumno_nombre=_nombre_completo(alumno) if alumno else "—",
+        deportista_nombre=_nombre_completo(deportista) if deportista else "—",
         metodo=pago.metodo,
         fecha=pago.pagado_en or datetime.now(UTC),
         monto_total=pago.monto,

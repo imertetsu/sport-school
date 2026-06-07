@@ -3,9 +3,9 @@ import { AuthProvider } from '@/auth/AuthContext';
 import { ProtectedRoute, RoleRoute } from '@/auth/ProtectedRoute';
 import { Login } from '@/auth/Login';
 import { AppShell } from '@/components/shell/AppShell';
-import { AlumnosList } from '@/features/alumnos/AlumnosList';
-import { AlumnoPerfil } from '@/features/alumnos/AlumnoPerfil';
-import { NuevoAlumno } from '@/features/alumnos/NuevoAlumno';
+import { DeportistasList } from '@/features/deportistas/DeportistasList';
+import { DeportistaPerfil } from '@/features/deportistas/DeportistaPerfil';
+import { NuevoDeportista } from '@/features/deportistas/NuevoDeportista';
 import { Solicitudes } from '@/features/solicitudes/Solicitudes';
 import { PanelCobranza } from '@/features/cobranza/PanelCobranza';
 import { PagosHistorial } from '@/features/cobranza/PagosHistorial';
@@ -41,9 +41,9 @@ export default function App() {
             <Route index element={<Navigate to="/panel" replace />} />
             <Route path="/panel" element={<PanelCobranza />} />
             <Route path="/pagos" element={<PagosHistorial />} />
-            <Route path="/alumnos" element={<AlumnosList />} />
-            <Route path="/alumnos/nuevo" element={<NuevoAlumno />} />
-            <Route path="/alumnos/:id" element={<AlumnoPerfil />} />
+            <Route path="/deportistas" element={<DeportistasList />} />
+            <Route path="/deportistas/nuevo" element={<NuevoDeportista />} />
+            <Route path="/deportistas/:id" element={<DeportistaPerfil />} />
             {/* Solicitudes (auto-registro EN SISTEMA): ruta protegida normal,
                 visible a ADMIN y ENTRENADOR (sin gate de rol). El backend filtra
                 la cola por rol; aprobar/rechazar solo lo muestra la UI a ADMIN y

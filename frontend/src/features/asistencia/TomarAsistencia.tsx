@@ -10,10 +10,10 @@ import { nivelLabel } from '@/lib/format';
 import './TomarAsistencia.css';
 
 // Default de marca (decisión del agente, documentada en el HANDOFF):
-// al abrir un roster SIN sesión guardada, todos los alumnos cuentan como PRESENTE.
+// al abrir un roster SIN sesión guardada, todos los deportistas cuentan como PRESENTE.
 // Tomar lista en móvil es más rápido si el entrenador solo toca a los ausentes;
 // los contadores reflejan ese default desde el inicio. Si ya existe sesión, se
-// respeta el estado guardado por alumno (estado != null).
+// respeta el estado guardado por deportista (estado != null).
 const DEFAULT_ESTADO: EstadoAsistencia = 'PRESENTE';
 
 // Fecha de hoy en formato YYYY-MM-DD (local), valor por defecto del selector.
@@ -25,7 +25,7 @@ function hoyISO(): string {
   return `${y}-${m}-${day}`;
 }
 
-// Estado efectivo de un alumno aplicando el default a los que no tienen marca.
+// Estado efectivo de un deportista aplicando el default a los que no tienen marca.
 function estadoEfectivo(estado: EstadoAsistencia | null): EstadoAsistencia {
   return estado ?? DEFAULT_ESTADO;
 }
@@ -37,7 +37,7 @@ export function TomarAsistencia() {
   const [categoriaId, setCategoriaId] = useState('');
   const [fecha, setFecha] = useState(hoyISO);
 
-  // --- Roster (lista de alumnos + marcas) ---
+  // --- Roster (lista de deportistas + marcas) ---
   const [items, setItems] = useState<RosterItem[]>([]);
   const [rosterLoading, setRosterLoading] = useState(false);
   const [rosterError, setRosterError] = useState<string | null>(null);
@@ -106,9 +106,9 @@ export function TomarAsistencia() {
     };
   }, [categoriaId, fecha]);
 
-  const setEstado = useCallback((alumnoId: string, estado: EstadoAsistencia) => {
+  const setEstado = useCallback((deportistaId: string, estado: EstadoAsistencia) => {
     setItems((prev) =>
-      prev.map((it) => (it.alumno_id === alumnoId ? { ...it, estado } : it)),
+      prev.map((it) => (it.deportista_id === deportistaId ? { ...it, estado } : it)),
     );
     setGuardadoOk(false);
   }, []);
@@ -141,7 +141,7 @@ export function TomarAsistencia() {
           categoria_id: categoriaId,
           fecha,
           marcas: items.map((it) => ({
-            alumno_id: it.alumno_id,
+            deportista_id: it.deportista_id,
             estado: estadoEfectivo(it.estado),
           })),
         },
@@ -192,7 +192,7 @@ export function TomarAsistencia() {
           {categorias.length === 0 && <option value="">Sin categorías</option>}
           {categorias.map((c) => (
             <option key={c.id} value={c.id}>
-              {c.nombre} · {c.sucursal.nombre} ({c.total_alumnos})
+              {c.nombre} · {c.sucursal.nombre} ({c.total_deportistas})
             </option>
           ))}
         </SelectField>
@@ -232,15 +232,15 @@ export function TomarAsistencia() {
         ) : items.length === 0 ? (
           <p className="roster__empty">
             {categoriaId
-              ? 'Esta categoría no tiene alumnos.'
+              ? 'Esta categoría no tiene deportistas.'
               : 'Elige una categoría para tomar lista.'}
           </p>
         ) : (
-          <ul className="roster" aria-label="Lista de alumnos">
+          <ul className="roster" aria-label="Lista de deportistas">
             {items.map((it) => {
               const estado = estadoEfectivo(it.estado);
               return (
-                <li key={it.alumno_id} className="roster__row">
+                <li key={it.deportista_id} className="roster__row">
                   <Avatar name={it.nombre_completo} size="md" />
                   <div className="roster__text">
                     <span className="roster__name">{it.nombre_completo}</span>
@@ -255,7 +255,7 @@ export function TomarAsistencia() {
                       type="button"
                       className="toggle-asistencia__btn toggle-asistencia__btn--presente"
                       aria-pressed={estado === 'PRESENTE'}
-                      onClick={() => setEstado(it.alumno_id, 'PRESENTE')}
+                      onClick={() => setEstado(it.deportista_id, 'PRESENTE')}
                     >
                       Presente
                     </button>
@@ -263,7 +263,7 @@ export function TomarAsistencia() {
                       type="button"
                       className="toggle-asistencia__btn toggle-asistencia__btn--ausente"
                       aria-pressed={estado === 'AUSENTE'}
-                      onClick={() => setEstado(it.alumno_id, 'AUSENTE')}
+                      onClick={() => setEstado(it.deportista_id, 'AUSENTE')}
                     >
                       Ausente
                     </button>

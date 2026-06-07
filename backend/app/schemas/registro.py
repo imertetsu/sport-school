@@ -14,7 +14,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
-from app.schemas.alumno import CategoriaRef, FichaMedica, SucursalRef
+from app.schemas.deportista import CategoriaRef, FichaMedica, SucursalRef
 
 
 # --------------------------------------------------------------------------- #
@@ -46,7 +46,7 @@ class SolicitudCreate(BaseModel):
     Pydantic produce 422 si falta cualquiera de los dos.
     """
 
-    # Datos del alumno
+    # Datos del deportista
     ap_paterno: str | None = None
     ap_materno: str | None = None
     nombres: str
@@ -68,7 +68,7 @@ class SolicitudCreate(BaseModel):
     @classmethod
     def _nombres_no_vacio(cls, v: str) -> str:
         if not v or not v.strip():
-            raise ValueError("nombres del alumno es obligatorio")
+            raise ValueError("nombres del deportista es obligatorio")
         return v.strip()
 
     @field_validator("consentimiento")
@@ -140,7 +140,7 @@ class SolicitudOut(BaseModel):
     """`SolicitudOut` (C3): datos enviados + estado + metadatos de revisión.
 
     `sucursal_sugerida`/`categoria_sugerida` se resuelven a `{id, nombre[, nivel]}`
-    (o null). `alumno_id` y `motivo_rechazo` reflejan el resultado de la revisión.
+    (o null). `deportista_id` y `motivo_rechazo` reflejan el resultado de la revisión.
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -148,7 +148,7 @@ class SolicitudOut(BaseModel):
     id: uuid.UUID
     estado: str
 
-    # Datos del alumno
+    # Datos del deportista
     ap_paterno: str | None = None
     ap_materno: str | None = None
     nombres: str
@@ -168,7 +168,7 @@ class SolicitudOut(BaseModel):
 
     # Captura + resultado
     creado_por_nombre: str | None = None
-    alumno_id: uuid.UUID | None = None
+    deportista_id: uuid.UUID | None = None
     motivo_rechazo: str | None = None
     created_at: datetime
 

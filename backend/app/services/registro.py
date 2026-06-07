@@ -1,7 +1,7 @@
 """Servicio de Auto-registro (C2/C3) — versión EN SISTEMA.
 
 Captura autenticada (ADMIN/ENTRENADOR) → cola PENDIENTE → el ADMIN aprueba
-(crea el alumno real **reutilizando** `app/services/alumno.py`) o rechaza.
+(crea el deportista real **reutilizando** `app/services/deportista.py`) o rechaza.
 
 Reglas de dominio (con I/O; corre SIEMPRE con `app.current_org` ya fijado por el
 llamador, RLS es la barrera real):
@@ -12,9 +12,9 @@ llamador, RLS es la barrera real):
 - **listar (cola)**: ADMIN ve todas las de la org; ENTRENADOR solo las de sus
   sucursales sugeridas (lo que capturó). Filtro opcional por `estado`.
 - **aprobar (solo ADMIN)**: idempotencia/estado — 409 si la solicitud ya está
-  resuelta (APROBADA/RECHAZADA). Crea el alumno reutilizando la lógica de Alumnos
-  (alumno+tutor+puente+consentimiento; +inscripción si `monto_mensual`), marca
-  `APROBADA` + `alumno_id` + `revisado_por`/`revisado_en`.
+  resuelta (APROBADA/RECHAZADA). Crea el deportista reutilizando la lógica de Deportistas
+  (deportista+tutor+puente+consentimiento; +inscripción si `monto_mensual`), marca
+  `APROBADA` + `deportista_id` + `revisado_por`/`revisado_en`.
 - **rechazar (solo ADMIN)**: 409 si ya resuelta; marca `RECHAZADA` + motivo +
   `revisado_por`/`revisado_en`.
 
@@ -31,15 +31,15 @@ from datetime import UTC, datetime
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models.alumno import Alumno
 from app.models.categoria import Categoria
+from app.models.deportista import Deportista
 from app.models.solicitud_registro import SolicitudRegistro
 from app.models.sucursal import Sucursal
 from app.models.usuario import Usuario
-from app.schemas.alumno import (
-    AlumnoCreate,
+from app.schemas.deportista import (
     CategoriaRef,
     ConsentimientoIn,
+    DeportistaCreate,
     FichaMedica,
     InscripcionIn,
     SucursalRef,
@@ -53,7 +53,7 @@ from app.schemas.registro import (
     SolicitudOut,
     TutorSolicitudOut,
 )
-from app.services import alumno as alumno_svc
+from app.services import deportista as deportista_svc
 
 ESTADO_PENDIENTE = "PENDIENTE"
 ESTADO_APROBADA = "APROBADA"
@@ -220,7 +220,7 @@ def obtener(
 
 
 # --------------------------------------------------------------------------- #
-# Aprobar (solo ADMIN; reutiliza la creación de alumno)
+# Aprobar (solo ADMIN; reutiliza la creación de deportista)
 # --------------------------------------------------------------------------- #
 def aprobar(
     db: Session,
@@ -229,11 +229,11 @@ def aprobar(
     *,
     org_id: uuid.UUID,
     revisado_por: uuid.UUID,
-) -> Alumno:
-    """Aprueba una solicitud: crea el alumno real y la marca APROBADA (C3).
+) -> Deportista:
+    """Aprueba una solicitud: crea el deportista real y la marca APROBADA (C3).
 
     409 si la solicitud ya está resuelta (idempotencia de estado). Reutiliza
-    `alumno_svc.crear_alumno` (alumno+tutor+puente+consentimiento; +inscripción si
+    `deportista_svc.crear_deportista` (deportista+tutor+puente+consentimiento; +inscripción si
     `monto_mensual`). El gateo a solo-ADMIN lo hace el router (`require_role`).
     """
     solicitud = db.execute(
@@ -244,7 +244,7 @@ def aprobar(
     if solicitud.estado != ESTADO_PENDIENTE:
         raise SolicitudYaResuelta(f"La solicitud ya está {solicitud.estado}")
 
-    # Reconstruir el body de creación de alumno desde la solicitud + decisiones del admin.
+    # Reconstruir el body de creación de deportista desde la solicitud + decisiones del admin.
     ficha = FichaMedica(**solicitud.ficha_medica) if solicitud.ficha_medica else None
     inscripcion = None
     if body.monto_mensual is not None:
@@ -257,7 +257,7 @@ def aprobar(
             estado="ACTIVA",
         )
 
-    alumno_create = AlumnoCreate(
+    deportista_create = DeportistaCreate(
         sucursal_id=body.sucursal_id,
         categoria_id=body.categoria_id,
         ap_paterno=solicitud.ap_paterno,
@@ -284,14 +284,14 @@ def aprobar(
         inscripcion=inscripcion,
     )
 
-    alumno = alumno_svc.crear_alumno(db, alumno_create, org_id=org_id)
+    deportista = deportista_svc.crear_deportista(db, deportista_create, org_id=org_id)
 
     solicitud.estado = ESTADO_APROBADA
-    solicitud.alumno_id = alumno.id
+    solicitud.deportista_id = deportista.id
     solicitud.revisado_por = revisado_por
     solicitud.revisado_en = datetime.now(UTC)
     db.flush()
-    return alumno
+    return deportista
 
 
 # --------------------------------------------------------------------------- #
@@ -399,7 +399,7 @@ def to_out(db: Session, solicitudes: list[SolicitudRegistro]) -> list[SolicitudO
                     CategoriaRef(id=cat.id, nombre=cat.nombre, nivel=cat.nivel) if cat else None
                 ),
                 creado_por_nombre=(nombres_usuario.get(s.creado_por) if s.creado_por else None),
-                alumno_id=s.alumno_id,
+                deportista_id=s.deportista_id,
                 motivo_rechazo=s.motivo_rechazo,
                 created_at=s.created_at,
             )

@@ -24,7 +24,7 @@ pytestmark = pytest.mark.db
 
 @pytest.fixture()
 def cobranza_fixture(owner_engine: Engine) -> Iterator[dict]:
-    """Org + sucursal + alumno + inscripción + 1 cuota PENDIENTE + pago QR PENDIENTE.
+    """Org + sucursal + deportista + inscripción + 1 cuota PENDIENTE + pago QR PENDIENTE.
 
     Devuelve ids y `qr_ref`. Limpia al final (orden FK-safe).
     """
@@ -55,14 +55,14 @@ def cobranza_fixture(owner_engine: Engine) -> Iterator[dict]:
         )
         conn.execute(
             text(
-                "INSERT INTO alumno (id, org_id, sucursal_id, nombres, created_at, updated_at) "
-                "VALUES (:id,:org,:suc,'Alumno Pago',now(),now())"
+                "INSERT INTO deportista (id, org_id, sucursal_id, nombres, created_at, updated_at) "
+                "VALUES (:id,:org,:suc,'Deportista Pago',now(),now())"
             ),
             {"id": str(al), "org": str(org), "suc": str(suc)},
         )
         conn.execute(
             text(
-                "INSERT INTO inscripcion (id, org_id, alumno_id, fecha_inscripcion, "
+                "INSERT INTO inscripcion (id, org_id, deportista_id, fecha_inscripcion, "
                 "monto_mensual, estado, created_at, updated_at) "
                 "VALUES (:id,:org,:al,:f,:m,'ACTIVA',now(),now())"
             ),
@@ -112,7 +112,7 @@ def cobranza_fixture(owner_engine: Engine) -> Iterator[dict]:
         conn.execute(text("DELETE FROM pago WHERE org_id = :o"), {"o": str(org)})
         conn.execute(text("DELETE FROM cuota WHERE org_id = :o"), {"o": str(org)})
         conn.execute(text("DELETE FROM inscripcion WHERE org_id = :o"), {"o": str(org)})
-        conn.execute(text("DELETE FROM alumno WHERE org_id = :o"), {"o": str(org)})
+        conn.execute(text("DELETE FROM deportista WHERE org_id = :o"), {"o": str(org)})
         conn.execute(text("DELETE FROM sucursal WHERE org_id = :o"), {"o": str(org)})
         conn.execute(
             text("DELETE FROM conciliacion_pendiente WHERE referencia = :r"),

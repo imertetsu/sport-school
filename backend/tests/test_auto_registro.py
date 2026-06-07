@@ -5,7 +5,7 @@
 - Tests marcados `db`: flujo end-to-end contra la API real (requieren BD migrada
   con 0008 + seed). Skip si no hay BD.
     * entrenador crea solicitud PENDIENTE
-    * aprobar (ADMIN) crea el alumno real y deja APROBADA con `alumno_id`
+    * aprobar (ADMIN) crea el deportista real y deja APROBADA con `deportista_id`
     * re-aprobar -> 409
     * rechazar -> RECHAZADA con motivo
     * 403 entrenador en aprobar/rechazar
@@ -142,7 +142,7 @@ def test_entrenador_crea_solicitud() -> None:
     assert resp.status_code == 201, resp.text
     data = resp.json()
     assert data["estado"] == "PENDIENTE"
-    assert data["alumno_id"] is None
+    assert data["deportista_id"] is None
     assert data["tutor"]["nombres"] == "Tutor Test"
 
 
@@ -169,8 +169,8 @@ def test_entrenador_sucursal_fuera_de_alcance_403() -> None:
 
 
 @pytest.mark.db
-def test_aprobar_crea_alumno_y_marca_aprobada() -> None:
-    """Aprobar (ADMIN) crea el alumno real y deja APROBADA con `alumno_id`."""
+def test_aprobar_crea_deportista_y_marca_aprobada() -> None:
+    """Aprobar (ADMIN) crea el deportista real y deja APROBADA con `deportista_id`."""
     client = _client_or_skip()
     admin = _login_admin(client)
     sucursal_id = _primera_sucursal(client, admin)
@@ -182,24 +182,24 @@ def test_aprobar_crea_alumno_y_marca_aprobada() -> None:
     assert crear.status_code == 201, crear.text
     solicitud_id = crear.json()["id"]
 
-    # Aprobar -> crea alumno real
+    # Aprobar -> crea deportista real
     aprobar = client.post(
         f"/api/v1/solicitudes/{solicitud_id}/aprobar",
         headers=_hdr(admin),
         json={"sucursal_id": sucursal_id, "monto_mensual": "250.00"},
     )
     assert aprobar.status_code == 200, aprobar.text
-    alumno = aprobar.json()
-    alumno_id = alumno["id"]
-    assert alumno["nombres"]
+    deportista = aprobar.json()
+    deportista_id = deportista["id"]
+    assert deportista["nombres"]
 
-    # La solicitud queda APROBADA con alumno_id
+    # La solicitud queda APROBADA con deportista_id
     detalle = client.get(f"/api/v1/solicitudes/{solicitud_id}", headers=_hdr(admin)).json()
     assert detalle["estado"] == "APROBADA"
-    assert detalle["alumno_id"] == alumno_id
+    assert detalle["deportista_id"] == deportista_id
 
-    # El alumno existe en Alumnos (reutilización de la creación)
-    al = client.get(f"/api/v1/alumnos/{alumno_id}", headers=_hdr(admin))
+    # El deportista existe en Deportistas (reutilización de la creación)
+    al = client.get(f"/api/v1/deportistas/{deportista_id}", headers=_hdr(admin))
     assert al.status_code == 200
 
 

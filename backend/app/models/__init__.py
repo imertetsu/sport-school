@@ -7,8 +7,6 @@ db-dev hace `from app.models import Base` y autogenera la migración a partir de
 
 from __future__ import annotations
 
-from app.models.alumno import Alumno
-from app.models.alumno_tutor import AlumnoTutor
 from app.models.asistencia import Asistencia
 from app.models.aviso import Aviso
 from app.models.base import Base
@@ -17,6 +15,8 @@ from app.models.conciliacion_pendiente import ConciliacionPendiente
 from app.models.consentimiento import Consentimiento
 from app.models.credito import Credito
 from app.models.cuota import Cuota
+from app.models.deportista import Deportista
+from app.models.deportista_tutor import DeportistaTutor
 from app.models.egreso import Egreso
 from app.models.entrenador import Entrenador
 from app.models.entrenador_sucursal import EntrenadorSucursal
@@ -44,9 +44,9 @@ __all__ = [
     "Categoria",
     "Entrenador",
     "EntrenadorSucursal",
-    "Alumno",
+    "Deportista",
     "Tutor",
-    "AlumnoTutor",
+    "DeportistaTutor",
     "Consentimiento",
     "Inscripcion",
     "Cuota",

@@ -1,4 +1,4 @@
-"""Modelo `alumno` (C1). `ficha_medica` JSONB {tipo_sangre, alergias, condiciones}."""
+"""Modelo `deportista` (C1). `ficha_medica` JSONB {tipo_sangre, alergias, condiciones}."""
 
 from __future__ import annotations
 
@@ -14,8 +14,8 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.models.base import Base, OrgScoped, TimestampMixin, UUIDPkMixin
 
 
-class Alumno(UUIDPkMixin, OrgScoped, TimestampMixin, Base):
-    __tablename__ = "alumno"
+class Deportista(UUIDPkMixin, OrgScoped, TimestampMixin, Base):
+    __tablename__ = "deportista"
 
     sucursal_id: Mapped[uuid.UUID] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("sucursal.id"), nullable=False, index=True

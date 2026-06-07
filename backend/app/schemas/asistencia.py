@@ -2,7 +2,7 @@
 
 Formas de request/response **espejo exacto** de C2; frontend-dev tipa contra
 ellas. Fechas como `date`; horas como `time`. `estado` es PRESENTE|AUSENTE (o
-`null` por alumno cuando todavía no hay sesión guardada).
+`null` por deportista cuando todavía no hay sesión guardada).
 """
 
 from __future__ import annotations
@@ -29,14 +29,14 @@ class SucursalRefAsistencia(BaseModel):
 class CategoriaAsistencia(BaseModel):
     """Item de `GET /asistencia/categorias` (C2).
 
-    `[{id, nombre, nivel, sucursal:{id,nombre}, total_alumnos}]`.
+    `[{id, nombre, nivel, sucursal:{id,nombre}, total_deportistas}]`.
     """
 
     id: uuid.UUID
     nombre: str
     nivel: str
     sucursal: SucursalRefAsistencia
-    total_alumnos: int
+    total_deportistas: int
 
 
 class CategoriaRefAsistencia(BaseModel):
@@ -50,9 +50,9 @@ class CategoriaRefAsistencia(BaseModel):
 # Roster (GET /asistencia/roster)
 # --------------------------------------------------------------------------- #
 class RosterItem(BaseModel):
-    """Fila del roster: alumno + su estado (null si aún no hay sesión) (C2)."""
+    """Fila del roster: deportista + su estado (null si aún no hay sesión) (C2)."""
 
-    alumno_id: uuid.UUID
+    deportista_id: uuid.UUID
     nombre_completo: str
     estado: Estado | None = None
 
@@ -83,18 +83,18 @@ class RosterOut(BaseModel):
 # Guardar (POST /asistencia/guardar)
 # --------------------------------------------------------------------------- #
 class MarcaIn(BaseModel):
-    """Una marca por alumno en el body de guardado (C2)."""
+    """Una marca por deportista en el body de guardado (C2)."""
 
-    alumno_id: uuid.UUID
+    deportista_id: uuid.UUID
     estado: Estado
 
 
 class GuardarBody(BaseModel):
     """Body de `POST /asistencia/guardar` (C2).
 
-    `{categoria_id, fecha, hora?, marcas:[{alumno_id, estado}]}`. Idempotente:
+    `{categoria_id, fecha, hora?, marcas:[{deportista_id, estado}]}`. Idempotente:
     crea la sesión si no existe (por categoria+fecha+hora) y hace upsert de las
-    marcas por (sesion_id, alumno_id).
+    marcas por (sesion_id, deportista_id).
     """
 
     categoria_id: uuid.UUID

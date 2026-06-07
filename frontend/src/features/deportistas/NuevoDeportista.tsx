@@ -2,14 +2,14 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api, ApiError } from '@/api/client';
 import type {
-  AlumnoCreate,
+  DeportistaCreate,
   Categoria,
   Sucursal,
   TutorCreate,
 } from '@/api/types';
 import { Button, Card, Field, SelectField } from '@/components/ui';
 import { nivelLabel } from '@/lib/format';
-import './NuevoAlumno.css';
+import './NuevoDeportista.css';
 
 const EMPTY_TUTOR: TutorCreate = {
   nombres: '',
@@ -22,10 +22,10 @@ const EMPTY_TUTOR: TutorCreate = {
 // Versión de términos del consentimiento que la UI envía (texto del backend manda).
 const CONSENT_VERSION = 'v1';
 
-export function NuevoAlumno() {
+export function NuevoDeportista() {
   const navigate = useNavigate();
 
-  // Datos del alumno
+  // Datos del deportista
   const [apPaterno, setApPaterno] = useState('');
   const [apMaterno, setApMaterno] = useState('');
   const [nombres, setNombres] = useState('');
@@ -136,7 +136,7 @@ export function NuevoAlumno() {
       return;
     }
 
-    const payload: AlumnoCreate = {
+    const payload: DeportistaCreate = {
       ap_paterno: apPaterno.trim(),
       ap_materno: apMaterno.trim(),
       nombres: nombres.trim(),
@@ -160,15 +160,15 @@ export function NuevoAlumno() {
 
     setSubmitting(true);
     try {
-      const created = await api.crearAlumno(payload);
-      navigate(`/alumnos/${created.id}`, { replace: true });
+      const created = await api.crearDeportista(payload);
+      navigate(`/deportistas/${created.id}`, { replace: true });
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.isValidation) {
           applyApiErrors(err);
           setFormError('El servidor rechazó los datos. Revisa los campos marcados.');
         } else if (err.isForbidden) {
-          setFormError('No tienes permiso para crear alumnos en esa sucursal.');
+          setFormError('No tienes permiso para crear deportistas en esa sucursal.');
         } else {
           setFormError(err.message);
         }
@@ -181,14 +181,14 @@ export function NuevoAlumno() {
   }
 
   return (
-    <div className="nuevo-alumno">
-      <Link to="/alumnos" className="perfil__back">
-        ← Volver a alumnos
+    <div className="nuevo-deportista">
+      <Link to="/deportistas" className="perfil__back">
+        ← Volver a deportistas
       </Link>
 
       <header className="page-head">
         <div>
-          <h1 className="page-head__title">Nuevo alumno</h1>
+          <h1 className="page-head__title">Nuevo deportista</h1>
           <p className="page-head__subtitle">
             Se requiere al menos un tutor y su consentimiento.
           </p>
@@ -201,8 +201,8 @@ export function NuevoAlumno() {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} noValidate className="nuevo-alumno__form">
-        <Card title="Datos del alumno">
+      <form onSubmit={handleSubmit} noValidate className="nuevo-deportista__form">
+        <Card title="Datos del deportista">
           <div className="form-grid">
             <Field
               label="Apellido paterno"
@@ -367,7 +367,7 @@ export function NuevoAlumno() {
             />
             <span>
               El tutor acepta los términos y otorga su consentimiento para la inscripción del
-              alumno. <strong>(Obligatorio)</strong>
+              deportista. <strong>(Obligatorio)</strong>
             </span>
           </label>
           {fieldErrors.consentimiento && (
@@ -377,12 +377,12 @@ export function NuevoAlumno() {
           )}
         </Card>
 
-        <div className="nuevo-alumno__actions">
-          <Button variant="secondary" onClick={() => navigate('/alumnos')}>
+        <div className="nuevo-deportista__actions">
+          <Button variant="secondary" onClick={() => navigate('/deportistas')}>
             Cancelar
           </Button>
           <Button type="submit" variant="primary" disabled={submitting}>
-            {submitting ? 'Guardando…' : 'Crear alumno'}
+            {submitting ? 'Guardando…' : 'Crear deportista'}
           </Button>
         </div>
       </form>
