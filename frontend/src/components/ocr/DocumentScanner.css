@@ -4,6 +4,51 @@
   gap: var(--space-3);
 }
 
+/* Dos lados (Anverso / Reverso): columna en móvil, dos columnas en pantalla ancha. */
+.doc-scanner__lados {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-4);
+}
+
+@media (min-width: 560px) {
+  .doc-scanner__lados {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.doc-scanner__lado {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  background: var(--color-surface);
+}
+
+.doc-scanner__lado-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.doc-scanner__lado-titulo {
+  font-weight: 600;
+  font-size: var(--fs-md);
+}
+
+.doc-scanner__lado-ayuda {
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+}
+
+.doc-scanner__hint {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--color-text-muted);
+}
+
 /* El <input file> nativo queda oculto; el botón estilizado lo dispara. */
 .doc-scanner__file {
   position: absolute;
@@ -18,7 +63,8 @@
 }
 
 .doc-scanner__btn {
-  align-self: flex-start;
+  align-self: stretch;
+  text-align: center;
   border: 1px solid var(--accent);
   background: var(--accent);
   color: var(--color-text-on-accent);

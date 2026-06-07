@@ -4,7 +4,7 @@
 > cada epic**. Máx ~150 líneas; poda lo viejo. Esto NO es un changelog — es un snapshot
 > de "cómo está el mundo hoy".
 
-_Última actualización: 2026-06-07 — epic **personas-y-disciplinas** (S1–S4 + componente OCR) integrado en `main` (migraciones **0015→0018**): rename alumno→deportista, catálogo GLOBAL de disciplinas (superadmin), CI único por org + recuperar-por-CI (deportista/tutor/entrenador), entrenador multi-disciplina, y escaneo OCR on-device de cédula. Migraciones **0001→0018**. · **Fixes UX entrenador** (`6d5b9c2`, sin migración): el ENTRENADOR ahora ve **solo sus disciplinas asignadas** (deportistas + asistencia), Horarios muestra la sucursal de cada clase y los nombres ya no se cortan._
+_Última actualización: 2026-06-07 — epic **personas-y-disciplinas** (S1–S4 + componente OCR) integrado en `main` (migraciones **0015→0018**): rename alumno→deportista, catálogo GLOBAL de disciplinas (superadmin), CI único por org + recuperar-por-CI (deportista/tutor/entrenador), entrenador multi-disciplina, y escaneo OCR on-device de cédula. Migraciones **0001→0018**. · **Fixes UX entrenador** (`6d5b9c2`, sin migración): el ENTRENADOR ahora ve **solo sus disciplinas asignadas** (deportistas + asistencia), Horarios muestra la sucursal de cada clase y los nombres ya no se cortan. · **OCR cédula a 2 fotos + 2 formatos (MRZ)** (epic `ocr-cedula`, sin migración, solo frontend): pendiente QA con fotos reales en `/dev/ocr`._
 
 ## Stack snapshot
 
@@ -43,8 +43,11 @@ enlace HMAC stateless), Recordatorio de deudores al entrenador (0014, `entrenado
   **SIN org_id y SIN RLS** (como `organizacion`/`plataforma_admin`); `GET /catalogo/disciplinas` (lectura) y
   CRUD en `/plataforma`. Se añaden `categoria.disciplina_id` y `deportista.disciplina_id` + data-migration
   texto→ref. **`disciplina_id` (FK al catálogo) es lo canónico**; `deportista.disciplina` (texto) se conserva.
-- **Componente OCR on-device** (Tesseract.js, `DocumentScanner` + parser `parseCedula`, spike `/dev/ocr`):
-  **la imagen NO se sube ni se guarda** (privacidad RNF-02). **Pendiente: validar precisión con un CI boliviano real.**
+- **Componente OCR on-device** (Tesseract.js, `DocumentScanner` + parser `parseCedula`/`mrz.ts`, spike `/dev/ocr`):
+  **la imagen NO se sube ni se guarda** (privacidad RNF-02). **2 fotos (anverso+reverso) + 2 formatos** del CI:
+  nuevo (MRZ TD1 con check digits, fuente fiable) y antiguo (nombre en reverso, CI junto al complemento; descarta
+  el folio "No."). `numeroCi` puede traer extensión/complemento en el string (ej. "3727170 CB"). **Pendiente QA:
+  afinar precisión sobre fotos reales en `/dev/ocr`** (el OCR pre-llena; la corrección manual siempre disponible).
 - **S3 — CI único por org + recuperar-por-CI** (0017, deportista y tutor): índices únicos **PARCIALES**
   `(org_id, ci) WHERE ci IS NOT NULL`; `GET /deportistas|tutores/por-ci/{ci}` (200|404); **409** al dar de alta
   con CI duplicado; tutor recuperar→actualizar teléfono. `NuevoDeportista` cablea OCR + recuperar + select de
@@ -122,13 +125,22 @@ efímeras (`personas-y-disciplinas.md` roadmap, `disciplinas.md` S2, `entrenador
   **0015→0018**. Deploy **gateado** (`DEPLOY_ENABLED` off), manual: `pg_dump` → `git pull` → `bash infra/deploy.sh`.
   **Antes de aplicar 0017/0018 en prod: correr la detección de CI duplicados** en deportista/tutor/entrenador
   (si hay dup no-null, el índice único parcial falla al crearse).
-- **OCR:** pendiente validar precisión del parser de cédula con un **CI boliviano real**.
+- **OCR (mejorado, epic `ocr-cedula`):** ya soporta 2 fotos + 2 formatos + MRZ. **Pendiente QA:** afinar precisión
+  con CI nuevo y antiguo reales en `/dev/ocr` (sin login/backend: `cd frontend && npm run dev`); en particular
+  confirmar si el sufijo "08-L3" del CI antiguo es extensión real o código de lote.
 
 Remoto `imertetsu/sport-school` (push vía `http.sslBackend=schannel` por el proxy TLS). Al abrir el próximo epic,
 `product-owner` crea `docs/specs/<epic>.md`.
 
 ## Recent decisions
 
+- **2026-06-07 OCR cédula: 2 fotos + 2 formatos** (epic `ocr-cedula`, sin migración, solo `frontend/`). Motor
+  **on-device** (Tesseract.js; la imagen nunca sale del navegador, RNF-02 — descartado cloud OCR). `DocumentScanner`
+  captura **anverso + reverso** con preprocesado (grises/contraste/autorrotación OSD/banda MRZ). Parser por formato:
+  **CI nuevo** → MRZ TD1 con **check digits** (si no validan, cae al anverso, no propaga basura); **CI antiguo** →
+  nombre del reverso (orden nombres→apellidos) + CI del anverso (descarta el folio "No."). Solo 5 campos
+  (ap_paterno/materno, nombres, ci, fecha_nac); la **extensión/complemento va DENTRO del string `ci`** (sin campo
+  nuevo, sin tocar dedup). QA real-photo queda pendiente en `/dev/ocr`.
 - **2026-06-07 Fixes UX + visibilidad del entrenador por DISCIPLINA** (`6d5b9c2`, sin migración). El ENTRENADOR
   queda acotado a las disciplinas de **`entrenador_disciplina`**: lista y detalle de deportistas (detalle → **404
   no-revelador** si es de otra disciplina) y categorías/roster/sesiones de asistencia (categoría ajena → **403**).

@@ -44,6 +44,17 @@ declare module 'tesseract.js' {
     data: RecognizeResultData;
   }
 
+  /** Resultado del OSD (orientation & script detection). */
+  export interface DetectResultData {
+    /** Grados que la imagen está rotada respecto a la vertical (0/90/180/270). */
+    orientation_degrees?: number;
+    [key: string]: unknown;
+  }
+
+  export interface DetectResult {
+    data: DetectResultData;
+  }
+
   export interface WorkerOptions {
     logger?: (msg: LoggerMessage) => void;
     [key: string]: unknown;
@@ -51,6 +62,10 @@ declare module 'tesseract.js' {
 
   export interface Worker {
     recognize(image: ImageLike): Promise<RecognizeResult>;
+    /** OSD: detecta orientación/idioma. Puede no existir en todas las builds. */
+    detect?(image: ImageLike): Promise<DetectResult>;
+    /** Ajusta parámetros de Tesseract (whitelist de charset, PSM, …). */
+    setParameters?(params: Record<string, string>): Promise<unknown>;
     terminate(): Promise<unknown>;
     [key: string]: unknown;
   }

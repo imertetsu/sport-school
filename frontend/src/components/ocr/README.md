@@ -1,27 +1,43 @@
 # OCR on-device — Escáner de cédula (CI boliviana)
 
-Componente **STANDALONE** y reutilizable para escanear una cédula de identidad
-boliviana en el navegador y extraer, best-effort, sus campos. **No se conecta
-todavía a ningún formulario de entidad** (la integración a alta de deportista /
-tutor llega en S3/S4). Por ahora solo extrae; la corrección manual la hará el
-formulario padre.
+Componente reutilizable para escanear una cédula de identidad boliviana en el
+navegador y extraer, best-effort, sus 5 campos. Está **cableado al alta de
+deportista y entrenador** (pre-rellena el formulario vía `onExtract`); la
+corrección manual siempre la hace el formulario padre.
+
+Soporta los **dos formatos vigentes** del CI a **dos fotos** (Anverso + Reverso):
+
+- **CI NUEVO** (con MRZ TD1 en el reverso): la **MRZ** es la fuente más fiable
+  para el número de documento y la fecha de nacimiento (monoespaciada, con
+  *check digits*); gana al anverso cuando valida.
+- **CI ANTIGUO** (sin MRZ): el número real va en el **anverso** (abajo, junto al
+  complemento/extensión; el `No. ####` de arriba es **folio de trámite**, no el
+  CI) y el **nombre solo en el reverso** ("…pertenece A: NOMBRES APELLIDOS", en
+  orden nombres → apellidos).
 
 ## Archivos
 
-- `DocumentScanner.tsx` — componente de UI (cámara/subida + progreso + errores).
+- `DocumentScanner.tsx` — UI de **dos capturas** (Anverso/Reverso) + progreso por
+  lado + preprocesado en canvas (grises/contraste, autorrotación OSD, pasada MRZ
+  con charset whitelist en el reverso) + errores. Llama a `mergeLados`.
 - `DocumentScanner.css` — estilos mobile-first con tokens del design system.
-- `parseCedula.ts` — parser puro (sin DOM ni tesseract) del texto OCR → `CedulaFields`.
+- `parseCedula.ts` — parser puro (sin DOM ni tesseract): `parseCedula`,
+  `normalizarFecha`, `detectarFormato`, `parseAntiguo`, `mergeLados` (+ re-exporta
+  `parseMrz`).
+- `mrz.ts` — lectura de la MRZ TD1 con validación de *check digits* (ICAO 9303).
 - `../../types/tesseract.d.ts` — declaración de tipos ambiente mínima (ver abajo).
 
 ## Cómo probar el spike con un CI real
 
 1. Arranca el frontend: `cd frontend && npm run dev`.
 2. Abre `http://localhost:5173/dev/ocr` (ruta de **dev**; no aparece en el menú).
-3. Pulsa **Subir o capturar cédula** y elige/captura una foto del **anverso** del
-   carnet. En móvil abre la cámara trasera (`capture="environment"`).
-4. Verás, en vivo: avance/etapa del OCR, **texto OCR crudo**, **campos parseados**
-   (número de CI, nombres, apellido paterno/materno, fecha de nacimiento) y el
-   **tiempo** total. Compara contra el documento para evaluar precisión.
+3. Captura/sube el **anverso** y el **reverso** del carnet (botón por lado). En
+   móvil abre la cámara trasera (`capture="environment"`).
+4. Verás, en vivo: avance/etapa del OCR **por lado**, **texto OCR crudo de ambos
+   lados** y el **resultado merge** de los 5 campos (número de CI con
+   complemento/extensión si aplica, nombres, apellido paterno/materno, fecha de
+   nacimiento). Compara contra el documento para evaluar precisión y para decidir
+   la heurística de extensión ("08-L3") con varias cédulas reales.
 
 ## Privacidad (postura)
 
@@ -66,23 +82,34 @@ estar instalado localmente** porque el proxy TLS del equipo bloquea
 - El OCR de una foto de carnet es **ruidoso**: iluminación, ángulo, reflejos y
   resolución degradan mucho el resultado. Trátalo como **pre-rellenado**, nunca
   como verdad.
-- El parser es heurístico (etiquetas "Apellidos/Nombres", patrones de fecha y de
-  número de CI). Puede confundir apellido paterno/materno o dejar campos vacíos;
-  por eso `CedulaFields` tiene **todos los campos opcionales** y el flujo asume
-  corrección manual posterior.
-- Solo se valida el **anverso**; no se leen el reverso ni el MRZ.
+- El parser es heurístico (MRZ con check digits, etiquetas "Apellidos/Nombres",
+  patrones de fecha y de número de CI). Puede confundir apellido paterno/materno
+  o dejar campos vacíos; por eso `CedulaFields` tiene **todos los campos
+  opcionales** y el flujo asume corrección manual posterior.
+- **MRZ sobre foto:** Tesseract confunde `0/O`, `1/I`, `B/8`, `S/5`. Por eso se
+  validan los *check digits* y, si no cuadran, NO se propaga el número/fecha de la
+  MRZ (se cae al anverso/etiquetas).
+- **"08-L3" del CI antiguo:** podría ser código de **lote** y no la extensión
+  departamental; se anexa a `numeroCi` como complemento, pero se confirma mirando
+  varias cédulas reales en `/dev/ocr` (decisión a fijar con datos).
 
 ## API del componente
 
 ```ts
-import { DocumentScanner, type CedulaFields } from '@/components/ocr/DocumentScanner';
+import {
+  DocumentScanner,
+  type CedulaFields,
+  type RawLados,
+} from '@/components/ocr/DocumentScanner';
 
 <DocumentScanner
-  label="Escanear cédula"
-  onExtract={(fields: CedulaFields) => { /* pre-rellenar formulario */ }}
-  onRawText={(raw: string) => { /* opcional: depurar/validar */ }}
+  label="Escanea anverso y reverso de la cédula."
+  onExtract={(fields: CedulaFields) => { /* pre-rellenar formulario (merge) */ }}
+  onRawText={(raw: RawLados) => { /* opcional: { anverso, reverso } crudo */ }}
 />
 ```
 
-`CedulaFields` (todos opcionales): `numeroCi`, `nombres`, `apellidoPaterno`,
-`apellidoMaterno`, `fechaNacimiento` (ISO `YYYY-MM-DD`), `fechaNacimientoRaw`.
+`CedulaFields` (todos opcionales): `numeroCi` (formato canónico
+`"<numero>[ <complemento>][ <EXT>]"`, ej. `"3727170 CB"`), `nombres`,
+`apellidoPaterno`, `apellidoMaterno`, `fechaNacimiento` (ISO `YYYY-MM-DD`),
+`fechaNacimientoRaw`.

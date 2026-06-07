@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { normalizarFecha, parseCedula } from './parseCedula';
+import {
+  detectarFormato,
+  mergeLados,
+  normalizarFecha,
+  parseAntiguo,
+  parseCedula,
+  parseMrz,
+} from './parseCedula';
+import { checkDigit } from './mrz';
 
 // El parser es puro y NO importa tesseract.js, así que corre en CI aunque el
 // paquete no esté instalado. Estos tests fijan el comportamiento de las
@@ -84,5 +92,225 @@ describe('parseCedula — tolerancia y resultados parciales', () => {
     expect(f.apellidoPaterno).toBe('QUISPE');
     expect(f.apellidoMaterno).toBe('FLORES');
     expect(f.nombres).toBe('ANA MARIA');
+  });
+});
+
+// ===========================================================================
+// Fixtures FICTICIOS (NO datos reales). Mismo formato/estructura que un CI real.
+// Las MRZ se construyen con check digits calculados por `checkDigit`, así el
+// test de "MRZ válida" pasa y el de "check inválido" corrompe uno a propósito.
+// ===========================================================================
+
+describe('checkDigit (ICAO 9303, pesos 7,3,1)', () => {
+  it('calcula el dígito del nº de documento de ejemplo', () => {
+    // "8942507<<" -> 5 (verificado contra el algoritmo ICAO).
+    expect(checkDigit('8942507<<')).toBe(5);
+  });
+  it('calcula el dígito de una fecha YYMMDD', () => {
+    expect(checkDigit('030405')).toBe(2);
+  });
+});
+
+describe('parseMrz — CI nuevo (MRZ TD1, reverso)', () => {
+  // Espécimen FICTICIO: doc 8942507, nac 2003-04-05 (030405), venc 280612.
+  // Línea 3: RODRIGUEZ<GONZALEZ<<MARIA (ap. paterno RODRIGUEZ, materno GONZALEZ).
+  const mrzValida = [
+    'IDBOL8942507<<5<<<<<<<<<<<<<<<',
+    '0304052F2806125BOL<<<<<<<<<<<8',
+    'RODRIGUEZ<GONZALEZ<<MARIA<<<<<',
+  ].join('\n');
+
+  it('extrae numeroCi desde la línea 1 con check válido', () => {
+    const f = parseMrz(mrzValida);
+    expect(f?.numeroCi).toBe('8942507');
+  });
+
+  it('extrae la fecha de nacimiento en ISO con siglo correcto', () => {
+    const f = parseMrz(mrzValida);
+    expect(f?.fechaNacimiento).toBe('2003-04-05');
+  });
+
+  it('separa APELLIDOS<<NOMBRES en los tres campos', () => {
+    const f = parseMrz(mrzValida);
+    expect(f?.apellidoPaterno).toBe('RODRIGUEZ');
+    expect(f?.apellidoMaterno).toBe('GONZALEZ');
+    expect(f?.nombres).toBe('MARIA');
+  });
+
+  it('tolera ruido alrededor de la MRZ (líneas espurias y espacios)', () => {
+    const conRuido = [
+      'REPUBLICA DE BOLIVIA  -- reverso --',
+      'I D B O L 8942507 << 5 <<<<<<<<<<<<<<<',
+      '0304052F2806125BOL<<<<<<<<<<<8',
+      'RODRIGUEZ<GONZALEZ<<MARIA<<<<<',
+      'firma del titular',
+    ].join('\n');
+    const f = parseMrz(conRuido);
+    expect(f?.numeroCi).toBe('8942507');
+    expect(f?.fechaNacimiento).toBe('2003-04-05');
+    expect(f?.nombres).toBe('MARIA');
+  });
+
+  it('rechaza numeroCi y fecha si el check del documento es inválido', () => {
+    // Corrompe el check digit del documento (pos 15: 5 -> 9). El compuesto
+    // tampoco cuadra, así que no debe propagar número ni fecha.
+    const mrzCorrupta = [
+      'IDBOL8942507<<9<<<<<<<<<<<<<<<',
+      '0304052F2806125BOL<<<<<<<<<<<8',
+      'RODRIGUEZ<GONZALEZ<<MARIA<<<<<',
+    ].join('\n');
+    const f = parseMrz(mrzCorrupta);
+    expect(f?.numeroCi).toBeUndefined();
+    expect(f?.fechaNacimiento).toBeUndefined();
+    // Los nombres NO tienen check digit: se conservan.
+    expect(f?.nombres).toBe('MARIA');
+  });
+
+  it('devuelve undefined cuando no hay MRZ', () => {
+    expect(parseMrz('texto cualquiera sin zona legible por maquina')).toBeUndefined();
+    expect(parseMrz('')).toBeUndefined();
+  });
+});
+
+describe('detectarFormato', () => {
+  it('detecta nuevo por MRZ válida', () => {
+    const reverso = [
+      'IDBOL8942507<<5<<<<<<<<<<<<<<<',
+      '0304052F2806125BOL<<<<<<<<<<<8',
+      'RODRIGUEZ<GONZALEZ<<MARIA<<<<<',
+    ].join('\n');
+    expect(detectarFormato(reverso)).toBe('nuevo');
+  });
+
+  it('detecta antiguo por marcas típicas del reverso', () => {
+    const reverso = 'La presente cedula pertenece A: JUAN CARLOS MAMANI QUISPE\nNacido el 10 de Marzo de 2010';
+    expect(detectarFormato(reverso)).toBe('antiguo');
+  });
+
+  it('desconocido si no hay señales', () => {
+    expect(detectarFormato('foto borrosa sin texto util')).toBe('desconocido');
+    expect(detectarFormato('')).toBe('desconocido');
+  });
+});
+
+describe('parseAntiguo — CI antiguo (anverso + reverso)', () => {
+  // Datos FICTICIOS plausibles.
+  // Anverso: "No. 9999999" es FOLIO (descartar); "1234567 08-L3" es el CI real.
+  const anverso = [
+    'ESTADO PLURINACIONAL DE BOLIVIA',
+    'SERVICIO GENERAL DE IDENTIFICACION PERSONAL',
+    'No. 9999999',
+    'CEDULA DE IDENTIDAD',
+    '1234567 08-L3',
+    'Emitida el 31 de Octubre de 2022',
+  ].join('\n');
+  // Reverso: nombre en orden NOMBRES -> APELLIDOS tras "pertenece A:".
+  const reverso = [
+    'La presente cedula de identidad pertenece A:',
+    'JUAN CARLOS MAMANI QUISPE',
+    'Nacido el 10 de Marzo de 2010',
+    'Estado Civil SOLTERO',
+    'Domicilio Calle Ficticia 123',
+  ].join('\n');
+
+  const f = parseAntiguo(anverso, reverso);
+
+  it('toma el número REAL (con complemento), no el folio "No."', () => {
+    expect(f.numeroCi).toBe('1234567 08-L3');
+    expect(f.numeroCi).not.toContain('9999999');
+  });
+
+  it('extrae el nombre del reverso en orden nombres -> apellidos', () => {
+    expect(f.nombres).toBe('JUAN CARLOS');
+    expect(f.apellidoPaterno).toBe('MAMANI');
+    expect(f.apellidoMaterno).toBe('QUISPE');
+  });
+
+  it('normaliza la fecha de nacimiento de la fecha larga', () => {
+    expect(f.fechaNacimiento).toBe('2010-03-10');
+  });
+
+  it('detecta extensión departamental como EXT en mayúsculas', () => {
+    const anversoDepto = ['CEDULA DE IDENTIDAD', 'No. 8888888', '3727170 CB'].join('\n');
+    const g = parseAntiguo(anversoDepto, 'pertenece A: ANA LUCIA TORRES VEGA');
+    expect(g.numeroCi).toBe('3727170 CB');
+  });
+
+  it('no inventa extensión cuando no la hay (solo número)', () => {
+    const anversoSolo = ['CEDULA DE IDENTIDAD', 'No. 7777777', '4561237'].join('\n');
+    const g = parseAntiguo(anversoSolo, 'pertenece A: PEDRO ROJAS LIMA');
+    expect(g.numeroCi).toBe('4561237');
+  });
+});
+
+describe('mergeLados — orquestación de dos lados', () => {
+  it('CI nuevo: MRZ-first en el merge', () => {
+    const anverso = [
+      'ESTADO PLURINACIONAL DE BOLIVIA',
+      'CEDULA DE IDENTIDAD',
+      'APELLIDOS RODRIGUEZ GONZALEZ',
+      'NOMBRES MARIA',
+      'N° 8942507',
+      'FECHA DE NACIMIENTO 05/04/2003',
+    ].join('\n');
+    const reverso = [
+      'IDBOL8942507<<5<<<<<<<<<<<<<<<',
+      '0304052F2806125BOL<<<<<<<<<<<8',
+      'RODRIGUEZ<GONZALEZ<<MARIA<<<<<',
+    ].join('\n');
+    const f = mergeLados(anverso, reverso);
+    expect(f.numeroCi).toBe('8942507');
+    expect(f.fechaNacimiento).toBe('2003-04-05');
+    expect(f.apellidoPaterno).toBe('RODRIGUEZ');
+    expect(f.apellidoMaterno).toBe('GONZALEZ');
+    expect(f.nombres).toBe('MARIA');
+  });
+
+  it('CI nuevo con MRZ corrupta: cae al anverso para número y fecha', () => {
+    const anverso = [
+      'CEDULA DE IDENTIDAD',
+      'N° 8942507',
+      'FECHA DE NACIMIENTO 05/04/2003',
+    ].join('\n');
+    const reverso = [
+      'IDBOL8942507<<9<<<<<<<<<<<<<<<', // check de doc corrupto
+      '0304052F2806125BOL<<<<<<<<<<<8',
+      'RODRIGUEZ<GONZALEZ<<MARIA<<<<<',
+    ].join('\n');
+    const f = mergeLados(anverso, reverso);
+    // El número/fecha vienen del anverso (la MRZ no los validó).
+    expect(f.numeroCi).toBe('8942507');
+    expect(f.fechaNacimiento).toBe('2003-04-05');
+    // Los nombres sí salen de la MRZ (no tienen check).
+    expect(f.nombres).toBe('MARIA');
+  });
+
+  it('CI antiguo: CI del anverso, nombre y fecha del reverso', () => {
+    const anverso = ['CEDULA DE IDENTIDAD', 'No. 9999999', '1234567 08-L3'].join('\n');
+    const reverso = [
+      'pertenece A: JUAN CARLOS MAMANI QUISPE',
+      'Nacido el 10 de Marzo de 2010',
+    ].join('\n');
+    const f = mergeLados(anverso, reverso);
+    expect(f.numeroCi).toBe('1234567 08-L3');
+    expect(f.nombres).toBe('JUAN CARLOS');
+    expect(f.apellidoPaterno).toBe('MAMANI');
+    expect(f.apellidoMaterno).toBe('QUISPE');
+    expect(f.fechaNacimiento).toBe('2010-03-10');
+  });
+
+  it('un solo lado (solo anverso del nuevo) no rompe y entrega lo que pudo', () => {
+    const anverso = [
+      'CEDULA DE IDENTIDAD',
+      'N° 8942507',
+      'FECHA DE NACIMIENTO 05/04/2003',
+    ].join('\n');
+    const f = mergeLados(anverso, '');
+    expect(f.numeroCi).toBe('8942507');
+    expect(f.fechaNacimiento).toBe('2003-04-05');
+  });
+
+  it('textos vacíos: objeto vacío, sin lanzar', () => {
+    expect(mergeLados('', '')).toEqual({});
   });
 });

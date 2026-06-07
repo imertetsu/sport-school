@@ -354,9 +354,13 @@ export function NuevoDeportista() {
         <Card title="Datos del deportista">
           <div className="nuevo-deportista__ocr">
             <p className="nuevo-deportista__ocr-hint">
-              Escanea la cédula para pre-llenar los datos. Siempre puedes corregirlos a mano.
+              Escanea ambos lados de la cédula del deportista para pre-llenar los datos.
+              Siempre puedes corregirlos a mano.
             </p>
-            <DocumentScanner onExtract={handleOcr} label="Escanear cédula del deportista" />
+            <DocumentScanner
+              onExtract={handleOcr}
+              label="Escanea anverso y reverso de la cédula del deportista."
+            />
           </div>
 
           {recuperadoDeportista && (
