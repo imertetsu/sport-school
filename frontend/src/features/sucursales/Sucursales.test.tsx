@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { Categoria, Sucursal } from '@/api/types';
+import type { Categoria, DisciplinaRef, Sucursal } from '@/api/types';
 
 // Mock del cliente API: los tests usan mocks, no la API real. La factory de
 // vi.mock se iza al tope, así que el ApiError falso (con status/isForbidden/
@@ -15,6 +15,7 @@ const eliminarSucursalMock = vi.fn();
 const crearCategoriaMock = vi.fn();
 const actualizarCategoriaMock = vi.fn();
 const eliminarCategoriaMock = vi.fn();
+const disciplinasCatalogoMock = vi.fn();
 
 vi.mock('@/api/client', () => {
   class ApiError extends Error {
@@ -49,6 +50,7 @@ vi.mock('@/api/client', () => {
       crearCategoria: (...args: unknown[]) => crearCategoriaMock(...args),
       actualizarCategoria: (...args: unknown[]) => actualizarCategoriaMock(...args),
       eliminarCategoria: (...args: unknown[]) => eliminarCategoriaMock(...args),
+      disciplinasCatalogo: (...args: unknown[]) => disciplinasCatalogoMock(...args),
     },
     ApiError,
   };
@@ -72,6 +74,11 @@ const CATEGORIAS_S1: Categoria[] = [
   },
 ];
 
+const DISCIPLINAS: DisciplinaRef[] = [
+  { id: 'd1', nombre: 'Vóleibol' },
+  { id: 'd2', nombre: 'Fútbol' },
+];
+
 describe('Sucursales — CRUD (ADMIN)', () => {
   beforeEach(() => {
     sucursalesMock.mockReset();
@@ -82,8 +89,10 @@ describe('Sucursales — CRUD (ADMIN)', () => {
     crearCategoriaMock.mockReset();
     actualizarCategoriaMock.mockReset();
     eliminarCategoriaMock.mockReset();
+    disciplinasCatalogoMock.mockReset();
     sucursalesMock.mockResolvedValue(SUCURSALES);
     categoriasMock.mockResolvedValue(CATEGORIAS_S1);
+    disciplinasCatalogoMock.mockResolvedValue(DISCIPLINAS);
   });
   afterEach(() => vi.clearAllMocks());
 
@@ -171,7 +180,7 @@ describe('Sucursales — CRUD (ADMIN)', () => {
     );
   });
 
-  it('alta de categoría: envía nivel y sucursal_id al cliente', async () => {
+  it('alta de categoría: envía nivel y sucursal_id al cliente (sin disciplina => null)', async () => {
     const user = userEvent.setup();
     crearCategoriaMock.mockResolvedValue({
       id: 'c9',
@@ -198,8 +207,46 @@ describe('Sucursales — CRUD (ADMIN)', () => {
         nivel: 'INTERMEDIO',
         rango_edad: '13-14 años',
         sucursal_id: 's1',
+        disciplina_id: null,
       }),
     );
+  });
+
+  it('alta de categoría: el select de disciplina manda disciplina_id (S2)', async () => {
+    const user = userEvent.setup();
+    crearCategoriaMock.mockResolvedValue({
+      id: 'c9',
+      nombre: 'Sub-14',
+      nivel: 'PRINCIPIANTE',
+      rango_edad: '',
+      sucursal_id: 's1',
+      disciplina_id: 'd1',
+      disciplina: { id: 'd1', nombre: 'Vóleibol' },
+    });
+    render(<Sucursales />);
+    await screen.findByText('Centro');
+    await user.click(screen.getAllByRole('button', { name: 'Categorías' })[0]);
+    await screen.findByText('Categorías de Centro');
+
+    await user.click(screen.getByRole('button', { name: '+ Nueva categoría' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Nueva categoría' });
+    await user.type(within(dialog).getByLabelText(/Nombre/), 'Sub-14');
+    // El catálogo de disciplinas se cargó (api.disciplinasCatalogo) y pobló el select.
+    const disciplinaSelect = await within(dialog).findByLabelText(/Disciplina/);
+    await user.selectOptions(disciplinaSelect, 'd1');
+    await user.click(within(dialog).getByRole('button', { name: 'Crear categoría' }));
+
+    await waitFor(() =>
+      expect(crearCategoriaMock).toHaveBeenCalledWith({
+        nombre: 'Sub-14',
+        nivel: 'PRINCIPIANTE',
+        rango_edad: null,
+        sucursal_id: 's1',
+        disciplina_id: 'd1',
+      }),
+    );
+    // El catálogo se consultó solo activas (el cliente fija solo_activas=true).
+    expect(disciplinasCatalogoMock).toHaveBeenCalled();
   });
 
   it('baja de categoría con 409: muestra el aviso del backend', async () => {

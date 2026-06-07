@@ -1,9 +1,10 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { api, ApiError } from '@/api/client';
 import type {
   Categoria,
   CategoriaCreate,
   CategoriaUpdate,
+  DisciplinaRef,
   Nivel,
 } from '@/api/types';
 import { Button, Card, Field, SelectField } from '@/components/ui';
@@ -22,6 +23,9 @@ export interface CategoriaEditable {
   nombre: string;
   nivel: Nivel;
   rango_edad: string; // "" si no hay (la forma de lectura lo sirve como string)
+  // Disciplinas (S2): FK opcional al catálogo global; null/undefined = sin
+  // disciplina. Se precarga al editar.
+  disciplina_id?: string | null;
 }
 
 export interface NuevaCategoriaProps {
@@ -48,10 +52,35 @@ export function NuevaCategoria({
   const [nombre, setNombre] = useState(categoria?.nombre ?? '');
   const [nivel, setNivel] = useState<Nivel>(categoria?.nivel ?? 'PRINCIPIANTE');
   const [rangoEdad, setRangoEdad] = useState(categoria?.rango_edad ?? '');
+  // Disciplina (S2): "" = sin disciplina (opción "— Sin disciplina —"). Precarga
+  // el disciplina_id de la categoría al editar.
+  const [disciplinaId, setDisciplinaId] = useState(categoria?.disciplina_id ?? '');
+  // Catálogo global de disciplinas activas (poblar el select).
+  const [disciplinas, setDisciplinas] = useState<DisciplinaRef[]>([]);
 
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+  // Carga el catálogo de disciplinas (solo activas) para el select. Si falla, el
+  // select queda solo con "— Sin disciplina —" (la disciplina es opcional).
+  useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+    api
+      .disciplinasCatalogo(controller.signal)
+      .then((data) => {
+        if (active) setDisciplinas(data);
+      })
+      .catch((err) => {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        // No bloquea el formulario: la disciplina es opcional.
+      });
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, []);
 
   // Validación de UX que refleja la del backend (no la reemplaza).
   function validate(): Record<string, string> {
@@ -81,6 +110,9 @@ export function NuevaCategoria({
       return;
     }
 
+    // "" (sin disciplina) => null para el backend (limpia / no asigna).
+    const disciplina_id = disciplinaId || null;
+
     setSubmitting(true);
     try {
       const saved = categoria
@@ -88,12 +120,14 @@ export function NuevaCategoria({
             nombre: nombre.trim(),
             nivel,
             rango_edad: rangoEdad.trim() || null,
+            disciplina_id,
           } satisfies CategoriaUpdate)
         : await api.crearCategoria({
             nombre: nombre.trim(),
             nivel,
             rango_edad: rangoEdad.trim() || null,
             sucursal_id: sucursalId,
+            disciplina_id,
           } satisfies CategoriaCreate);
       onSaved(saved);
     } catch (err) {
@@ -150,6 +184,19 @@ export function NuevaCategoria({
               {NIVELES.map((n) => (
                 <option key={n.value} value={n.value}>
                   {n.label}
+                </option>
+              ))}
+            </SelectField>
+            <SelectField
+              label="Disciplina"
+              value={disciplinaId}
+              onChange={(e) => setDisciplinaId(e.target.value)}
+              error={fieldErrors.disciplina_id}
+            >
+              <option value="">— Sin disciplina —</option>
+              {disciplinas.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.nombre}
                 </option>
               ))}
             </SelectField>

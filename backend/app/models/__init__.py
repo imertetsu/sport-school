@@ -17,6 +17,7 @@ from app.models.credito import Credito
 from app.models.cuota import Cuota
 from app.models.deportista import Deportista
 from app.models.deportista_tutor import DeportistaTutor
+from app.models.disciplina import Disciplina
 from app.models.egreso import Egreso
 from app.models.entrenador import Entrenador
 from app.models.entrenador_sucursal import EntrenadorSucursal
@@ -42,6 +43,7 @@ __all__ = [
     "Usuario",
     "Sucursal",
     "Categoria",
+    "Disciplina",
     "Entrenador",
     "EntrenadorSucursal",
     "Deportista",

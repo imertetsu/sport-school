@@ -18,6 +18,7 @@ import type {
   CategoriaCreate,
   CategoriaUpdate,
   CuotasListResponse,
+  DisciplinaRef,
   EgresoCreate,
   EgresoCreated,
   EgresoResumenItem,
@@ -236,6 +237,15 @@ export const api = {
   categorias(sucursalId?: string, signal?: AbortSignal): Promise<Categoria[]> {
     return request<Categoria[]>('/categorias', {
       query: { sucursal_id: sucursalId },
+      signal,
+    });
+  },
+  // GET /catalogo/disciplinas?solo_activas=true -> catálogo global de disciplinas
+  // (DisciplinaRef[], solo {id,nombre}; cero datos de tenant). Pobla selects de
+  // escuela (categoría en S2; persona en S3/S4). Visible a ADMIN y ENTRENADOR.
+  disciplinasCatalogo(signal?: AbortSignal): Promise<DisciplinaRef[]> {
+    return request<DisciplinaRef[]>('/catalogo/disciplinas', {
+      query: { solo_activas: 'true' },
       signal,
     });
   },
@@ -597,6 +607,9 @@ import {
 import type {
   CrearEscuelaIn,
   CrearSuperAdminIn,
+  Disciplina,
+  DisciplinaCreate,
+  DisciplinaUpdate,
   Escuela,
   EscuelaCreada,
   EscuelaEstadoOut,
@@ -780,6 +793,29 @@ export const platformApi = {
   desactivarAdmin(id: string, signal?: AbortSignal): Promise<SuperAdminActivoOut> {
     return platformRequest<SuperAdminActivoOut>(`/admins/${id}/desactivar`, {
       method: 'POST',
+      signal,
+    });
+  },
+
+  // ---- Disciplinas (catálogo GLOBAL, S2). CRUD solo SUPERADMIN. ----
+  // GET /plataforma/disciplinas -> todas (activas + inactivas), orden del backend.
+  disciplinas(signal?: AbortSignal): Promise<Disciplina[]> {
+    return platformRequest<Disciplina[]>('/disciplinas', { signal });
+  },
+  // POST /plataforma/disciplinas -> 201. 409 si lower(nombre) ya existe.
+  crearDisciplina(body: DisciplinaCreate, signal?: AbortSignal): Promise<Disciplina> {
+    return platformRequest<Disciplina>('/disciplinas', { method: 'POST', body, signal });
+  },
+  // PUT /plataforma/disciplinas/{id} -> renombra y/o cambia activo (soft-delete =
+  // activo:false). 409 colisión de nombre, 404 si no existe.
+  actualizarDisciplina(
+    id: string,
+    body: DisciplinaUpdate,
+    signal?: AbortSignal,
+  ): Promise<Disciplina> {
+    return platformRequest<Disciplina>(`/disciplinas/${id}`, {
+      method: 'PUT',
+      body,
       signal,
     });
   },

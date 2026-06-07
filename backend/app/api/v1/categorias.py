@@ -13,10 +13,13 @@ from app.core.db import get_db
 from app.core.tenant import CurrentUser, require_role, set_tenant_context
 from app.models.categoria import Categoria
 from app.models.deportista import Deportista
+from app.models.disciplina import Disciplina
 from app.models.horario_clase import HorarioClase
 from app.models.sesion import Sesion
 from app.models.sucursal import Sucursal
 from app.schemas.catalogo import CategoriaCreate, CategoriaOut, CategoriaUpdate
+from app.schemas.disciplina import DisciplinaRef
+from app.services import disciplina as disciplina_svc
 
 router = APIRouter(prefix="/categorias", tags=["categorias"])
 
@@ -27,6 +30,22 @@ def _get_categoria_o_404(db: Session, categoria_id: uuid.UUID) -> Categoria:
     if cat is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Categoría no encontrada")
     return cat
+
+
+def _to_out(db: Session, cat: Categoria) -> CategoriaOut:
+    """Serializa una categoría poblando el embebido `disciplina` (catálogo global).
+
+    `disciplina` es una tabla GLOBAL sin RLS: se consulta directo por id (sin GUC). Si
+    la categoría no tiene `disciplina_id`, el nested queda en None.
+    """
+    out = CategoriaOut.model_validate(cat)
+    if cat.disciplina_id is not None:
+        disc = db.execute(
+            select(Disciplina.id, Disciplina.nombre).where(Disciplina.id == cat.disciplina_id)
+        ).first()
+        if disc is not None:
+            out.disciplina = DisciplinaRef(id=disc.id, nombre=disc.nombre)
+    return out
 
 
 @router.get("", response_model=list[CategoriaOut])
@@ -41,7 +60,7 @@ def list_categorias(
         stmt = stmt.where(Categoria.sucursal_id == sucursal_id)
     stmt = stmt.order_by(Categoria.nombre)
     rows = db.execute(stmt).scalars().all()
-    return [CategoriaOut.model_validate(r) for r in rows]
+    return [_to_out(db, r) for r in rows]
 
 
 @router.post("", response_model=CategoriaOut, status_code=status.HTTP_201_CREATED)
@@ -60,16 +79,20 @@ def crear_categoria(
     ).scalar_one_or_none()
     if suc is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sucursal no encontrada")
+    if body.disciplina_id is not None:
+        # Valida contra el catálogo GLOBAL (sin GUC): 404 si no existe, 422 si inactiva.
+        disciplina_svc.get_disciplina_activa_o_error(db, body.disciplina_id)
     cat = Categoria(
         org_id=uuid.UUID(user.org_id),
         sucursal_id=body.sucursal_id,
         nombre=body.nombre,
         nivel=body.nivel,
         rango_edad=body.rango_edad,
+        disciplina_id=body.disciplina_id,
     )
     db.add(cat)
     db.flush()
-    return CategoriaOut.model_validate(cat)
+    return _to_out(db, cat)
 
 
 @router.put("/{categoria_id}", response_model=CategoriaOut)
@@ -84,11 +107,14 @@ def actualizar_categoria(
     Otra org ⇒ 404 (RLS `USING`).
     """
     cat = _get_categoria_o_404(db, categoria_id)
+    if body.disciplina_id is not None:
+        disciplina_svc.get_disciplina_activa_o_error(db, body.disciplina_id)
     cat.nombre = body.nombre
     cat.nivel = body.nivel
     cat.rango_edad = body.rango_edad
+    cat.disciplina_id = body.disciplina_id
     db.flush()
-    return CategoriaOut.model_validate(cat)
+    return _to_out(db, cat)
 
 
 @router.delete("/{categoria_id}", status_code=status.HTTP_204_NO_CONTENT)

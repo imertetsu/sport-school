@@ -28,6 +28,14 @@ class Deportista(UUIDPkMixin, OrgScoped, TimestampMixin, Base):
     nombres: Mapped[str] = mapped_column(String, nullable=False)
     ci: Mapped[str | None] = mapped_column(String, nullable=True)
     fecha_nac: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # Texto LEGACY (se CONSERVA, no se dropea): disciplina escrita a mano. La referencia
+    # canónica al catálogo GLOBAL es `disciplina_id` (FK propia, ON DELETE SET NULL).
     disciplina: Mapped[str | None] = mapped_column(String, nullable=True)
+    disciplina_id: Mapped[uuid.UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("disciplina.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     contacto_emergencia: Mapped[str | None] = mapped_column(String, nullable=True)
     ficha_medica: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
