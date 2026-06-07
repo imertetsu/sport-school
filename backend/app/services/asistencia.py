@@ -71,12 +71,20 @@ def _sucursales_permitidas(role: str, sucursal_ids: list[str]) -> set[uuid.UUID]
 
 
 def listar_categorias(
-    db: Session, *, role: str, sucursal_ids: list[str]
+    db: Session,
+    *,
+    role: str,
+    sucursal_ids: list[str],
+    disciplina_ids: set[uuid.UUID] | None = None,
 ) -> list[tuple[Categoria, int]]:
     """Categorías visibles por rol con su `total_deportistas` (C2).
 
-    ADMIN: todas las de la org (RLS); ENTRENADOR: solo las de sus sucursales.
-    Devuelve `[(Categoria, total_deportistas)]` ordenado por nombre.
+    ADMIN: todas las de la org (RLS); ENTRENADOR: solo las de sus sucursales **y** de
+    las disciplinas que tiene asignadas. Devuelve `[(Categoria, total_deportistas)]`
+    ordenado por nombre.
+
+    `disciplina_ids`: `None` = ve todas (ADMIN); set vacío = no ve ninguna; set con
+    ids = solo categorías de esas disciplinas (aditivo sobre el filtro de sucursal).
     """
     permitidas = _sucursales_permitidas(role, sucursal_ids)
 
@@ -91,17 +99,29 @@ def listar_categorias(
             return []
         stmt = stmt.where(Categoria.sucursal_id.in_(permitidas))
 
+    if disciplina_ids is not None:
+        if not disciplina_ids:
+            return []
+        stmt = stmt.where(Categoria.disciplina_id.in_(disciplina_ids))
+
     rows = db.execute(stmt).all()
     return [(cat, int(total)) for (cat, total) in rows]
 
 
 def _cargar_categoria_con_scope(
-    db: Session, *, categoria_id: uuid.UUID, role: str, sucursal_ids: list[str]
+    db: Session,
+    *,
+    categoria_id: uuid.UUID,
+    role: str,
+    sucursal_ids: list[str],
+    disciplina_ids: set[uuid.UUID] | None = None,
 ) -> Categoria:
     """Carga la categoría aplicando el scoping por rol.
 
-    404 si no existe (en la org del contexto); 403 si está fuera de las
-    sucursales permitidas del entrenador.
+    404 si no existe (en la org del contexto); 403 (`CategoriaFuera`) si está fuera de
+    las sucursales permitidas del entrenador o de las disciplinas que tiene asignadas.
+    `disciplina_ids` None = ADMIN (ve todas). Protege roster/guardar/sesiones, que
+    pasan todos por aquí.
     """
     cat = db.execute(select(Categoria).where(Categoria.id == categoria_id)).scalar_one_or_none()
     if cat is None:
@@ -109,6 +129,8 @@ def _cargar_categoria_con_scope(
 
     permitidas = _sucursales_permitidas(role, sucursal_ids)
     if permitidas is not None and cat.sucursal_id not in permitidas:
+        raise CategoriaFuera("Categoría fuera del alcance del rol")
+    if disciplina_ids is not None and cat.disciplina_id not in disciplina_ids:
         raise CategoriaFuera("Categoría fuera del alcance del rol")
     return cat
 
@@ -147,6 +169,7 @@ def obtener_roster(
     fecha: date,
     role: str,
     sucursal_ids: list[str],
+    disciplina_ids: set[uuid.UUID] | None = None,
 ) -> tuple[Categoria, Sesion | None, list[Deportista], dict[uuid.UUID, str]]:
     """Devuelve datos crudos del roster (get-or-create lógico, NO crea sesión).
 
@@ -154,7 +177,11 @@ def obtener_roster(
     sesión para (categoria, fecha) -> `sesion=None` y el dict de estados vacío.
     """
     cat = _cargar_categoria_con_scope(
-        db, categoria_id=categoria_id, role=role, sucursal_ids=sucursal_ids
+        db,
+        categoria_id=categoria_id,
+        role=role,
+        sucursal_ids=sucursal_ids,
+        disciplina_ids=disciplina_ids,
     )
     deportistas = _deportistas_de_categoria(db, categoria_id)
 
@@ -219,6 +246,7 @@ def guardar_asistencia(
     registrado_por: uuid.UUID,
     role: str,
     sucursal_ids: list[str],
+    disciplina_ids: set[uuid.UUID] | None = None,
 ) -> tuple[Categoria, Sesion]:
     """Crea/recupera la sesión y hace upsert de las marcas (idempotente) (C2).
 
@@ -227,7 +255,11 @@ def guardar_asistencia(
     auditoría (RNF-03). Devuelve `(categoria, sesion)`.
     """
     cat = _cargar_categoria_con_scope(
-        db, categoria_id=categoria_id, role=role, sucursal_ids=sucursal_ids
+        db,
+        categoria_id=categoria_id,
+        role=role,
+        sucursal_ids=sucursal_ids,
+        disciplina_ids=disciplina_ids,
     )
 
     sesion = _get_or_create_sesion(
@@ -279,13 +311,20 @@ def listar_sesiones(
     sucursal_ids: list[str],
     page: int,
     page_size: int,
+    disciplina_ids: set[uuid.UUID] | None = None,
 ) -> tuple[list[tuple[Sesion, int, int, int]], int]:
     """Historial de sesiones de una categoría con contadores (C2).
 
     Aplica scoping por rol sobre la categoría (403/404). Devuelve
     `([(sesion, presentes, ausentes, total)], total_sesiones)`.
     """
-    _cargar_categoria_con_scope(db, categoria_id=categoria_id, role=role, sucursal_ids=sucursal_ids)
+    _cargar_categoria_con_scope(
+        db,
+        categoria_id=categoria_id,
+        role=role,
+        sucursal_ids=sucursal_ids,
+        disciplina_ids=disciplina_ids,
+    )
 
     base = select(Sesion).where(Sesion.categoria_id == categoria_id)
     total = db.execute(select(func.count()).select_from(base.subquery())).scalar_one()

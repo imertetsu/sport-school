@@ -280,18 +280,20 @@ def vista_semana(
         categoria_id=categoria_id,
         sucursal_id=sucursal_id,
     )
-    categorias, _sucursales, entrenadores = _precargar_refs(db, horarios)
+    categorias, sucursales, entrenadores = _precargar_refs(db, horarios)
 
     dias: list[DiaSemana] = [
         DiaSemana(dia_semana=d, dia_label=dia_label(d), clases=[]) for d in range(7)
     ]
     for h in horarios:
         cat = categorias[h.categoria_id]
+        suc = sucursales.get(cat.sucursal_id)
         ent = entrenadores.get(h.entrenador_id) if h.entrenador_id else None
         dias[h.dia_semana].clases.append(
             ClaseSemana(
                 id=h.id,
                 categoria=CategoriaRefHorario(id=cat.id, nombre=cat.nombre),
+                sucursal=SucursalRefHorario(id=cat.sucursal_id, nombre=suc.nombre if suc else ""),
                 hora_inicio=h.hora_inicio,
                 hora_fin=h.hora_fin,
                 entrenador=(EntrenadorRefHorario(id=ent.id, nombres=ent.nombres) if ent else None),

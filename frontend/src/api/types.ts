@@ -629,6 +629,7 @@ export interface HorarioOut {
 export interface ClaseSemana {
   id: string;
   categoria: HorarioCategoriaRef;
+  sucursal: SucursalRef; // {id, nombre} — a qué sucursal pertenece la clase
   hora_inicio: string; // time HH:MM
   hora_fin: string; // time HH:MM
   entrenador: HorarioEntrenadorRef | null;

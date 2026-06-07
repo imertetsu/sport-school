@@ -35,6 +35,7 @@ from app.schemas.asistencia import (
     SucursalRefAsistencia,
 )
 from app.services import asistencia as svc
+from app.services import entrenador as entrenador_svc
 
 router = APIRouter(prefix="/asistencia", tags=["asistencia"])
 
@@ -46,6 +47,18 @@ def _http_error(exc: svc.AsistenciaError) -> HTTPException:
     return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
 
 
+def _disciplina_scope(db: Session, user: CurrentUser) -> set[uuid.UUID] | None:
+    """Disciplinas que limitan al usuario, o `None` si ve todas (ADMIN).
+
+    Un ENTRENADOR queda acotado a las disciplinas asignadas en `entrenador_disciplina`
+    (aditivo al filtro de sucursal); sin disciplinas asignadas -> set vacío (no ve
+    ninguna categoría). Resuelto server-side por request (no en el token).
+    """
+    if user.role == "ADMIN":
+        return None
+    return entrenador_svc.disciplina_ids_de_usuario(db, uuid.UUID(user.user_id))
+
+
 # --------------------------------------------------------------------------- #
 # GET /asistencia/categorias
 # --------------------------------------------------------------------------- #
@@ -55,7 +68,12 @@ def list_categorias(
     db: Session = Depends(get_db),
 ) -> list[CategoriaAsistencia]:
     """Categorías visibles por rol con su total de deportistas (C2)."""
-    rows = svc.listar_categorias(db, role=user.role, sucursal_ids=user.sucursal_ids)
+    rows = svc.listar_categorias(
+        db,
+        role=user.role,
+        sucursal_ids=user.sucursal_ids,
+        disciplina_ids=_disciplina_scope(db, user),
+    )
 
     # Precarga sucursales referenciadas (evita N+1).
     suc_ids = {cat.sucursal_id for (cat, _total) in rows}
@@ -107,6 +125,7 @@ def get_roster(
             fecha=fecha,
             role=user.role,
             sucursal_ids=user.sucursal_ids,
+            disciplina_ids=_disciplina_scope(db, user),
         )
     except svc.AsistenciaError as exc:
         raise _http_error(exc) from exc
@@ -143,6 +162,7 @@ def guardar(
 
     Devuelve el roster guardado + resumen. Re-guardar actualiza (no duplica).
     """
+    disciplina_ids = _disciplina_scope(db, user)
     try:
         cat, sesion = svc.guardar_asistencia(
             db,
@@ -154,6 +174,7 @@ def guardar(
             registrado_por=uuid.UUID(user.user_id),
             role=user.role,
             sucursal_ids=user.sucursal_ids,
+            disciplina_ids=disciplina_ids,
         )
     except svc.AsistenciaError as exc:
         raise _http_error(exc) from exc
@@ -165,6 +186,7 @@ def guardar(
         fecha=body.fecha,
         role=user.role,
         sucursal_ids=user.sucursal_ids,
+        disciplina_ids=disciplina_ids,
     )
     items = [
         RosterItem(
@@ -205,6 +227,7 @@ def list_sesiones(
             sucursal_ids=user.sucursal_ids,
             page=page,
             page_size=page_size,
+            disciplina_ids=_disciplina_scope(db, user),
         )
     except svc.AsistenciaError as exc:
         raise _http_error(exc) from exc

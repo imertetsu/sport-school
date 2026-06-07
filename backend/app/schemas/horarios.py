@@ -139,11 +139,14 @@ class HorarioOut(BaseModel):
 class ClaseSemana(BaseModel):
     """Bloque de clase dentro de un día de la rejilla semanal (C2).
 
-    `{id, categoria:{id,nombre}, hora_inicio, hora_fin, entrenador:{id,nombres}|null}`.
+    `{id, categoria:{id,nombre}, sucursal:{id,nombre}, hora_inicio, hora_fin,
+    entrenador:{id,nombres}|null}`. `sucursal` (la de la categoría) permite al
+    frontend mostrar en qué sede es la clase.
     """
 
     id: uuid.UUID
     categoria: CategoriaRefHorario
+    sucursal: SucursalRefHorario
     hora_inicio: time
     hora_fin: time
     entrenador: EntrenadorRefHorario | None = None
