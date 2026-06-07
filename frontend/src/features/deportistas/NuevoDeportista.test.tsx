@@ -99,6 +99,8 @@ const DEPORTISTA_RECUPERADO: DeportistaDetail = {
   fecha_nac: '2012-06-01',
   edad: 13,
   disciplina: 'Natación',
+  // FK canónico (S3): el backend lo expone para precargar el select al recuperar.
+  disciplina_id: 'd2',
   contacto_emergencia: 'Mamá 70000000',
   sucursal: { id: 's1', nombre: 'Centro' },
   categoria: null,
@@ -194,6 +196,9 @@ describe('NuevoDeportista — OCR + recuperar-por-CI + disciplina (S3)', () => {
     expect((screen.getAllByLabelText(/^Nombres/)[1] as HTMLInputElement).value).toBe(
       'Rosa Huanca',
     );
+    // El select de disciplina se precarga con el FK canónico devuelto (disciplina_id).
+    const disciplinaSelect = screen.getByLabelText(/Disciplina/) as HTMLSelectElement;
+    expect(disciplinaSelect.value).toBe('d2');
   });
 
   it('recupera el tutor por su CI y permite actualizar el teléfono', async () => {
@@ -223,7 +228,7 @@ describe('NuevoDeportista — OCR + recuperar-por-CI + disciplina (S3)', () => {
     expect(tutorTel.value).toBe('79999999');
   });
 
-  it('el select de disciplina se puebla del catálogo y envía el nombre elegido', async () => {
+  it('el select de disciplina se puebla del catálogo y envía el FK disciplina_id', async () => {
     const user = userEvent.setup();
     crearDeportistaMock.mockResolvedValue({ id: 'dep-9' });
     renderForm();
@@ -235,9 +240,10 @@ describe('NuevoDeportista — OCR + recuperar-por-CI + disciplina (S3)', () => {
     await user.type(screen.getAllByLabelText(/^CI/)[0], '9123456');
     await user.type(screen.getByLabelText(/Fecha de nacimiento/), '2014-03-10');
 
-    // El select de disciplina viene del catálogo (api.disciplinasCatalogo).
+    // El select de disciplina viene del catálogo (api.disciplinasCatalogo); cada
+    // opción usa el id (FK canónico) como value.
     const disciplinaSelect = await screen.findByLabelText(/Disciplina/);
-    await user.selectOptions(disciplinaSelect, 'Fútbol');
+    await user.selectOptions(disciplinaSelect, 'd1');
     expect(disciplinasCatalogoMock).toHaveBeenCalled();
 
     await user.selectOptions(screen.getByLabelText(/Sucursal/), 's1');
@@ -251,8 +257,8 @@ describe('NuevoDeportista — OCR + recuperar-por-CI + disciplina (S3)', () => {
 
     await waitFor(() => expect(crearDeportistaMock).toHaveBeenCalledTimes(1));
     const payload = crearDeportistaMock.mock.calls[0][0];
-    // El contrato usa el string `disciplina` (no disciplina_id): se envía el NOMBRE.
-    expect(payload.disciplina).toBe('Fútbol');
+    // El contrato canónico (S3) envía el FK `disciplina_id` (no el nombre legacy).
+    expect(payload.disciplina_id).toBe('d1');
     expect(payload.sucursal_id).toBe('s1');
     expect(payload.tutores[0].nombres).toBe('Rosa');
     expect(payload.consentimiento).toEqual({ version_terminos: 'v1', canal: 'WEB' });
@@ -270,7 +276,7 @@ describe('NuevoDeportista — OCR + recuperar-por-CI + disciplina (S3)', () => {
     await user.type(screen.getAllByLabelText(/^Nombres/)[0], 'Mateo');
     await user.type(screen.getAllByLabelText(/^CI/)[0], '9123456');
     await user.type(screen.getByLabelText(/Fecha de nacimiento/), '2014-03-10');
-    await user.selectOptions(await screen.findByLabelText(/Disciplina/), 'Fútbol');
+    await user.selectOptions(await screen.findByLabelText(/Disciplina/), 'd1');
     await user.selectOptions(screen.getByLabelText(/Sucursal/), 's1');
     await user.type(screen.getAllByLabelText(/^Nombres/)[1], 'Rosa');
     await user.click(screen.getByRole('checkbox', { name: /consentimiento/i }));
@@ -292,7 +298,7 @@ describe('NuevoDeportista — OCR + recuperar-por-CI + disciplina (S3)', () => {
     await user.type(screen.getAllByLabelText(/^Nombres/)[0], 'Mateo');
     await user.type(screen.getAllByLabelText(/^CI/)[0], '9123456');
     await user.type(screen.getByLabelText(/Fecha de nacimiento/), '2014-03-10');
-    await user.selectOptions(await screen.findByLabelText(/Disciplina/), 'Fútbol');
+    await user.selectOptions(await screen.findByLabelText(/Disciplina/), 'd1');
     await user.selectOptions(screen.getByLabelText(/Sucursal/), 's1');
     await user.type(screen.getAllByLabelText(/^Nombres/)[1], 'Rosa');
 

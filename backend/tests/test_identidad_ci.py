@@ -45,6 +45,12 @@ def test_ci_duplicado_es_deportista_error() -> None:
     assert issubclass(svc.CIDuplicado, Exception)
 
 
+def test_disciplina_invalida_es_deportista_error() -> None:
+    """`DisciplinaInvalida` (S3) es un error de negocio traducible a 422 por el router."""
+    assert issubclass(svc.DisciplinaInvalida, svc.DeportistaError)
+    assert issubclass(svc.DisciplinaInvalida, Exception)
+
+
 # --------------------------------------------------------------------------- #
 # Fixture: 2 orgs con 1 sucursal cada una (sembrado como owner, salta RLS)
 # --------------------------------------------------------------------------- #
@@ -97,12 +103,14 @@ def _body(
     nombres: str,
     ci: str | None,
     tutores: list[TutorIn],
+    disciplina_id: uuid.UUID | None = None,
 ) -> DeportistaCreate:
     return DeportistaCreate(
         sucursal_id=suc_id,
         nombres=nombres,
         ci=ci,
         tutores=tutores,
+        disciplina_id=disciplina_id,
         consentimiento=ConsentimientoIn(version_terminos="v1", canal="PRESENCIAL"),
     )
 
@@ -311,3 +319,157 @@ def test_tutor_sin_ci_se_crea_normal(app_engine: Engine, ci_fixture: dict) -> No
         ).scalar_one()
     # Dos tutores SIN CI conviven (no se reusan entre sí).
     assert n == 2
+
+
+# --------------------------------------------------------------------------- #
+# disciplina_id (S3): FK canónica al catálogo GLOBAL en el alta de deportista
+# --------------------------------------------------------------------------- #
+@pytest.fixture()
+def disciplina_seed(owner_engine: Engine) -> Iterator[dict]:
+    """Siembra una disciplina ACTIVA y una INACTIVA en el catálogo global (sin RLS).
+
+    Teardown: nulifica referencias en `deportista` (FK SET NULL no aplica al borrar la
+    fila por DELETE de catálogo bajo RESTRICT en categoría; deportista es SET NULL pero
+    nulificamos explícito para no depender del orden de fixtures) y hard-deletea.
+    """
+    activa = uuid.uuid4()
+    inactiva = uuid.uuid4()
+    suf = uuid.uuid4().hex[:6]
+    with owner_engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO disciplina (id, nombre, activo, created_at, updated_at) "
+                "VALUES (:id, :nom, true, now(), now())"
+            ),
+            {"id": str(activa), "nom": f"Disc Activa {suf}"},
+        )
+        conn.execute(
+            text(
+                "INSERT INTO disciplina (id, nombre, activo, created_at, updated_at) "
+                "VALUES (:id, :nom, false, now(), now())"
+            ),
+            {"id": str(inactiva), "nom": f"Disc Inactiva {suf}"},
+        )
+    yield {"activa": activa, "inactiva": inactiva}
+    with owner_engine.begin() as conn:
+        ids = [str(activa), str(inactiva)]
+        conn.execute(
+            text("UPDATE deportista SET disciplina_id = NULL WHERE disciplina_id = ANY(:ids)"),
+            {"ids": ids},
+        )
+        conn.execute(text("DELETE FROM disciplina WHERE id = ANY(:ids)"), {"ids": ids})
+
+
+@pytest.mark.db
+def test_crear_deportista_con_disciplina_id_persiste(
+    app_engine: Engine, ci_fixture: dict, disciplina_seed: dict
+) -> None:
+    """Alta con `disciplina_id` válido (activo) lo persiste en la FK del deportista."""
+    org_a, suc_a = ci_fixture["org_a"], ci_fixture["suc_a"]
+    disc_activa = disciplina_seed["activa"]
+    ci = f"CI-{uuid.uuid4().hex[:10]}"
+
+    with Session(app_engine, expire_on_commit=False) as db:
+        _set_org(db, org_a)
+        dep = svc.crear_deportista(
+            db,
+            _body(
+                suc_id=suc_a,
+                nombres="Con disciplina",
+                ci=ci,
+                tutores=[_tutor("Td")],
+                disciplina_id=disc_activa,
+            ),
+            org_id=org_a,
+        )
+        db.commit()
+        dep_id = dep.id
+
+    with Session(app_engine, expire_on_commit=False) as db:
+        _set_org(db, org_a)
+        persistido = db.execute(
+            text("SELECT disciplina_id FROM deportista WHERE id = :i"), {"i": str(dep_id)}
+        ).scalar_one()
+    assert persistido == disc_activa
+
+
+@pytest.mark.db
+def test_crear_deportista_disciplina_id_inexistente_422(
+    app_engine: Engine, ci_fixture: dict
+) -> None:
+    """`disciplina_id` inexistente -> DisciplinaInvalida (router => 422, NO 500 por FK)."""
+    org_a, suc_a = ci_fixture["org_a"], ci_fixture["suc_a"]
+    with Session(app_engine, expire_on_commit=False) as db:
+        _set_org(db, org_a)
+        with pytest.raises(svc.DisciplinaInvalida):
+            svc.crear_deportista(
+                db,
+                _body(
+                    suc_id=suc_a,
+                    nombres="Disc fantasma",
+                    ci=f"CI-{uuid.uuid4().hex[:10]}",
+                    tutores=[_tutor("Tx")],
+                    disciplina_id=uuid.uuid4(),  # no existe en el catálogo
+                ),
+                org_id=org_a,
+            )
+
+
+@pytest.mark.db
+def test_crear_deportista_disciplina_id_inactiva_422(
+    app_engine: Engine, ci_fixture: dict, disciplina_seed: dict
+) -> None:
+    """`disciplina_id` de una disciplina INACTIVA -> DisciplinaInvalida (=> 422)."""
+    org_a, suc_a = ci_fixture["org_a"], ci_fixture["suc_a"]
+    with Session(app_engine, expire_on_commit=False) as db:
+        _set_org(db, org_a)
+        with pytest.raises(svc.DisciplinaInvalida):
+            svc.crear_deportista(
+                db,
+                _body(
+                    suc_id=suc_a,
+                    nombres="Disc inactiva",
+                    ci=f"CI-{uuid.uuid4().hex[:10]}",
+                    tutores=[_tutor("Ti")],
+                    disciplina_id=disciplina_seed["inactiva"],
+                ),
+                org_id=org_a,
+            )
+
+
+@pytest.mark.db
+def test_por_ci_devuelve_disciplina_id(
+    app_engine: Engine, ci_fixture: dict, disciplina_seed: dict
+) -> None:
+    """El armado del detalle (recuperar-por-CI) expone `disciplina_id` para precargar
+    el select en el front. Se verifica que el campo viaja en el schema de salida."""
+    from app.api.v1.deportistas import get_deportista
+    from app.core.tenant import CurrentUser
+
+    org_a, suc_a = ci_fixture["org_a"], ci_fixture["suc_a"]
+    disc_activa = disciplina_seed["activa"]
+    ci = f"CI-{uuid.uuid4().hex[:10]}"
+
+    with Session(app_engine, expire_on_commit=False) as db:
+        _set_org(db, org_a)
+        dep = svc.crear_deportista(
+            db,
+            _body(
+                suc_id=suc_a,
+                nombres="Precarga",
+                ci=ci,
+                tutores=[_tutor("Tp")],
+                disciplina_id=disc_activa,
+            ),
+            org_id=org_a,
+        )
+        db.commit()
+        dep_id = dep.id
+
+    with Session(app_engine, expire_on_commit=False) as db:
+        _set_org(db, org_a)
+        user = CurrentUser(
+            user_id=str(uuid.uuid4()), org_id=str(org_a), role="ADMIN", sucursal_ids=[]
+        )
+        detalle = get_deportista(deportista_id=dep_id, user=user, db=db)
+    assert detalle.disciplina_id == disc_activa

@@ -124,6 +124,9 @@ export interface DeportistaDetail {
   fecha_nac: string; // date
   edad: number;
   disciplina: string;
+  // Disciplinas (S3): FK canónico al catálogo global. El backend lo expone en la
+  // salida para precargar el select al recuperar por CI; null si no tiene.
+  disciplina_id?: string | null;
   contacto_emergencia: string;
   sucursal: SucursalRef;
   categoria: CategoriaRef | null;
@@ -179,7 +182,11 @@ export interface DeportistaCreate {
   nombres: string;
   ci: string;
   fecha_nac: string; // date
-  disciplina: string;
+  // Texto LEGACY (S2): opcional. El backend lo deriva del FK si no se envía.
+  disciplina?: string | null;
+  // Disciplinas (S3): FK canónico al catálogo global. "" => null en el cliente.
+  // El backend lo valida (existe + activa) y deriva el nombre legacy `disciplina`.
+  disciplina_id?: string | null;
   sucursal_id: string;
   categoria_id?: string | null;
   contacto_emergencia: string;

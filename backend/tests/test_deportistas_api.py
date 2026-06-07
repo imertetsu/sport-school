@@ -55,6 +55,39 @@ def test_deportista_create_schema_sin_consentimiento_falla() -> None:
         DeportistaCreate(**body)  # type: ignore[arg-type]
 
 
+def test_deportista_create_disciplina_id_opcional() -> None:
+    """`DeportistaCreate` acepta `disciplina_id` opcional (default None) sin perder el
+    texto legacy `disciplina` (S3: FK canónica al catálogo global)."""
+    import uuid
+
+    body = dict(_BASE_BODY)
+    body["tutores"] = [{"nombres": "Tutor 1"}]
+    sin = DeportistaCreate(**body)  # type: ignore[arg-type]
+    assert sin.disciplina_id is None
+
+    disc_id = uuid.uuid4()
+    body2 = dict(_BASE_BODY)
+    body2["tutores"] = [{"nombres": "Tutor 1"}]
+    body2["disciplina_id"] = str(disc_id)
+    body2["disciplina"] = "Voley (texto legacy)"
+    con = DeportistaCreate(**body2)  # type: ignore[arg-type]
+    assert con.disciplina_id == disc_id
+    assert con.disciplina == "Voley (texto legacy)"  # legacy se conserva
+
+
+def test_deportista_update_acepta_disciplina_id() -> None:
+    """`DeportistaUpdate` acepta `disciplina_id` opcional (S3)."""
+    import uuid
+
+    from app.schemas.deportista import DeportistaUpdate
+
+    disc_id = uuid.uuid4()
+    u = DeportistaUpdate(disciplina_id=disc_id)
+    assert u.disciplina_id == disc_id
+    # Si no se envía, queda exclude_unset (no fuerza None destructivo).
+    assert "disciplina_id" not in DeportistaUpdate().model_dump(exclude_unset=True)
+
+
 # --------------------------------------------------------------------------- #
 # Flujo end-to-end contra la API real (requiere BD + seed)
 # --------------------------------------------------------------------------- #

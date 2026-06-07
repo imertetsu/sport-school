@@ -35,10 +35,10 @@ export function NuevoDeportista() {
   const [nombres, setNombres] = useState('');
   const [ci, setCi] = useState('');
   const [fechaNac, setFechaNac] = useState('');
-  // Disciplina: select del catálogo global (S2). El contrato POST /deportistas usa
-  // el campo string `disciplina` (no `disciplina_id`); enviamos el NOMBRE de la
-  // disciplina elegida. "" => "" (sin disciplina). Ver handoff en el reporte.
-  const [disciplina, setDisciplina] = useState('');
+  // Disciplina: select del catálogo global (S3). El contrato POST /deportistas
+  // acepta el FK canónico `disciplina_id`; enviamos el id de la disciplina elegida.
+  // "" => null (sin disciplina). El backend deriva el nombre legacy.
+  const [disciplinaId, setDisciplinaId] = useState('');
   const [sucursalId, setSucursalId] = useState('');
   const [categoriaId, setCategoriaId] = useState('');
   const [contactoEmergencia, setContactoEmergencia] = useState('');
@@ -117,7 +117,8 @@ export function NuevoDeportista() {
     setNombres(d.nombres ?? '');
     setCi(d.ci ?? '');
     setFechaNac(d.fecha_nac ?? '');
-    setDisciplina(d.disciplina ?? '');
+    // Precarga el select con el FK canónico devuelto ("" si no tiene disciplina).
+    setDisciplinaId(d.disciplina_id ?? '');
     setContactoEmergencia(d.contacto_emergencia ?? '');
     if (d.sucursal?.id) setSucursalId(d.sucursal.id);
     if (d.categoria?.id) setCategoriaId(d.categoria.id);
@@ -226,7 +227,7 @@ export function NuevoDeportista() {
     if (!nombres.trim()) errs.nombres = 'Requerido';
     if (!ci.trim()) errs.ci = 'Requerido';
     if (!fechaNac) errs.fecha_nac = 'Requerido';
-    if (!disciplina.trim()) errs.disciplina = 'Requerido';
+    if (!disciplinaId) errs.disciplina_id = 'Requerido';
     if (!sucursalId) errs.sucursal_id = 'Selecciona una sucursal';
 
     const tutoresValidos = tutores.filter((t) => t.nombres.trim());
@@ -274,7 +275,8 @@ export function NuevoDeportista() {
       nombres: nombres.trim(),
       ci: ci.trim(),
       fecha_nac: fechaNac,
-      disciplina: disciplina.trim(),
+      // FK canónico (S3): "" => null. El backend valida y deriva el nombre legacy.
+      disciplina_id: disciplinaId || null,
       sucursal_id: sucursalId,
       categoria_id: categoriaId || null,
       contacto_emergencia: contactoEmergencia.trim(),
@@ -402,19 +404,19 @@ export function NuevoDeportista() {
             />
             <SelectField
               label="Disciplina"
-              value={disciplina}
-              onChange={(e) => setDisciplina(e.target.value)}
-              error={fieldErrors.disciplina}
+              value={disciplinaId}
+              onChange={(e) => setDisciplinaId(e.target.value)}
+              error={fieldErrors.disciplina_id}
               required
             >
               <option value="">— Sin disciplina —</option>
-              {/* Si la disciplina recuperada no está en el catálogo, la mostramos
-                  para no perder el valor cargado. */}
-              {disciplina && !disciplinas.some((d) => d.nombre === disciplina) && (
-                <option value={disciplina}>{disciplina}</option>
+              {/* Si la disciplina recuperada no está en el catálogo (p.ej. inactiva),
+                  conservamos el id cargado para no perder el valor. */}
+              {disciplinaId && !disciplinas.some((d) => d.id === disciplinaId) && (
+                <option value={disciplinaId}>Disciplina actual</option>
               )}
               {disciplinas.map((d) => (
-                <option key={d.id} value={d.nombre}>
+                <option key={d.id} value={d.id}>
                   {d.nombre}
                 </option>
               ))}

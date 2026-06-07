@@ -21,9 +21,10 @@ from sqlalchemy.orm import Session
 from app.models.consentimiento import Consentimiento
 from app.models.deportista import Deportista
 from app.models.deportista_tutor import DeportistaTutor
+from app.models.disciplina import Disciplina
 from app.models.inscripcion import Inscripcion
 from app.models.tutor import Tutor
-from app.schemas.deportista import DeportistaCreate, TutorIn
+from app.schemas.deportista import DeportistaCreate, DeportistaUpdate, TutorIn
 
 
 # --------------------------------------------------------------------------- #
@@ -35,6 +36,36 @@ class DeportistaError(Exception):
 
 class CIDuplicado(DeportistaError):
     """Ya existe un deportista con ese CI en la org (índice único parcial) -> 409."""
+
+
+class DisciplinaInvalida(DeportistaError):
+    """`disciplina_id` no existe en el catálogo global o está inactiva -> 422.
+
+    Evita un FK colgante (la FK `deportista.disciplina_id` lo impediría con un
+    `IntegrityError` -> 500); el pre-chequeo lo traduce a 422 con mensaje claro.
+    """
+
+
+# --------------------------------------------------------------------------- #
+# Validación de `disciplina_id` contra el catálogo GLOBAL (mismo patrón que
+# `services/disciplina.get_disciplina_activa_o_error`, que usa categoría en S2).
+# `disciplina` es una tabla GLOBAL sin RLS: se consulta directo por id (sin GUC).
+# Aquí lanzamos un error de NEGOCIO (no HTTPException) para no acoplar el servicio
+# a FastAPI; el router lo traduce a 422.
+# --------------------------------------------------------------------------- #
+def _validar_disciplina_id(db: Session, disciplina_id: uuid.UUID) -> None:
+    """Exige que `disciplina_id` exista en el catálogo y esté activa. Si no, 422.
+
+    Inexistente o inactiva ⇒ `DisciplinaInvalida` (-> 422; nunca 500 por FK colgante).
+    La FK es el backstop ante carreras (borrado concurrente de la disciplina).
+    """
+    disc = db.execute(
+        select(Disciplina.activo).where(Disciplina.id == disciplina_id)
+    ).scalar_one_or_none()
+    if disc is None:
+        raise DisciplinaInvalida("La disciplina indicada no existe en el catálogo")
+    if not disc:
+        raise DisciplinaInvalida("La disciplina indicada está inactiva")
 
 
 # --------------------------------------------------------------------------- #
@@ -95,6 +126,12 @@ def crear_deportista(db: Session, body: DeportistaCreate, *, org_id: uuid.UUID) 
     if body.ci and buscar_deportista_por_ci(db, body.ci) is not None:
         raise CIDuplicado("Ya existe un deportista con ese CI en esta organización")
 
+    # FK canónica al catálogo (S3): valida ANTES del INSERT para traducir un
+    # `disciplina_id` inválido a 422 (no a un IntegrityError genérico de la FK -> 500,
+    # ni confundible con la violación del índice único de CI del mismo flush).
+    if body.disciplina_id is not None:
+        _validar_disciplina_id(db, body.disciplina_id)
+
     deportista = Deportista(
         org_id=org_id,
         sucursal_id=body.sucursal_id,
@@ -105,6 +142,7 @@ def crear_deportista(db: Session, body: DeportistaCreate, *, org_id: uuid.UUID) 
         ci=body.ci,
         fecha_nac=body.fecha_nac,
         disciplina=body.disciplina,
+        disciplina_id=body.disciplina_id,
         contacto_emergencia=body.contacto_emergencia,
         ficha_medica=(body.ficha_medica.model_dump() if body.ficha_medica else None),
     )
@@ -159,6 +197,33 @@ def crear_deportista(db: Session, body: DeportistaCreate, *, org_id: uuid.UUID) 
                 estado=ins.estado,
             )
         )
+
+    db.flush()
+    return deportista
+
+
+def actualizar_deportista(
+    db: Session, deportista: Deportista, body: DeportistaUpdate
+) -> Deportista:
+    """Actualiza los campos enviados del deportista (no toca tutores en este slice).
+
+    Solo aplica los campos presentes (`exclude_unset`). Si llega `disciplina_id` no nulo,
+    se valida contra el catálogo global ANTES del flush (-> 422 si no existe/inactiva,
+    evitando un FK colgante / 500). El `ci` no se valida aquí (el slice de edición no
+    cambia el dedup; el índice único es el backstop si llegara a tocarse).
+
+    `deportista` debe estar ya cargado bajo el contexto de tenant (RLS). El llamador
+    commitea la transacción.
+    """
+    data = body.model_dump(exclude_unset=True)
+
+    if data.get("disciplina_id") is not None:
+        _validar_disciplina_id(db, data["disciplina_id"])
+
+    if "ficha_medica" in data:
+        deportista.ficha_medica = data.pop("ficha_medica")  # dict (model_dump) o None
+    for field_name, value in data.items():
+        setattr(deportista, field_name, value)
 
     db.flush()
     return deportista
