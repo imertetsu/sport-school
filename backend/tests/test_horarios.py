@@ -317,6 +317,41 @@ def test_entrenador_no_crea_en_categoria_fuera(app_engine: Engine, hor_fixture: 
 
 
 # --------------------------------------------------------------------------- #
+# Vista semanal (con BD) — incluye la sucursal {id, nombre} de cada clase
+# --------------------------------------------------------------------------- #
+@pytest.mark.db
+def test_vista_semana_incluye_sucursal(app_engine: Engine, hor_fixture: dict) -> None:
+    """`vista_semana` devuelve `sucursal={id,nombre}` por clase (bug 4, backend)."""
+    org = hor_fixture["org"]
+    with Session(app_engine) as db:
+        _set_org(db, org)
+        # Crea un horario en Cat A (lunes), que vive en Suc A.
+        svc.crear(
+            db,
+            HorarioCreate(
+                categoria_id=hor_fixture["cat_a"],
+                dia_semana=0,
+                hora_inicio=time(18, 0),
+                hora_fin=time(19, 30),
+            ),
+            org_id=org,
+            role="ADMIN",
+            sucursal_ids=[],
+        )
+        semana = svc.vista_semana(db, role="ADMIN", sucursal_ids=[])
+        db.rollback()
+
+    # La rejilla tiene 7 días; la única clase está el lunes (dia_semana=0).
+    assert len(semana.dias) == 7
+    clases_lunes = semana.dias[0].clases
+    assert len(clases_lunes) == 1
+    clase = clases_lunes[0]
+    # Contrato compartido con frontend: sucursal = {id, nombre}.
+    assert clase.sucursal.id == hor_fixture["suc_a"]
+    assert clase.sucursal.nombre == "Suc A"
+
+
+# --------------------------------------------------------------------------- #
 # Generación idempotente (con BD) — reutiliza get-or-create de Asistencia
 # --------------------------------------------------------------------------- #
 @pytest.mark.db

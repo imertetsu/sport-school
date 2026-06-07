@@ -224,6 +224,7 @@ export function Horarios() {
                       </span>
                     </div>
                     <p className="horario-bloque__categoria">{clase.categoria.nombre}</p>
+                    <p className="horario-bloque__sucursal">{clase.sucursal.nombre}</p>
                     {clase.entrenador ? (
                       <Badge tone="accent">{clase.entrenador.nombres}</Badge>
                     ) : (

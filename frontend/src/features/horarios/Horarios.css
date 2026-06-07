@@ -81,6 +81,22 @@
   color: var(--color-text-muted);
 }
 
+/* Sucursal a la que pertenece la clase (meta sutil bajo la categoría) */
+.horario-bloque__sucursal {
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--color-text-subtle);
+}
+
+/* El chip del entrenador (Badge compartido) envuelve dentro de la tarjeta en
+   lugar de desbordar la columna (Badge.css global usa white-space: nowrap). */
+.horario-bloque .badge {
+  white-space: normal;
+  max-width: 100%;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
 .horario-bloque__acciones {
   display: flex;
   gap: var(--space-1);

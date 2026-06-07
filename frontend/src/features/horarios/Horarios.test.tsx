@@ -50,6 +50,7 @@ const SEMANA: SemanaOut = {
         {
           id: 'h1',
           categoria: { id: 'c1', nombre: 'Sub-14 Intermedio' },
+          sucursal: { id: 's1', nombre: 'Centro' },
           hora_inicio: '16:00',
           hora_fin: '17:30',
           entrenador: { id: 'e1', nombres: 'Carlos Coach' },
@@ -65,6 +66,7 @@ const SEMANA: SemanaOut = {
         {
           id: 'h2',
           categoria: { id: 'c2', nombre: 'Sub-10 Principiante' },
+          sucursal: { id: 's2', nombre: 'Zona Sur' },
           hora_inicio: '15:00',
           hora_fin: '16:00',
           entrenador: null,
@@ -123,6 +125,8 @@ describe('Horarios — rejilla semanal', () => {
     // Clase sin entrenador -> badge "Sin entrenador".
     expect(screen.getByText('Sub-10 Principiante')).toBeInTheDocument();
     expect(screen.getByText('Sin entrenador')).toBeInTheDocument();
+    // Cada bloque muestra a qué sucursal pertenece la clase.
+    expect(screen.getByText('Zona Sur')).toBeInTheDocument();
   });
 
   it('muestra las acciones de admin (Nuevo horario, Editar, Eliminar) si role ADMIN', async () => {

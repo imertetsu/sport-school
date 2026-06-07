@@ -41,6 +41,7 @@ from app.schemas.deportista import (
     TutorOut,
 )
 from app.services import deportista as deportista_svc
+from app.services import entrenador as entrenador_svc
 
 router = APIRouter(prefix="/deportistas", tags=["deportistas"])
 
@@ -83,13 +84,26 @@ def list_deportistas(
     sucursal_id: uuid.UUID | None = Query(default=None),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
-    _user: CurrentUser = Depends(set_tenant_context),
+    user: CurrentUser = Depends(set_tenant_context),
     db: Session = Depends(get_db),
 ) -> Page[DeportistaListItem]:
-    """Lista deportistas de la org con filtros y paginación (C5). RLS aísla por org."""
+    """Lista deportistas de la org con filtros y paginación (C5). RLS aísla por org.
+
+    Un ENTRENADOR solo ve los deportistas de las DISCIPLINAS que tiene asignadas
+    (`entrenador_disciplina`); si no tiene ninguna, la lista es vacía. ADMIN ve todo.
+    El filtro por disciplina es **aditivo** sobre el existente de sucursal.
+    """
     base = select(Deportista)
     if sucursal_id is not None:
         base = base.where(Deportista.sucursal_id == sucursal_id)
+
+    # Scoping por disciplina para no-ADMIN: solo deportistas de las disciplinas del
+    # entrenador. Sin disciplinas asignadas -> no ve nada (lista vacía, sin más query).
+    if user.role != "ADMIN":
+        disc_ids = entrenador_svc.disciplina_ids_de_usuario(db, uuid.UUID(user.user_id))
+        if not disc_ids:
+            return Page(items=[], total=0, page=page, page_size=page_size)
+        base = base.where(Deportista.disciplina_id.in_(disc_ids))
     if q:
         like = f"%{q.strip()}%"
         base = base.where(
@@ -190,7 +204,12 @@ def get_deportista(
     user: CurrentUser = Depends(set_tenant_context),
     db: Session = Depends(get_db),
 ) -> DeportistaDetailOut:
-    """Perfil completo del deportista (C5). `ficha_medica` gateada por rol/sucursal."""
+    """Perfil completo del deportista (C5). `ficha_medica` gateada por rol/sucursal.
+
+    Defensa en profundidad del scoping por disciplina: un ENTRENADOR que pide un
+    deportista de una disciplina que NO tiene asignada recibe **404** (no se revela su
+    existencia; 403 filtraría que el id existe). ADMIN ve cualquiera.
+    """
     deportista = db.execute(
         select(Deportista).where(Deportista.id == deportista_id)
     ).scalar_one_or_none()
@@ -198,6 +217,13 @@ def get_deportista(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Deportista no encontrado"
         )
+
+    if user.role != "ADMIN":
+        disc_ids = entrenador_svc.disciplina_ids_de_usuario(db, uuid.UUID(user.user_id))
+        if deportista.disciplina_id not in disc_ids:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Deportista no encontrado"
+            )
 
     suc = db.execute(
         select(Sucursal).where(Sucursal.id == deportista.sucursal_id)

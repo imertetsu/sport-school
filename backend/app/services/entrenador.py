@@ -198,6 +198,22 @@ def _disciplina_ids_de(db: Session, entrenador_id: uuid.UUID) -> set[uuid.UUID]:
     )
 
 
+def disciplina_ids_de_usuario(db: Session, usuario_id: uuid.UUID) -> set[uuid.UUID]:
+    """Disciplinas asignadas al ENTRENADOR cuyo usuario es `usuario_id`.
+
+    Vacío si el usuario no es entrenador o no tiene disciplinas. Corre con RLS fijado
+    (la org del contexto): se usa para acotar lo que un no-ADMIN puede ver al nivel de
+    disciplina (deportistas/asistencia). Si el entrenador no tiene disciplinas → no ve
+    nada (set vacío → el llamador devuelve lista/roster vacíos).
+    """
+    entrenador_id = db.execute(
+        select(Entrenador.id).where(Entrenador.usuario_id == usuario_id)
+    ).scalar_one_or_none()
+    if entrenador_id is None:
+        return set()
+    return _disciplina_ids_de(db, entrenador_id)
+
+
 def _resolver_disciplinas(
     db: Session,
     *,
