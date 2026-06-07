@@ -124,6 +124,9 @@ export interface DeportistaDetail {
   fecha_nac: string; // date
   edad: number;
   disciplina: string;
+  // Disciplinas (S3): FK canónico al catálogo global. El backend lo expone en la
+  // salida para precargar el select al recuperar por CI; null si no tiene.
+  disciplina_id?: string | null;
   contacto_emergencia: string;
   sucursal: SucursalRef;
   categoria: CategoriaRef | null;
@@ -132,6 +135,17 @@ export interface DeportistaDetail {
   consentimiento: Consentimiento | null;
   // null si el rol no tiene acceso (RNF-02).
   ficha_medica: FichaMedica | null;
+}
+
+// --- GET /tutores/por-ci/{ci} (recuperar-por-CI del tutor; S3) ---
+// Solo los datos propios del tutor (sin parentesco/responsable_pago, que viven en
+// el puente deportista_tutor y dependen del vínculo, no del tutor). 404 si no hay
+// tutor con ese CI en la org. Mirror EXACTO de TutorByCiOut del backend.
+export interface TutorByCi {
+  id: string;
+  nombres: string;
+  telefono: string | null;
+  ci: string | null;
 }
 
 // ---- C5: POST /deportistas (DeportistaCreate) ----
@@ -168,7 +182,11 @@ export interface DeportistaCreate {
   nombres: string;
   ci: string;
   fecha_nac: string; // date
-  disciplina: string;
+  // Texto LEGACY (S2): opcional. El backend lo deriva del FK si no se envía.
+  disciplina?: string | null;
+  // Disciplinas (S3): FK canónico al catálogo global. "" => null en el cliente.
+  // El backend lo valida (existe + activa) y deriva el nombre legacy `disciplina`.
+  disciplina_id?: string | null;
   sucursal_id: string;
   categoria_id?: string | null;
   contacto_emergencia: string;

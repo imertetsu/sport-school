@@ -63,6 +63,21 @@ class TutorOut(BaseModel):
     responsable_pago: bool = False
 
 
+class TutorByCiOut(BaseModel):
+    """Tutor recuperado por CI (`GET /tutores/por-ci/{ci}`, S3).
+
+    Solo los datos propios del tutor (sin `parentesco`/`responsable_pago`, que viven
+    en el puente `deportista_tutor` y dependen del vínculo, no del tutor en sí).
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    nombres: str
+    telefono: str | None = None
+    ci: str | None = None
+
+
 class ConsentimientoIn(BaseModel):
     """Consentimiento obligatorio en el alta (C5)."""
 
@@ -115,7 +130,11 @@ class DeportistaCreate(BaseModel):
     nombres: str
     ci: str | None = None
     fecha_nac: date | None = None
+    # Texto LEGACY (se conserva, S2): disciplina escrita a mano.
     disciplina: str | None = None
+    # FK canónica al catálogo GLOBAL de disciplinas (S3). Debe existir y estar activa
+    # (el servicio valida → 422). None = sin disciplina del catálogo.
+    disciplina_id: uuid.UUID | None = None
     contacto_emergencia: str | None = None
     ficha_medica: FichaMedica | None = None
 
@@ -142,6 +161,7 @@ class DeportistaUpdate(BaseModel):
     ci: str | None = None
     fecha_nac: date | None = None
     disciplina: str | None = None
+    disciplina_id: uuid.UUID | None = None
     contacto_emergencia: str | None = None
     ficha_medica: FichaMedica | None = None
 
@@ -159,6 +179,7 @@ class DeportistaListItem(BaseModel):
     nombre_completo: str
     ci: str | None = None
     disciplina: str | None = None
+    disciplina_id: uuid.UUID | None = None
     categoria: CategoriaRef | None = None
     sucursal: SucursalRef
 
@@ -178,6 +199,7 @@ class DeportistaDetailOut(BaseModel):
     fecha_nac: date | None = None
     edad: int | None = None
     disciplina: str | None = None
+    disciplina_id: uuid.UUID | None = None
     contacto_emergencia: str | None = None
     sucursal: SucursalRef
     categoria: CategoriaRef | None = None

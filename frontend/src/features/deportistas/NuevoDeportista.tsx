@@ -3,11 +3,15 @@ import { Link, useNavigate } from 'react-router-dom';
 import { api, ApiError } from '@/api/client';
 import type {
   DeportistaCreate,
+  DeportistaDetail,
+  DisciplinaRef,
   Categoria,
   Sucursal,
+  TutorByCi,
   TutorCreate,
 } from '@/api/types';
 import { Button, Card, Field, SelectField } from '@/components/ui';
+import { DocumentScanner, type CedulaFields } from '@/components/ocr/DocumentScanner';
 import { nivelLabel } from '@/lib/format';
 import './NuevoDeportista.css';
 
@@ -31,7 +35,10 @@ export function NuevoDeportista() {
   const [nombres, setNombres] = useState('');
   const [ci, setCi] = useState('');
   const [fechaNac, setFechaNac] = useState('');
-  const [disciplina, setDisciplina] = useState('');
+  // Disciplina: select del catálogo global (S3). El contrato POST /deportistas
+  // acepta el FK canónico `disciplina_id`; enviamos el id de la disciplina elegida.
+  // "" => null (sin disciplina). El backend deriva el nombre legacy.
+  const [disciplinaId, setDisciplinaId] = useState('');
   const [sucursalId, setSucursalId] = useState('');
   const [categoriaId, setCategoriaId] = useState('');
   const [contactoEmergencia, setContactoEmergencia] = useState('');
@@ -43,6 +50,14 @@ export function NuevoDeportista() {
   // Catálogos
   const [sucursales, setSucursales] = useState<Sucursal[]>([]);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
+  const [disciplinas, setDisciplinas] = useState<DisciplinaRef[]>([]);
+
+  // Recuperar-por-CI (S3): avisos no bloqueantes cuando se reutiliza un registro.
+  const [recuperadoDeportista, setRecuperadoDeportista] = useState(false);
+  // tutoresRecuperados[i] = true si el tutor i fue recuperado por su CI.
+  const [tutoresRecuperados, setTutoresRecuperados] = useState<Record<number, boolean>>({});
+  // CI ya consultado para el deportista (evita lookups repetidos en onBlur).
+  const [ciConsultado, setCiConsultado] = useState<string | null>(null);
 
   // Estado de envío / errores
   const [submitting, setSubmitting] = useState(false);
@@ -60,6 +75,26 @@ export function NuevoDeportista() {
     return () => controller.abort();
   }, []);
 
+  // Catálogo global de disciplinas (solo activas) para el select. Si falla, el
+  // select queda solo con "— Sin disciplina —" (la disciplina no bloquea el render).
+  useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+    api
+      .disciplinasCatalogo(controller.signal)
+      .then((data) => {
+        if (active) setDisciplinas(data);
+      })
+      .catch((err) => {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        /* la disciplina es opcional para el render; no bloquea el formulario */
+      });
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, []);
+
   useEffect(() => {
     if (!sucursalId) {
       setCategorias([]);
@@ -75,6 +110,94 @@ export function NuevoDeportista() {
     return () => controller.abort();
   }, [sucursalId]);
 
+  // Carga los datos de un deportista recuperado en el formulario (modo recuperado).
+  function cargarDeportista(d: DeportistaDetail) {
+    setApPaterno(d.ap_paterno ?? '');
+    setApMaterno(d.ap_materno ?? '');
+    setNombres(d.nombres ?? '');
+    setCi(d.ci ?? '');
+    setFechaNac(d.fecha_nac ?? '');
+    // Precarga el select con el FK canónico devuelto ("" si no tiene disciplina).
+    setDisciplinaId(d.disciplina_id ?? '');
+    setContactoEmergencia(d.contacto_emergencia ?? '');
+    if (d.sucursal?.id) setSucursalId(d.sucursal.id);
+    if (d.categoria?.id) setCategoriaId(d.categoria.id);
+    if (d.tutores && d.tutores.length > 0) {
+      setTutores(
+        d.tutores.map((t) => ({
+          nombres: t.nombres ?? '',
+          telefono: t.telefono ?? '',
+          ci: t.ci ?? '',
+          parentesco: t.parentesco ?? '',
+          responsable_pago: t.responsable_pago,
+        })),
+      );
+    }
+    setRecuperadoDeportista(true);
+  }
+
+  // Recuperar-por-CI del deportista: si existe un registro con ese CI en la org, lo
+  // carga (evita duplicado; el backend además da 409 al crear). 404 => alta nueva.
+  async function recuperarDeportistaPorCi(ciValor: string) {
+    const valor = ciValor.trim();
+    if (!valor || valor === ciConsultado) return;
+    setCiConsultado(valor);
+    try {
+      const d = await api.deportistaPorCi(valor);
+      cargarDeportista(d);
+    } catch (err) {
+      if (err instanceof ApiError && err.isNotFound) {
+        // No existe: alta nueva, sin aviso de recuperación.
+        setRecuperadoDeportista(false);
+        return;
+      }
+      /* otros errores (red/permiso) no bloquean el alta manual */
+    }
+  }
+
+  // Recuperar-por-CI del tutor i: si existe en la org, reutiliza sus datos y permite
+  // actualizar el teléfono (el backend reaplica el cambio al crear, contrato #4).
+  async function recuperarTutorPorCi(index: number, ciValor: string) {
+    const valor = ciValor.trim();
+    if (!valor) return;
+    try {
+      const t: TutorByCi = await api.tutorPorCi(valor);
+      setTutores((prev) =>
+        prev.map((tut, i) =>
+          i === index
+            ? {
+                ...tut,
+                nombres: t.nombres ?? tut.nombres,
+                telefono: t.telefono ?? tut.telefono,
+                ci: t.ci ?? tut.ci,
+              }
+            : tut,
+        ),
+      );
+      setTutoresRecuperados((prev) => ({ ...prev, [index]: true }));
+    } catch (err) {
+      if (err instanceof ApiError && err.isNotFound) {
+        // No existe: alta normal del tutor.
+        setTutoresRecuperados((prev) => ({ ...prev, [index]: false }));
+        return;
+      }
+      /* otros errores no bloquean el alta manual del tutor */
+    }
+  }
+
+  // OCR: pre-rellena los campos del deportista. El usuario SIEMPRE puede corregir.
+  // Tras extraer, dispara el recuperar-por-CI del deportista con el CI detectado.
+  function handleOcr(fields: CedulaFields) {
+    if (fields.apellidoPaterno) setApPaterno(fields.apellidoPaterno);
+    if (fields.apellidoMaterno) setApMaterno(fields.apellidoMaterno);
+    if (fields.nombres) setNombres(fields.nombres);
+    if (fields.fechaNacimiento) setFechaNac(fields.fechaNacimiento);
+    if (fields.numeroCi) {
+      setCi(fields.numeroCi);
+      void recuperarDeportistaPorCi(fields.numeroCi);
+    }
+  }
+
   function updateTutor(index: number, patch: Partial<TutorCreate>) {
     setTutores((prev) => prev.map((t, i) => (i === index ? { ...t, ...patch } : t)));
   }
@@ -85,6 +208,16 @@ export function NuevoDeportista() {
 
   function removeTutor(index: number) {
     setTutores((prev) => (prev.length > 1 ? prev.filter((_, i) => i !== index) : prev));
+    setTutoresRecuperados((prev) => {
+      const next: Record<number, boolean> = {};
+      // Re-indexa los avisos de recuperación tras quitar el tutor `index`.
+      for (const [k, v] of Object.entries(prev)) {
+        const i = Number(k);
+        if (i < index) next[i] = v;
+        else if (i > index) next[i - 1] = v;
+      }
+      return next;
+    });
   }
 
   // Validación de UX que refleja el 422 del backend (no duplica la regla dura).
@@ -94,7 +227,7 @@ export function NuevoDeportista() {
     if (!nombres.trim()) errs.nombres = 'Requerido';
     if (!ci.trim()) errs.ci = 'Requerido';
     if (!fechaNac) errs.fecha_nac = 'Requerido';
-    if (!disciplina.trim()) errs.disciplina = 'Requerido';
+    if (!disciplinaId) errs.disciplina_id = 'Requerido';
     if (!sucursalId) errs.sucursal_id = 'Selecciona una sucursal';
 
     const tutoresValidos = tutores.filter((t) => t.nombres.trim());
@@ -142,7 +275,8 @@ export function NuevoDeportista() {
       nombres: nombres.trim(),
       ci: ci.trim(),
       fecha_nac: fechaNac,
-      disciplina: disciplina.trim(),
+      // FK canónico (S3): "" => null. El backend valida y deriva el nombre legacy.
+      disciplina_id: disciplinaId || null,
       sucursal_id: sucursalId,
       categoria_id: categoriaId || null,
       contacto_emergencia: contactoEmergencia.trim(),
@@ -167,6 +301,15 @@ export function NuevoDeportista() {
         if (err.isValidation) {
           applyApiErrors(err);
           setFormError('El servidor rechazó los datos. Revisa los campos marcados.');
+        } else if (err.isConflict) {
+          // CI duplicado: el deportista ya existe en la org (RNF-06, sin duplicar).
+          setFieldErrors((prev) => ({
+            ...prev,
+            ci: 'Ya existe un deportista con ese CI en la organización.',
+          }));
+          setFormError(
+            'Ya hay un deportista registrado con ese CI. Búscalo en la lista para editarlo en vez de crear un duplicado.',
+          );
         } else if (err.isForbidden) {
           setFormError('No tienes permiso para crear deportistas en esa sucursal.');
         } else {
@@ -203,6 +346,20 @@ export function NuevoDeportista() {
 
       <form onSubmit={handleSubmit} noValidate className="nuevo-deportista__form">
         <Card title="Datos del deportista">
+          <div className="nuevo-deportista__ocr">
+            <p className="nuevo-deportista__ocr-hint">
+              Escanea la cédula para pre-llenar los datos. Siempre puedes corregirlos a mano.
+            </p>
+            <DocumentScanner onExtract={handleOcr} label="Escanear cédula del deportista" />
+          </div>
+
+          {recuperadoDeportista && (
+            <div className="nuevo-deportista__notice" role="status">
+              Se recuperó el registro anterior del deportista. Revisa los datos antes de
+              guardar.
+            </div>
+          )}
+
           <div className="form-grid">
             <Field
               label="Apellido paterno"
@@ -227,7 +384,12 @@ export function NuevoDeportista() {
             <Field
               label="CI"
               value={ci}
-              onChange={(e) => setCi(e.target.value)}
+              onChange={(e) => {
+                setCi(e.target.value);
+                // Editar el CI invalida el aviso de recuperación previo.
+                setRecuperadoDeportista(false);
+              }}
+              onBlur={(e) => void recuperarDeportistaPorCi(e.target.value)}
               error={fieldErrors.ci}
               placeholder="9123456 LP"
               required
@@ -240,14 +402,25 @@ export function NuevoDeportista() {
               error={fieldErrors.fecha_nac}
               required
             />
-            <Field
+            <SelectField
               label="Disciplina"
-              value={disciplina}
-              onChange={(e) => setDisciplina(e.target.value)}
-              error={fieldErrors.disciplina}
-              placeholder="Fútbol"
+              value={disciplinaId}
+              onChange={(e) => setDisciplinaId(e.target.value)}
+              error={fieldErrors.disciplina_id}
               required
-            />
+            >
+              <option value="">— Sin disciplina —</option>
+              {/* Si la disciplina recuperada no está en el catálogo (p.ej. inactiva),
+                  conservamos el id cargado para no perder el valor. */}
+              {disciplinaId && !disciplinas.some((d) => d.id === disciplinaId) && (
+                <option value={disciplinaId}>Disciplina actual</option>
+              )}
+              {disciplinas.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.nombre}
+                </option>
+              ))}
+            </SelectField>
             <SelectField
               label="Sucursal"
               value={sucursalId}
@@ -316,6 +489,11 @@ export function NuevoDeportista() {
                     </button>
                   )}
                 </legend>
+                {tutoresRecuperados[i] && (
+                  <div className="nuevo-deportista__notice" role="status">
+                    Se recuperó el tutor. Puedes actualizar su teléfono.
+                  </div>
+                )}
                 <div className="form-grid">
                   <Field
                     label="Nombres"
@@ -332,6 +510,8 @@ export function NuevoDeportista() {
                     label="CI"
                     value={t.ci}
                     onChange={(e) => updateTutor(i, { ci: e.target.value })}
+                    onBlur={(e) => void recuperarTutorPorCi(i, e.target.value)}
+                    hint="Opcional. Si existe, se recupera el tutor."
                   />
                   <Field
                     label="Parentesco"

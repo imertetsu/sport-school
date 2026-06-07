@@ -20,6 +20,7 @@ from app.api.v1 import (
     reportes,
     solicitudes,
     sucursales,
+    tutores,
 )
 from app.api.v1.webhooks import openbcb as openbcb_webhook
 from app.api.v1.webhooks import whatsapp as whatsapp_webhook
@@ -30,6 +31,7 @@ api_router.include_router(sucursales.router)
 api_router.include_router(catalogo.router)
 api_router.include_router(categorias.router)
 api_router.include_router(deportistas.router)
+api_router.include_router(tutores.router)
 api_router.include_router(cobranza.router)
 api_router.include_router(asistencia.router)
 api_router.include_router(egresos.router)

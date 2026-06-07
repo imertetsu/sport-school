@@ -146,6 +146,7 @@ def list_deportistas(
                 nombre_completo=_nombre_completo(a),
                 ci=a.ci,
                 disciplina=a.disciplina,
+                disciplina_id=a.disciplina_id,
                 categoria=(
                     CategoriaRef(id=cat.id, nombre=cat.nombre, nivel=cat.nivel) if cat else None
                 ),
@@ -154,6 +155,30 @@ def list_deportistas(
         )
 
     return Page(items=items, total=total, page=page, page_size=page_size)
+
+
+# --------------------------------------------------------------------------- #
+# GET /deportistas/por-ci/{ci}  (recuperar-por-CI; S3)
+# --------------------------------------------------------------------------- #
+# IMPORTANTE: declarado ANTES de `/{deportista_id}` para que el path literal
+# `por-ci` no compita con el parámetro UUID del detalle.
+@router.get("/por-ci/{ci}", response_model=DeportistaDetailOut)
+def get_deportista_por_ci(
+    ci: str,
+    user: CurrentUser = Depends(set_tenant_context),
+    db: Session = Depends(get_db),
+) -> DeportistaDetailOut:
+    """Recupera el deportista de la org con ese CI (S3). 404 si no existe.
+
+    Scoped por org vía RLS (no hay chequeo cross-org: un mismo CI en otra org es
+    válido y no se revela). Reusa el armado de `get_deportista` (mismo schema C5).
+    """
+    deportista = deportista_svc.buscar_deportista_por_ci(db, ci)
+    if deportista is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Deportista no encontrado"
+        )
+    return get_deportista(deportista_id=deportista.id, user=user, db=db)
 
 
 # --------------------------------------------------------------------------- #
@@ -235,6 +260,7 @@ def get_deportista(
         fecha_nac=deportista.fecha_nac,
         edad=_calc_edad(deportista.fecha_nac),
         disciplina=deportista.disciplina,
+        disciplina_id=deportista.disciplina_id,
         contacto_emergencia=deportista.contacto_emergencia,
         sucursal=SucursalRef(id=suc.id, nombre=suc.nombre),  # type: ignore[union-attr]
         categoria=(CategoriaRef(id=cat.id, nombre=cat.nombre, nivel=cat.nivel) if cat else None),
@@ -276,8 +302,18 @@ def create_deportista(
     La validación dura (≥1 tutor + consentimiento) la garantiza `DeportistaCreate`
     (Pydantic => 422 si falta). Aquí asumimos el body ya válido. La creación vive
     en `app/services/deportista.py` (reutilizable, p. ej. al aprobar una solicitud).
+
+    Dedup por CI (S3): un `ci` ya existente en la org -> 409 (backstop del índice
+    único parcial; el front usa el lookup proactivo, RNF-06).
     """
-    deportista = deportista_svc.crear_deportista(db, body, org_id=uuid.UUID(user.org_id))
+    try:
+        deportista = deportista_svc.crear_deportista(db, body, org_id=uuid.UUID(user.org_id))
+    except deportista_svc.CIDuplicado as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except deportista_svc.DisciplinaInvalida as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
     return get_deportista(deportista_id=deportista.id, user=user, db=db)
 
 
@@ -291,7 +327,11 @@ def update_deportista(
     user: CurrentUser = Depends(set_tenant_context),
     db: Session = Depends(get_db),
 ) -> DeportistaDetailOut:
-    """Actualiza datos del deportista (no toca tutores en este slice) (C5)."""
+    """Actualiza datos del deportista (no toca tutores en este slice) (C5).
+
+    Un `disciplina_id` que no existe en el catálogo (o inactivo) -> 422 (la validación
+    vive en el servicio; aquí solo se traduce a HTTP).
+    """
     deportista = db.execute(
         select(Deportista).where(Deportista.id == deportista_id)
     ).scalar_one_or_none()
@@ -300,12 +340,10 @@ def update_deportista(
             status_code=status.HTTP_404_NOT_FOUND, detail="Deportista no encontrado"
         )
 
-    data = body.model_dump(exclude_unset=True)
-    if "ficha_medica" in data:
-        fm = data.pop("ficha_medica")
-        deportista.ficha_medica = fm  # ya es dict (model_dump) o None
-    for field_name, value in data.items():
-        setattr(deportista, field_name, value)
-
-    db.flush()
+    try:
+        deportista_svc.actualizar_deportista(db, deportista, body)
+    except deportista_svc.DisciplinaInvalida as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
     return get_deportista(deportista_id=deportista.id, user=user, db=db)
