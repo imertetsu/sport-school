@@ -26,12 +26,14 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import Row, select
+from sqlalchemy import Row, delete, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.security import hash_password
 from app.models.entrenador import Entrenador
+from app.models.entrenador_sucursal import EntrenadorSucursal
 from app.models.usuario import Usuario
 from app.schemas.entrenador import EntrenadorCreate, EntrenadorUpdate
 
@@ -50,6 +52,79 @@ class EntrenadorNoEncontrado(EntrenadorError):
 
 # Fila del join entrenador ⨝ usuario, con el contrato de `EntrenadorOut`.
 EntrenadorRow = Row[tuple[Entrenador, Usuario]]
+
+
+# --------------------------------------------------------------------------- #
+# Asignación M:N a sucursales (epic Recordatorio de deudores, CONTRATO 4)
+# --------------------------------------------------------------------------- #
+def sucursal_ids_de(db: Session, entrenador_id: uuid.UUID) -> list[uuid.UUID]:
+    """`sucursal_id`s asignadas a un entrenador (bajo RLS), orden estable."""
+    return list(
+        db.execute(
+            select(EntrenadorSucursal.sucursal_id)
+            .where(EntrenadorSucursal.entrenador_id == entrenador_id)
+            .order_by(EntrenadorSucursal.sucursal_id)
+        )
+        .scalars()
+        .all()
+    )
+
+
+def sucursal_ids_por_entrenador(
+    db: Session, entrenador_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, list[uuid.UUID]]:
+    """Mapa `entrenador_id -> [sucursal_id]` en UNA query (evita N+1 en el listado).
+
+    Corre bajo el `app.current_org` del caller (RLS). Devuelve solo entrenadores con
+    al menos una sucursal; el router rellena `[]` para los ausentes.
+    """
+    if not entrenador_ids:
+        return {}
+    filas = db.execute(
+        select(EntrenadorSucursal.entrenador_id, EntrenadorSucursal.sucursal_id)
+        .where(EntrenadorSucursal.entrenador_id.in_(entrenador_ids))
+        .order_by(EntrenadorSucursal.entrenador_id, EntrenadorSucursal.sucursal_id)
+    ).all()
+    mapa: dict[uuid.UUID, list[uuid.UUID]] = {}
+    for ent_id, suc_id in filas:
+        mapa.setdefault(ent_id, []).append(suc_id)
+    return mapa
+
+
+def _resolver_sucursales(
+    db: Session,
+    *,
+    org_id: uuid.UUID,
+    entrenador_id: uuid.UUID,
+    deseadas: list[uuid.UUID],
+) -> None:
+    """Reconcilia la asignación M:N al set `deseadas` (REEMPLAZA), bajo RLS, sin commit.
+
+    Borra las sobrantes e inserta las nuevas con `ON CONFLICT DO NOTHING` (idempotente,
+    absorbe duplicados/carreras). RLS garantiza que solo se toquen filas de la org del
+    contexto; un `sucursal_id` de otra org no es visible y el INSERT lo rechaza el
+    `WITH CHECK` (capturado arriba como error de integridad si aplica).
+    """
+    actuales = set(sucursal_ids_de(db, entrenador_id))
+    deseadas_set = set(deseadas)
+
+    sobrantes = actuales - deseadas_set
+    if sobrantes:
+        db.execute(
+            delete(EntrenadorSucursal).where(
+                EntrenadorSucursal.entrenador_id == entrenador_id,
+                EntrenadorSucursal.sucursal_id.in_(sobrantes),
+            )
+        )
+
+    nuevas = deseadas_set - actuales
+    for suc_id in nuevas:
+        db.execute(
+            pg_insert(EntrenadorSucursal)
+            .values(org_id=org_id, entrenador_id=entrenador_id, sucursal_id=suc_id)
+            .on_conflict_do_nothing(index_elements=["entrenador_id", "sucursal_id"])
+        )
+    db.flush()
 
 
 # --------------------------------------------------------------------------- #
@@ -117,10 +192,15 @@ def crear(
         usuario_id=usuario.id,
         nombres=body.nombres,
         especialidad=body.especialidad,
+        telefono=body.telefono,
         disciplinas=body.disciplinas,
     )
     db.add(entrenador)
     db.flush()
+
+    # Asignación M:N a sucursales (CONTRATO 4). En el alta, la lista (vacía o no) es
+    # el set completo a asignar.
+    _resolver_sucursales(db, org_id=org_id, entrenador_id=entrenador.id, deseadas=body.sucursal_ids)
     # NO se hace `db.commit()` aquí: el commit lo hace el llamador (`get_db` al
     # cerrar el request, o el test). Commitear dentro del servicio cerraría la
     # transacción y BORRARÍA el GUC `app.current_org` (es `SET LOCAL`), con lo que
@@ -173,6 +253,8 @@ def editar(
         entrenador.nombres = body.nombres
     if body.especialidad is not None:
         entrenador.especialidad = body.especialidad
+    if body.telefono is not None:
+        entrenador.telefono = body.telefono
     if body.disciplinas is not None:
         entrenador.disciplinas = body.disciplinas
     if body.activo is not None:
@@ -181,6 +263,15 @@ def editar(
         usuario.password_hash = hash_password(body.password)
 
     db.flush()
+
+    # `sucursal_ids` (CONTRATO 4): None = no tocar; [] = limpiar; lista = REEMPLAZA.
+    if body.sucursal_ids is not None:
+        _resolver_sucursales(
+            db,
+            org_id=entrenador.org_id,
+            entrenador_id=entrenador.id,
+            deseadas=body.sucursal_ids,
+        )
     # Sin `db.commit()` aquí (lo hace el llamador): commitear borraría el GUC
     # `app.current_org` y el `_row_por_id` correría sin contexto de tenant
     # (RLS -> 0 filas). Ver nota en `crear`.

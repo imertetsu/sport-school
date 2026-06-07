@@ -1,9 +1,31 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, ApiError } from '@/api/client';
-import type { EntrenadorOut } from '@/api/types';
+import type {
+  EntrenadorOut,
+  EstadoRecordatorioDeudores,
+  RecordatorioDeudoresResult,
+} from '@/api/types';
 import { Badge, Button, Card, DataTable, type Column } from '@/components/ui';
+import { formatMoney } from '@/lib/format';
 import { NuevoEntrenador } from './NuevoEntrenador';
 import './Entrenadores.css';
+
+// Tono del badge por estado del recordatorio (verde=enviado, ámbar=sin deudores,
+// rojo=fallido). Reusa el sistema verde/ámbar/rojo del design-system.
+const ESTADO_RECORDATORIO_TONE: Record<
+  EstadoRecordatorioDeudores,
+  'paid' | 'pending' | 'overdue'
+> = {
+  ENVIADO: 'paid',
+  SIN_DEUDORES: 'pending',
+  FALLIDO: 'overdue',
+};
+
+const ESTADO_RECORDATORIO_LABEL: Record<EstadoRecordatorioDeudores, string> = {
+  ENVIADO: 'Enviado',
+  SIN_DEUDORES: 'Sin deudores',
+  FALLIDO: 'Fallido',
+};
 
 // Pantalla de gestión de entrenadores (Epic B). SOLO ADMIN (la ruta y el item de
 // nav ya están gateados; el backend da 403 a ENTRENADOR en las escrituras).
@@ -21,6 +43,51 @@ export function Entrenadores() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<EntrenadorOut | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+
+  // Recordatorio de deudores: id del entrenador con la request en vuelo (deshabilita
+  // su botón para evitar doble envío), resultado a mostrar y error si falló la red.
+  const [enviandoId, setEnviandoId] = useState<string | null>(null);
+  const [resultado, setResultado] = useState<{
+    entrenador: EntrenadorOut;
+    data: RecordatorioDeudoresResult;
+  } | null>(null);
+  const [resultadoError, setResultadoError] = useState<{
+    entrenador: EntrenadorOut;
+    mensaje: string;
+  } | null>(null);
+
+  // Dispara el digest de deudores del entrenador. El botón queda deshabilitado
+  // mientras la request está en vuelo (no se permite doble envío).
+  const enviarResumen = useCallback(
+    async (entrenador: EntrenadorOut) => {
+      // Evita doble envío: si ya hay una request en vuelo, ignora el clic.
+      let yaEnVuelo = false;
+      setEnviandoId((prev) => {
+        if (prev) yaEnVuelo = true;
+        return entrenador.id;
+      });
+      if (yaEnVuelo) return;
+      setResultado(null);
+      setResultadoError(null);
+      try {
+        const data = await api.enviarRecordatorioDeudores(entrenador.id);
+        setResultado({ entrenador, data });
+      } catch (err) {
+        const mensaje =
+          err instanceof ApiError
+            ? err.status === 404
+              ? 'Ese entrenador ya no existe.'
+              : err.isForbidden
+                ? 'No tienes permiso para enviar el resumen.'
+                : err.message
+            : 'No se pudo conectar con el servidor.';
+        setResultadoError({ entrenador, mensaje });
+      } finally {
+        setEnviandoId(null);
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     const controller = new AbortController();
@@ -120,6 +187,14 @@ export function Entrenadores() {
         align: 'right',
         render: (e) => (
           <div className="entrenadores__acciones">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => enviarResumen(e)}
+              disabled={enviandoId === e.id}
+            >
+              {enviandoId === e.id ? 'Enviando…' : 'Enviar resumen de deudores'}
+            </Button>
             <Button variant="ghost" size="sm" onClick={() => abrirEditar(e)}>
               Editar
             </Button>
@@ -127,7 +202,7 @@ export function Entrenadores() {
         ),
       },
     ],
-    [],
+    [enviandoId, enviarResumen],
   );
 
   return (
@@ -183,6 +258,121 @@ export function Entrenadores() {
           }}
         />
       )}
+
+      {resultadoError && (
+        <div
+          className="entrenadores__modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Error al enviar el resumen de deudores"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setResultadoError(null);
+          }}
+        >
+          <div className="entrenadores__modal">
+            <Card title="No se pudo enviar el resumen">
+              <p className="entrenadores__resumen-sub">
+                Entrenador: {resultadoError.entrenador.nombres}
+              </p>
+              <div className="page-error" role="alert">
+                {resultadoError.mensaje}
+              </div>
+              <div className="entrenadores__modal-actions">
+                <Button variant="primary" onClick={() => setResultadoError(null)}>
+                  Entendido
+                </Button>
+              </div>
+            </Card>
+          </div>
+        </div>
+      )}
+
+      {resultado && (
+        <ResumenDeudores
+          entrenador={resultado.entrenador}
+          data={resultado.data}
+          onClose={() => setResultado(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// Resumen legible del digest de deudores devuelto por el backend: por sucursal,
+// nº de deudores, monto adeudado y estado (Enviado / Sin deudores / Fallido).
+// Si TODAS las sucursales vinieron en FALLIDO con al menos una sucursal asignada,
+// el caso típico es "entrenador sin teléfono" -> aviso claro (CONTRATO 4).
+function ResumenDeudores({
+  entrenador,
+  data,
+  onClose,
+}: {
+  entrenador: EntrenadorOut;
+  data: RecordatorioDeudoresResult;
+  onClose: () => void;
+}) {
+  const sucursales = data.sucursales;
+  const sinTelefono =
+    !entrenador.telefono &&
+    sucursales.length > 0 &&
+    sucursales.every((s) => s.estado === 'FALLIDO');
+
+  return (
+    <div
+      className="entrenadores__modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Resumen de deudores enviado"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="entrenadores__modal">
+        <Card title="Resumen de deudores">
+          <p className="entrenadores__resumen-sub">
+            Entrenador: {entrenador.nombres} · {data.enviados} mensaje
+            {data.enviados === 1 ? '' : 's'} enviado
+            {data.enviados === 1 ? '' : 's'}
+          </p>
+
+          {sinTelefono && (
+            <div className="page-error" role="alert">
+              El entrenador no tiene teléfono registrado. Edítalo para añadir su
+              número de WhatsApp y poder enviarle el resumen.
+            </div>
+          )}
+
+          {sucursales.length === 0 ? (
+            <p className="entrenador-cell__muted">
+              El entrenador no tiene sucursales asignadas. Asígnale al menos una
+              desde «Editar».
+            </p>
+          ) : (
+            <ul className="entrenadores__resumen-list" aria-label="Resumen por sucursal">
+              {sucursales.map((s) => (
+                <li key={s.sucursal_id} className="entrenadores__resumen-item">
+                  <div className="entrenadores__resumen-item-head">
+                    <span className="entrenadores__resumen-suc">{s.sucursal_nombre}</span>
+                    <Badge tone={ESTADO_RECORDATORIO_TONE[s.estado]}>
+                      {ESTADO_RECORDATORIO_LABEL[s.estado]}
+                    </Badge>
+                  </div>
+                  <span className="entrenador-cell__email">
+                    {s.num_deudores} deudor{s.num_deudores === 1 ? '' : 'es'} ·{' '}
+                    <span className="tabular">{formatMoney(s.monto_total)}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <div className="entrenadores__modal-actions">
+            <Button variant="primary" onClick={onClose}>
+              Cerrar
+            </Button>
+          </div>
+        </Card>
+      </div>
     </div>
   );
 }

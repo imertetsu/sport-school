@@ -19,6 +19,7 @@ from app.domain.ports.whatsapp import (
     WhatsAppPort,
     WhatsAppSendResult,
     WhatsAppTemplateMessage,
+    WhatsAppTextMessage,
 )
 
 _TIMEOUT_SECONDS = 15.0
@@ -27,8 +28,8 @@ _TIMEOUT_SECONDS = 15.0
 class MetaCloudWhatsAppAdapter(WhatsAppPort):
     """Cliente de la Cloud API de WhatsApp (Meta Graph)."""
 
-    def send_template(self, msg: WhatsAppTemplateMessage) -> WhatsAppSendResult:
-        """Envía una plantilla vía Graph API. No lanza: reporta vía `ok`/`error`."""
+    def _post(self, body: dict[str, Any]) -> WhatsAppSendResult:
+        """POST `/messages` con `body` ya armado. No lanza: reporta vía `ok`/`error`."""
         url = (
             f"https://graph.facebook.com/{settings.whatsapp_graph_version}"
             f"/{settings.whatsapp_phone_number_id}/messages"
@@ -37,7 +38,34 @@ class MetaCloudWhatsAppAdapter(WhatsAppPort):
             "Authorization": f"Bearer {settings.whatsapp_access_token}",
             "Content-Type": "application/json",
         }
+        try:
+            resp = httpx.post(url, headers=headers, json=body, timeout=_TIMEOUT_SECONDS)
+            resp.raise_for_status()
+            data = resp.json()
+            messages = data.get("messages") or []
+            provider_message_id = messages[0].get("id") if messages else None
+            return WhatsAppSendResult(ok=True, provider_message_id=provider_message_id)
+        except httpx.HTTPStatusError as exc:
+            return WhatsAppSendResult(
+                ok=False,
+                provider_message_id=None,
+                error=f"http {exc.response.status_code}: {exc.response.text}",
+            )
+        except Exception as exc:  # noqa: BLE001 - el puerto reporta el fallo, no lanza
+            return WhatsAppSendResult(ok=False, provider_message_id=None, error=str(exc))
 
+    def send_text(self, msg: WhatsAppTextMessage) -> WhatsAppSendResult:
+        """Envía un mensaje de texto libre vía Graph API (esqueleto; no en tests)."""
+        body: dict[str, Any] = {
+            "messaging_product": "whatsapp",
+            "to": msg.to,
+            "type": "text",
+            "text": {"body": msg.body},
+        }
+        return self._post(body)
+
+    def send_template(self, msg: WhatsAppTemplateMessage) -> WhatsAppSendResult:
+        """Envía una plantilla vía Graph API. No lanza: reporta vía `ok`/`error`."""
         components: list[dict[str, Any]] = []
         if msg.header_image is not None:
             # TODO(epic-whatsapp): para cabecera con imagen, Meta requiere subir el
@@ -65,19 +93,4 @@ class MetaCloudWhatsAppAdapter(WhatsAppPort):
                 "components": components,
             },
         }
-
-        try:
-            resp = httpx.post(url, headers=headers, json=body, timeout=_TIMEOUT_SECONDS)
-            resp.raise_for_status()
-            data = resp.json()
-            messages = data.get("messages") or []
-            provider_message_id = messages[0].get("id") if messages else None
-            return WhatsAppSendResult(ok=True, provider_message_id=provider_message_id)
-        except httpx.HTTPStatusError as exc:
-            return WhatsAppSendResult(
-                ok=False,
-                provider_message_id=None,
-                error=f"http {exc.response.status_code}: {exc.response.text}",
-            )
-        except Exception as exc:  # noqa: BLE001 - el puerto reporta el fallo, no lanza
-            return WhatsAppSendResult(ok=False, provider_message_id=None, error=str(exc))
+        return self._post(body)

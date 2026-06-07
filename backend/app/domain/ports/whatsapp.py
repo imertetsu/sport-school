@@ -48,6 +48,22 @@ class WhatsAppTemplateMessage:
 
 
 @dataclass(frozen=True)
+class WhatsAppTextMessage:
+    """Mensaje de texto libre (sesión de servicio al cliente abierta).
+
+    - `to`: número destino en formato E.164 (sin `+`, según proveedor).
+    - `body`: cuerpo del mensaje (texto plano, puede ser multilínea).
+
+    Se usa para el detalle del digest de deudores (epic Recordatorio de deudores):
+    tras la plantilla pre-aprobada `resumen_deudores`, se envía la lista de morosos
+    como un único texto multilínea.
+    """
+
+    to: str
+    body: str
+
+
+@dataclass(frozen=True)
 class WhatsAppSendResult:
     """Resultado de un envío.
 
@@ -67,4 +83,8 @@ class WhatsAppPort(Protocol):
 
     def send_template(self, msg: WhatsAppTemplateMessage) -> WhatsAppSendResult:
         """Envía `msg` y devuelve el resultado (no lanza; reporta vía `ok`/`error`)."""
+        ...
+
+    def send_text(self, msg: WhatsAppTextMessage) -> WhatsAppSendResult:
+        """Envía un mensaje de texto libre (no lanza; reporta vía `ok`/`error`)."""
         ...

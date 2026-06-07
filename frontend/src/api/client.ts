@@ -37,6 +37,7 @@ import type {
   PagoOut,
   PanelCobranza,
   QrResponse,
+  RecordatorioDeudoresResult,
   RecordatorioOut,
   RegistrarPagoEfectivoBody,
   RegistrarPagoQrBody,
@@ -501,6 +502,20 @@ export const api = {
     signal?: AbortSignal,
   ): Promise<EntrenadorOut> {
     return request<EntrenadorOut>(`/entrenadores/${id}`, { method: 'PUT', body: payload, signal });
+  },
+  // POST /entrenadores/{id}/recordatorio-deudores (ADMIN) -> dispara el digest de
+  // deudores por WhatsApp para TODAS las sucursales asignadas (origen MANUAL),
+  // sin body. Devuelve el resumen por sucursal (nº deudores, monto, estado).
+  // 404 si el entrenador no existe. Entrenador sin teléfono -> 200 con todas las
+  // sucursales en FALLIDO (estado de negocio). El backend impone idempotencia.
+  enviarRecordatorioDeudores(
+    id: string,
+    signal?: AbortSignal,
+  ): Promise<RecordatorioDeudoresResult> {
+    return request<RecordatorioDeudoresResult>(
+      `/entrenadores/${id}/recordatorio-deudores`,
+      { method: 'POST', signal },
+    );
   },
   // ---- Sucursales / Categorías — CRUD (SOLO ADMIN; el backend da 403 a ENTRENADOR) ----
   // El GET de sucursales/categorías ya está arriba (sucursales/categorias).

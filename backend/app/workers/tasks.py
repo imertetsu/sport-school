@@ -30,6 +30,7 @@ from app.core.db import SessionLocal
 from app.models.cuota import Cuota
 from app.models.organizacion import Organizacion
 from app.services import horarios as horarios_svc
+from app.services import recordatorio_deudores as deudores_svc
 from app.services.deps import get_whatsapp_port
 from app.services.generacion import generar_cuotas_org
 from app.services.recordatorios import enviar_recordatorio_cuota
@@ -190,3 +191,50 @@ def recordatorios_clase() -> dict[str, int]:
         total_notificadas,
     )
     return {"orgs": orgs_procesadas, "notificadas": total_notificadas}
+
+
+# --------------------------------------------------------------------------- #
+# Recordatorio de deudores al entrenador (epic Recordatorio de deudores)
+# --------------------------------------------------------------------------- #
+@celery_app.task(name="app.workers.tasks.recordatorio_deudores_semanal")
+def recordatorio_deudores_semanal() -> dict[str, int]:
+    """Cron semanal (lunes 07:00 UTC): digest de deudores a cada entrenador (CONTRATO 5).
+
+    Por cada org ACTIVA fija `app.current_org` (patrón `cobranza_diaria`) y llama a
+    `enviar_digests_org` con `origen='CRON'`. Período = semana ISO (`%G-W%V`, p.ej.
+    `2026-W23`): re-correr el cron la misma semana NO reenvía (INSERT idempotente
+    `ON CONFLICT (entrenador_id, sucursal_id, periodo) DO NOTHING`). El servicio no
+    commitea; el commit lo da esta task.
+    """
+    periodo = datetime.now(UTC).strftime("%G-W%V")
+    db = SessionLocal()
+    total_enviados = 0
+    orgs_procesadas = 0
+    port = get_whatsapp_port()
+    try:
+        # Pausa escuelas SUSPENDIDA (Epic Super Admin): solo orgs ACTIVA.
+        org_ids = (
+            db.execute(select(Organizacion.id).where(Organizacion.estado == "ACTIVA"))
+            .scalars()
+            .all()
+        )
+        for org_id in org_ids:
+            _set_org(db, org_id)
+            total_enviados += deudores_svc.enviar_digests_org(
+                db, org_id=org_id, periodo=periodo, origen="CRON", port=port
+            )
+            orgs_procesadas += 1
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("recordatorio_deudores_semanal falló")
+        raise
+    finally:
+        db.close()
+
+    logger.info(
+        "recordatorio_deudores_semanal OK: orgs=%s enviados=%s",
+        orgs_procesadas,
+        total_enviados,
+    )
+    return {"orgs": orgs_procesadas, "enviados": total_enviados}

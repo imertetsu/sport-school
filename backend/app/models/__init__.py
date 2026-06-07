@@ -19,6 +19,7 @@ from app.models.credito import Credito
 from app.models.cuota import Cuota
 from app.models.egreso import Egreso
 from app.models.entrenador import Entrenador
+from app.models.entrenador_sucursal import EntrenadorSucursal
 from app.models.horario_clase import HorarioClase
 from app.models.inscripcion import Inscripcion
 from app.models.organizacion import Organizacion
@@ -27,6 +28,7 @@ from app.models.pago_cuota import PagoCuota
 from app.models.plataforma_admin import PlataformaAdmin
 from app.models.plataforma_auditoria import PlataformaAuditoria
 from app.models.recibo_contador import ReciboContador
+from app.models.recordatorio_deudores import RecordatorioDeudores
 from app.models.recordatorio_pago import RecordatorioPago
 from app.models.sesion import Sesion
 from app.models.solicitud_registro import SolicitudRegistro
@@ -41,6 +43,7 @@ __all__ = [
     "Sucursal",
     "Categoria",
     "Entrenador",
+    "EntrenadorSucursal",
     "Alumno",
     "Tutor",
     "AlumnoTutor",
@@ -59,6 +62,7 @@ __all__ = [
     "HorarioClase",
     "SolicitudRegistro",
     "RecordatorioPago",
+    "RecordatorioDeudores",
     "PlataformaAdmin",
     "PlataformaAuditoria",
 ]

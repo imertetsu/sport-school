@@ -5,7 +5,9 @@ Registra las tasks de cobranza y agenda:
 - el cron diario `generar_sesiones_programadas` (C3, Programación de clases), que
   genera las sesiones futuras de cada horario (idempotente, reutiliza Asistencia);
 - el cron horario `recordatorios_clase` (C3), recordatorio N horas antes de cada
-  clase (idempotente vía `sesion.recordatorio_enviado_en`).
+  clase (idempotente vía `sesion.recordatorio_enviado_en`);
+- el cron semanal `recordatorio_deudores_semanal` (epic Recordatorio de deudores),
+  lunes 07:00 UTC, digest de deudores a cada entrenador (idempotente por semana ISO).
 """
 
 from __future__ import annotations
@@ -45,6 +47,12 @@ celery_app.conf.beat_schedule = {
     "recordatorios-clase": {
         "task": "app.workers.tasks.recordatorios_clase",
         "schedule": crontab(minute=0),
+    },
+    # Recordatorio de deudores al entrenador: lunes 07:00 UTC, idempotente por semana
+    # ISO (no reenvía si se re-corre la misma semana).
+    "recordatorio-deudores-semanal": {
+        "task": "app.workers.tasks.recordatorio_deudores_semanal",
+        "schedule": crontab(day_of_week=1, hour=7, minute=0),
     },
 }
 

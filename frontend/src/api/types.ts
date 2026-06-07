@@ -840,6 +840,8 @@ export interface SuperAdminActivoOut {
 // --- GET /entrenadores?solo_activos= -> item de lista ---
 // {id, usuario_id, nombres, email, especialidad|null, disciplinas[], activo}.
 // email y activo provienen del usuario ligado (join por entrenador.usuario_id).
+// telefono: E.164 sin "+" (p.ej. "59170000000"), opcional. sucursal_ids: set de
+// sucursales asignadas al entrenador (M:N) que alimenta el digest de deudores.
 export interface EntrenadorOut {
   id: string;
   usuario_id: string;
@@ -848,28 +850,60 @@ export interface EntrenadorOut {
   especialidad: string | null;
   disciplinas: string[];
   activo: boolean;
+  telefono?: string | null;
+  sucursal_ids: string[];
 }
 
 // --- POST /entrenadores (ADMIN) body ---
 // Crea usuario(ENTRENADOR, activo) + entrenador en una transacción.
 // Email ya en uso (en esta org o en otra) -> 409. password < 8 -> 422.
+// telefono: E.164 sin "+" (opcional). sucursal_ids: set de sucursales asignadas.
 export interface EntrenadorCreate {
   nombres: string;
   email: string;
   password: string;
   especialidad?: string | null;
   disciplinas?: string[];
+  telefono?: string | null;
+  sucursal_ids: string[];
 }
 
 // --- PUT /entrenadores/{id} (ADMIN) body (todos opcionales) ---
 // Edita nombres/especialidad/disciplinas y activo (+ password si viene).
 // activo=false da de baja; activo=true reactiva. password < 8 (si viene) -> 422.
+// telefono: E.164 sin "+". sucursal_ids: null = no tocar; [] = limpiar; lista
+// REEMPLAZA el set actual (el backend resuelve el delta).
 export interface EntrenadorUpdate {
   nombres?: string;
   especialidad?: string | null;
   disciplinas?: string[];
   activo?: boolean;
   password?: string;
+  telefono?: string | null;
+  sucursal_ids?: string[] | null;
+}
+
+// --- POST /entrenadores/{id}/recordatorio-deudores (ADMIN) — CONTRATO 4 ---
+// Dispara el digest de deudores por WhatsApp para TODAS las sucursales asignadas
+// al entrenador (origen MANUAL). Sin body. 404 si el entrenador no existe en la
+// org. Entrenador sin teléfono -> 200 con todas las sucursales en FALLIDO (estado
+// de negocio, no error HTTP). El backend impone idempotencia (RNF-07).
+export type EstadoRecordatorioDeudores = 'ENVIADO' | 'SIN_DEUDORES' | 'FALLIDO';
+
+// Resultado por sucursal: nº de deudores, monto adeudado total (Σ saldo) y estado.
+export interface RecordatorioDeudoresSucursalOut {
+  sucursal_id: string;
+  sucursal_nombre: string;
+  num_deudores: number;
+  monto_total: string; // numeric(10,2) serializado como string (Decimal en backend)
+  estado: EstadoRecordatorioDeudores;
+}
+
+export interface RecordatorioDeudoresResult {
+  entrenador_id: string;
+  periodo: string; // MANUAL-<ts> en el disparo a demanda
+  enviados: number; // nº de mensajes/sucursales efectivamente enviados
+  sucursales: RecordatorioDeudoresSucursalOut[];
 }
 
 // ============================================================

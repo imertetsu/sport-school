@@ -14,6 +14,7 @@ frontend-dev tipa contra ellas. `email` y `activo` provienen del `usuario` ligad
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
 
 from pydantic import BaseModel, EmailStr, Field
 
@@ -23,13 +24,18 @@ class EntrenadorCreate(BaseModel):
 
     Crea, en una transacción, el `usuario`(ENTRENADOR, activo) + el perfil
     `entrenador`. `org_id` lo fija el servidor (la org del admin, vía RLS).
+
+    `telefono` (E.164 sin `+`) y `sucursal_ids` (asignación M:N a sucursales)
+    alimentan el recordatorio de deudores (epic Recordatorio de deudores).
     """
 
     nombres: str = Field(min_length=1)
     email: EmailStr
     password: str = Field(min_length=8)
     especialidad: str | None = None
+    telefono: str | None = None
     disciplinas: list[str] = Field(default_factory=list)
+    sucursal_ids: list[uuid.UUID] = Field(default_factory=list)
 
 
 class EntrenadorUpdate(BaseModel):
@@ -38,19 +44,25 @@ class EntrenadorUpdate(BaseModel):
     Edición parcial: solo los campos no-None se aplican. `activo` da de baja
     (`false`) / reactiva (`true`). `password` resetea la clave si viene (min 8).
     El `email` no se edita (es la identidad de login).
+
+    `sucursal_ids` (semántica del CONTRATO 4): `None` = no tocar; `[]` = limpiar el
+    set; lista = **REEMPLAZA** el set de sucursales asignadas.
     """
 
     nombres: str | None = Field(default=None, min_length=1)
     especialidad: str | None = None
+    telefono: str | None = None
     disciplinas: list[str] | None = None
     activo: bool | None = None
     password: str | None = Field(default=None, min_length=8)
+    sucursal_ids: list[uuid.UUID] | None = None
 
 
 class EntrenadorOut(BaseModel):
     """Item de `GET /entrenadores` y respuesta de `POST`/`PUT` (contrato B).
 
     `email`/`activo` provienen del `usuario` ligado (join por `usuario_id`).
+    `telefono` y `sucursal_ids` (asignación M:N) del epic Recordatorio de deudores.
     """
 
     id: uuid.UUID
@@ -58,5 +70,26 @@ class EntrenadorOut(BaseModel):
     nombres: str
     email: str
     especialidad: str | None = None
+    telefono: str | None = None
     disciplinas: list[str]
     activo: bool
+    sucursal_ids: list[uuid.UUID] = Field(default_factory=list)
+
+
+class RecordatorioDeudoresSucursalOut(BaseModel):
+    """Resultado del digest de deudores de UNA sucursal (epic Recordatorio de deudores)."""
+
+    sucursal_id: uuid.UUID
+    sucursal_nombre: str
+    num_deudores: int
+    monto_total: Decimal
+    estado: str  # ENVIADO | FALLIDO | SIN_DEUDORES
+
+
+class RecordatorioDeudoresResult(BaseModel):
+    """Respuesta de `POST /entrenadores/{id}/recordatorio-deudores` (a demanda)."""
+
+    entrenador_id: uuid.UUID
+    periodo: str
+    enviados: int
+    sucursales: list[RecordatorioDeudoresSucursalOut] = Field(default_factory=list)

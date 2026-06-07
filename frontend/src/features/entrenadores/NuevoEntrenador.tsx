@@ -1,9 +1,10 @@
-import { useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useEffect, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { api, ApiError } from '@/api/client';
 import type {
   EntrenadorCreate,
   EntrenadorOut,
   EntrenadorUpdate,
+  Sucursal,
 } from '@/api/types';
 import { Button, Card, Field } from '@/components/ui';
 
@@ -25,14 +26,46 @@ export function NuevoEntrenador({ entrenador, onClose, onSaved }: NuevoEntrenado
   const [email, setEmail] = useState(entrenador?.email ?? '');
   const [password, setPassword] = useState('');
   const [especialidad, setEspecialidad] = useState(entrenador?.especialidad ?? '');
+  const [telefono, setTelefono] = useState(entrenador?.telefono ?? '');
   const [disciplinas, setDisciplinas] = useState<string[]>(entrenador?.disciplinas ?? []);
   const [disciplinaInput, setDisciplinaInput] = useState('');
+  // Sucursales asignadas (M:N). Al editar precarga las actuales del entrenador.
+  const [sucursalIds, setSucursalIds] = useState<string[]>(entrenador?.sucursal_ids ?? []);
   // Solo relevante en edición: toggle de baja/reactivación.
   const [activo, setActivo] = useState(entrenador?.activo ?? true);
+
+  // Catálogo de sucursales para el multiselect (reusa GET /sucursales).
+  const [sucursales, setSucursales] = useState<Sucursal[]>([]);
+  const [sucursalesError, setSucursalesError] = useState<string | null>(null);
 
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+    api
+      .sucursales(controller.signal)
+      .then((data) => {
+        if (active) setSucursales(data);
+      })
+      .catch((err) => {
+        if (!active) return;
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        setSucursalesError('No se pudieron cargar las sucursales.');
+      });
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, []);
+
+  function toggleSucursal(id: string) {
+    setSucursalIds((prev) =>
+      prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id],
+    );
+  }
 
   // Añade el texto actual como una disciplina (sin duplicados, recortado).
   function addDisciplina() {
@@ -109,6 +142,9 @@ export function NuevoEntrenador({ entrenador, onClose, onSaved }: NuevoEntrenado
           especialidad: especialidad.trim() || null,
           disciplinas: discFinal,
           activo,
+          telefono: telefono.trim() || null,
+          // Lista = REEMPLAZA el set actual (el backend resuelve el delta).
+          sucursal_ids: sucursalIds,
         };
         // Solo enviamos la contraseña si el admin escribió una nueva.
         if (password) payload.password = password;
@@ -120,6 +156,8 @@ export function NuevoEntrenador({ entrenador, onClose, onSaved }: NuevoEntrenado
           password,
           especialidad: especialidad.trim() || null,
           disciplinas: discFinal,
+          telefono: telefono.trim() || null,
+          sucursal_ids: sucursalIds,
         };
         saved = await api.createEntrenador(payload);
       }
@@ -204,6 +242,17 @@ export function NuevoEntrenador({ entrenador, onClose, onSaved }: NuevoEntrenado
               placeholder="Opcional"
             />
 
+            <Field
+              label="Teléfono (WhatsApp)"
+              type="tel"
+              inputMode="numeric"
+              value={telefono}
+              onChange={(e) => setTelefono(e.target.value)}
+              error={fieldErrors.telefono}
+              placeholder="59170000000"
+              hint="Formato internacional sin «+» (código de país + número). Opcional."
+            />
+
             <div className="field">
               <label className="field__label" htmlFor="entrenador-disciplina">
                 Disciplinas
@@ -245,6 +294,39 @@ export function NuevoEntrenador({ entrenador, onClose, onSaved }: NuevoEntrenado
                 </ul>
               )}
             </div>
+
+            <fieldset className="entrenadores__sucursales">
+              <legend className="field__label">Sucursales asignadas</legend>
+              <p className="field__hint">
+                Marca las sucursales donde trabaja. Alimentan el resumen de
+                deudores que se le envía por WhatsApp.
+              </p>
+              {sucursalesError && (
+                <p className="field__error" role="alert">
+                  {sucursalesError}
+                </p>
+              )}
+              {sucursales.length === 0 && !sucursalesError ? (
+                <p className="entrenador-cell__muted">
+                  No hay sucursales registradas todavía.
+                </p>
+              ) : (
+                <ul className="entrenadores__sucursales-list">
+                  {sucursales.map((s) => (
+                    <li key={s.id}>
+                      <label className="entrenadores__toggle">
+                        <input
+                          type="checkbox"
+                          checked={sucursalIds.includes(s.id)}
+                          onChange={() => toggleSucursal(s.id)}
+                        />
+                        {s.nombre}
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </fieldset>
 
             {editar && (
               <label className="entrenadores__toggle">

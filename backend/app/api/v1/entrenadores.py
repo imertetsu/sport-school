@@ -14,8 +14,10 @@ servicio caza el `IntegrityError` global del GOTCHA de RLS); inexistente -> 404.
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import select
 from sqlalchemy.engine import Row
 from sqlalchemy.orm import Session
 
@@ -23,14 +25,28 @@ from app.core.db import get_db
 from app.core.tenant import CurrentUser, require_role, set_tenant_context
 from app.models.entrenador import Entrenador
 from app.models.usuario import Usuario
-from app.schemas.entrenador import EntrenadorCreate, EntrenadorOut, EntrenadorUpdate
+from app.schemas.entrenador import (
+    EntrenadorCreate,
+    EntrenadorOut,
+    EntrenadorUpdate,
+    RecordatorioDeudoresResult,
+    RecordatorioDeudoresSucursalOut,
+)
 from app.services import entrenador as svc
+from app.services import recordatorio_deudores as deudores_svc
+from app.services.deps import get_whatsapp_port
 
 router = APIRouter(prefix="/entrenadores", tags=["entrenadores"])
 
 
-def _to_out(row: Row[tuple[Entrenador, Usuario]]) -> EntrenadorOut:
-    """Mapea una fila `(Entrenador, Usuario)` del join a `EntrenadorOut`."""
+def _to_out(
+    row: Row[tuple[Entrenador, Usuario]],
+    sucursal_ids: list[uuid.UUID] | None = None,
+) -> EntrenadorOut:
+    """Mapea una fila `(Entrenador, Usuario)` del join a `EntrenadorOut`.
+
+    `sucursal_ids` se pasa ya resuelto (query agregada, sin N+1) por el caller.
+    """
     entrenador, usuario = row
     return EntrenadorOut(
         id=entrenador.id,
@@ -38,8 +54,10 @@ def _to_out(row: Row[tuple[Entrenador, Usuario]]) -> EntrenadorOut:
         nombres=entrenador.nombres,
         email=usuario.email,
         especialidad=entrenador.especialidad,
+        telefono=entrenador.telefono,
         disciplinas=entrenador.disciplinas,
         activo=usuario.activo,
+        sucursal_ids=sucursal_ids or [],
     )
 
 
@@ -56,7 +74,10 @@ def listar_entrenadores(
 
     `?solo_activos=true` excluye los dados de baja (`usuario.activo=false`).
     """
-    return [_to_out(row) for row in svc.listar(db, solo_activos=solo_activos)]
+    filas = svc.listar(db, solo_activos=solo_activos)
+    # Una sola query para todas las sucursales (evita N+1 al poblar `sucursal_ids`).
+    mapa = svc.sucursal_ids_por_entrenador(db, [row[0].id for row in filas])
+    return [_to_out(row, mapa.get(row[0].id, [])) for row in filas]
 
 
 # --------------------------------------------------------------------------- #
@@ -76,7 +97,7 @@ def crear_entrenador(
         row = svc.crear(db, body, org_id=uuid.UUID(user.org_id))
     except svc.EmailEnUso as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    return _to_out(row)
+    return _to_out(row, svc.sucursal_ids_de(db, row[0].id))
 
 
 # --------------------------------------------------------------------------- #
@@ -99,4 +120,59 @@ def editar_entrenador(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except svc.EmailEnUso as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    return _to_out(row)
+    return _to_out(row, svc.sucursal_ids_de(db, row[0].id))
+
+
+# --------------------------------------------------------------------------- #
+# POST /entrenadores/{id}/recordatorio-deudores  (SOLO ADMIN, a demanda)
+# --------------------------------------------------------------------------- #
+@router.post(
+    "/{entrenador_id}/recordatorio-deudores",
+    response_model=RecordatorioDeudoresResult,
+)
+def enviar_recordatorio_deudores(
+    entrenador_id: uuid.UUID,
+    user: CurrentUser = Depends(require_role("ADMIN")),
+    db: Session = Depends(get_db),
+) -> RecordatorioDeudoresResult:
+    """Envía a demanda el digest de deudores del entrenador (todas sus sucursales).
+
+    `origen='MANUAL'`, período único por disparo (`MANUAL-<ts>`): no colisiona con el
+    cron y permite reenvío intencional. 404 si el entrenador no existe en la org.
+    Entrenador sin teléfono ⇒ **200** con todas las sucursales `estado='FALLIDO'`
+    (estado de negocio, no error HTTP). Commitea la transacción (el servicio no).
+    """
+    entrenador = db.execute(
+        select(Entrenador).where(Entrenador.id == entrenador_id)
+    ).scalar_one_or_none()
+    if entrenador is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Entrenador no encontrado"
+        )
+
+    periodo = "MANUAL-" + datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
+    resultados = deudores_svc.enviar_digest_entrenador(
+        db,
+        org_id=uuid.UUID(user.org_id),
+        entrenador=entrenador,
+        periodo=periodo,
+        origen="MANUAL",
+        port=get_whatsapp_port(),
+    )
+    db.commit()
+
+    return RecordatorioDeudoresResult(
+        entrenador_id=entrenador_id,
+        periodo=periodo,
+        enviados=sum(1 for r in resultados if r.enviado_ahora),
+        sucursales=[
+            RecordatorioDeudoresSucursalOut(
+                sucursal_id=r.sucursal_id,
+                sucursal_nombre=r.sucursal_nombre,
+                num_deudores=r.num_deudores,
+                monto_total=r.monto_total,
+                estado=r.estado,
+            )
+            for r in resultados
+        ],
+    )

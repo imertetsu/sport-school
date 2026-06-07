@@ -4,7 +4,7 @@
 > cada epic**. Máx ~150 líneas; poda lo viejo. Esto NO es un changelog — es un snapshot
 > de "cómo está el mundo hoy".
 
-_Última actualización: 2026-06-07 — integrados en `main` **3 epics nuevos en paralelo**: **Super Admin** (consola de plataforma/onboarding), **Gestión de Entrenadores** y **Sucursales/Categorías CRUD + Recibo por WhatsApp**. Migraciones **0001→0013**. Verificado: 215 tests + gates + frontend build, todo verde._
+_Última actualización: 2026-06-07 — epic **Recordatorio de deudores al entrenador** integrado en `main` (migración **0014**): asignación entrenador↔sucursales (M:N) + teléfono y digest semanal de morosos por WhatsApp (cron lunes + botón a demanda). Migraciones **0001→0014**. Verificado: **214 tests** (BD real) + gates + frontend build, todo verde. (También: bugfix UI — se retiró el toggle de rol del prototipo que dejaba a un ENTRENADOR verse como ADMIN.)_
 
 ## Stack snapshot
 
@@ -66,9 +66,17 @@ tenant), **ADMIN** (escuela/org), **ENTRENADOR**. (Tutor = passwordless, fase 2;
     por WhatsApp tras confirmar el pago (efectivo+QR): **enlace tokenizado HMAC stateless**
     `GET /api/v1/recibos/{org_id}/{pago_id}/{token}.pdf` (sin guardar token; reusa el `WhatsAppPort`, mock-first).
     Pantalla **Sucursales/Categorías** (ADMIN).
+15. **Recordatorio de deudores al entrenador** (**migración 0014**): asignación **M:N** `entrenador_sucursal` (+RLS)
+    y `entrenador.telefono`; tabla `recordatorio_deudores` (idempotencia por `(entrenador,sucursal,periodo)`). El
+    entrenador recibe por WhatsApp el **digest de morosos** (alumno con ≥1 cuota `VENCIDO`) de cada sucursal donde
+    trabaja: **plantilla resumen + `send_text` con el detalle** (nuevo método del `WhatsAppPort`). **Cron semanal**
+    lunes 07:00 UTC (período `%G-W%V`) **+ botón a demanda** (`POST /entrenadores/{id}/recordatorio-deudores`, ADMIN,
+    período `MANUAL-<ts>` que no colisiona con el cron). **Alcance acotado:** NO toca el JWT `sucursal_ids` ni el RLS
+    de otras tablas. CRUD de Entrenadores extendido (teléfono + multiselect de sucursales + botón en la pantalla).
 
-**Migraciones:** `0001→0013` (Egresos=0005, Muro=0006, Horarios=0007, Auto-registro=0008, Abonos=0009,
-Recibo=0010, WhatsApp/recordatorio_pago=0011, **SuperAdmin=0012**, **Entrenadores=0013**; Reportes y Sucursales/Recibo sin migración).
+**Migraciones:** `0001→0014` (Egresos=0005, Muro=0006, Horarios=0007, Auto-registro=0008, Abonos=0009,
+Recibo=0010, WhatsApp/recordatorio_pago=0011, **SuperAdmin=0012**, **Entrenadores=0013**, **Deudores/recordatorio_deudores=0014**;
+Reportes y Sucursales/Recibo sin migración).
 
 Próximos candidatos: resto de **Fase 2** (portal passwordless OTP/WhatsApp, **chatbot WhatsApp entrante**,
 factura SIN, **OpenBCB real** con onboarding BCB; credenciales reales de Meta + plantillas aprobadas para
@@ -122,14 +130,26 @@ cd frontend && VITE_API_URL=http://localhost:8010 npm run dev -- --port 5180 --s
 
 ## In-flight work
 
-Nada en vuelo. Los 3 epics (Super Admin, Entrenadores, Sucursales/Recibo) están **integrados en `main`** y sus
-specs efímeras + el `docs/plan-paralelo.md` se borraron en este cierre. Gateo por rol unificado: `nav.ts` usa
+Nada en vuelo. El epic **Recordatorio de deudores al entrenador** está **integrado en `main`** y su spec efímera
+(`docs/specs/deudores-entrenador.md`) se borró en este cierre. Gateo por rol unificado: `nav.ts` usa
 `roles?: Role[]` + `navGroupsForRole`; rutas solo-ADMIN usan `RoleRoute allow={['ADMIN']}`. La consola super
 admin usa **sesión/token separados** en `/plataforma`. Remoto `imertetsu/sport-school` (push vía
 `http.sslBackend=schannel` por el proxy TLS). Al abrir el próximo epic, `product-owner` crea `docs/specs/<epic>.md`.
 
 ## Recent decisions
 
+- **2026-06-07 Recordatorio de deudores al entrenador.** `entrenador_sucursal` (M:N, RLS) + `entrenador.telefono`;
+  deudor = alumno con ≥1 `cuota.estado='VENCIDO'` (NO se reimplementa la lógica de vencimiento; la mantiene
+  `cobranza_diaria`); ruta de joins `cuota→inscripcion→alumno.sucursal_id` (**FK directa**, sin categoría); saldo =
+  `SUM(monto - monto_pagado)`. WhatsApp en **2 mensajes**: plantilla `resumen_deudores` (resumen+conteo, inicia la
+  conversación) + nuevo `WhatsAppPort.send_text` (detalle multilínea; texto libre no cabe en params de plantilla
+  Meta). Idempotencia `recordatorio_deudores` `UNIQUE(entrenador,sucursal,periodo)`: cron usa **semana ISO**
+  (`%G-W%V`), botón usa `MANUAL-<ts>` → no colisionan y el botón permite reenvío intencional. **Alcance acotado**
+  (decisión de producto): la asignación SOLO alimenta el recordatorio; no cambia la vista del entrenador.
+- **2026-06-07 Bugfix UI: rol real, sin toggle de prototipo.** El chip de usuario alternaba `viewRole`
+  ADMIN⇄ENTRENADOR para cualquiera (exponía ítems solo-ADMIN a un ENTRENADOR). Ahora `viewRole = user.role`
+  (no modificable), el chip es estático y `RoleRoute` gatea sobre el **rol real**. El backend ya bloqueaba los datos
+  (`require_role`); esto cierra la fuga de UI.
 - **2026-06-07 Tres epics en PARALELO (3 sesiones).** Super Admin, Entrenadores y Sucursales/Recibo se
   construyeron simultáneamente en **worktrees + ramas + stacks docker aislados** según un plan de coordinación
   (`docs/plan-paralelo.md`, ya borrado). Main los integró en orden **A→B→C** resolviendo los **appends compartidos**

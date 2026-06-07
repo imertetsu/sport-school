@@ -20,6 +20,9 @@ class Entrenador(UUIDPkMixin, OrgScoped, TimestampMixin, Base):
     )
     nombres: Mapped[str] = mapped_column(String, nullable=False)
     especialidad: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Teléfono E.164 sin `+` (epic Recordatorio de deudores): destino del digest de
+    # deudores por WhatsApp. Validación de forma en Pydantic.
+    telefono: Mapped[str | None] = mapped_column(String, nullable=True)
     disciplinas: Mapped[list[str]] = mapped_column(
         JSONB, nullable=False, server_default=text("'[]'::jsonb")
     )
