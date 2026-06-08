@@ -302,3 +302,182 @@ def test_crear_y_actualizar_campos_opcionales() -> None:
     upd_json = upd.json()
     assert upd_json["domicilio"] == "Av. Nueva 456"
     assert upd_json["lugar_nacimiento"] == "La Paz, Bolivia"
+
+
+# --------------------------------------------------------------------------- #
+# Baja / Reactivar (soft-delete, C4) — requiere BD + seed
+# --------------------------------------------------------------------------- #
+def _crear_deportista_basico(client, headers) -> str:
+    """Crea un deportista mínimo (1 tutor + consentimiento) y devuelve su id."""
+    import uuid as _uuid
+
+    suc = client.get("/api/v1/sucursales", headers=headers).json()
+    if not suc:
+        pytest.skip("No hay sucursales; ¿seed ejecutado?")
+    sucursal_id = suc[0]["id"]
+    ci = f"CI-BAJA-{_uuid.uuid4().hex[:10]}"
+    resp = client.post(
+        "/api/v1/deportistas",
+        headers=headers,
+        json={
+            "sucursal_id": sucursal_id,
+            "nombres": "Baja Test",
+            "ci": ci,
+            "tutores": [{"nombres": "Tutor Baja", "telefono": "777"}],
+            "consentimiento": {"version_terminos": "v1", "canal": "PRESENCIAL"},
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()["id"]
+
+
+@pytest.mark.db
+def test_baja_oculta_de_solo_activos_pero_accesible_por_id() -> None:
+    """Dar de baja pone `activo=false`; el deportista desaparece de
+    `?solo_activos=true` pero sigue accesible por id (con `activo=false`).
+    Reactivar lo restaura (vuelve a aparecer en `?solo_activos=true`)."""
+    client = _client_or_skip()
+    token = _login_admin(client)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    deportista_id = _crear_deportista_basico(client, headers)
+
+    # Arranca activo.
+    detalle = client.get(f"/api/v1/deportistas/{deportista_id}", headers=headers).json()
+    assert detalle["activo"] is True
+
+    # Aparece en la lista de solo activos.
+    def _en_solo_activos() -> bool:
+        lista = client.get(
+            "/api/v1/deportistas?solo_activos=true&page_size=100", headers=headers
+        ).json()
+        return any(it["id"] == deportista_id for it in lista["items"])
+
+    assert _en_solo_activos() is True
+
+    # Baja -> activo=false, devuelve el detalle actualizado.
+    resp = client.post(f"/api/v1/deportistas/{deportista_id}/baja", headers=headers)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["activo"] is False
+
+    # Desaparece de solo_activos...
+    assert _en_solo_activos() is False
+    # ...pero por defecto (solo_activos=false) sigue listado.
+    lista_todos = client.get("/api/v1/deportistas?page_size=100", headers=headers).json()
+    assert any(it["id"] == deportista_id for it in lista_todos["items"])
+    # ...y sigue accesible por id, con activo=false.
+    detalle_baja = client.get(f"/api/v1/deportistas/{deportista_id}", headers=headers)
+    assert detalle_baja.status_code == 200
+    assert detalle_baja.json()["activo"] is False
+
+    # Reactivar -> activo=true, vuelve a solo_activos.
+    resp = client.post(f"/api/v1/deportistas/{deportista_id}/reactivar", headers=headers)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["activo"] is True
+    assert _en_solo_activos() is True
+
+
+@pytest.mark.db
+def test_baja_es_idempotente() -> None:
+    """Dar de baja a alguien ya inactivo NO es error (idempotente). Idem reactivar."""
+    client = _client_or_skip()
+    token = _login_admin(client)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    deportista_id = _crear_deportista_basico(client, headers)
+
+    primera = client.post(f"/api/v1/deportistas/{deportista_id}/baja", headers=headers)
+    assert primera.status_code == 200
+    assert primera.json()["activo"] is False
+    # Repetir la baja: sigue 200, sigue inactivo (sin error).
+    segunda = client.post(f"/api/v1/deportistas/{deportista_id}/baja", headers=headers)
+    assert segunda.status_code == 200
+    assert segunda.json()["activo"] is False
+
+    # Reactivar dos veces también es idempotente.
+    r1 = client.post(f"/api/v1/deportistas/{deportista_id}/reactivar", headers=headers)
+    assert r1.status_code == 200 and r1.json()["activo"] is True
+    r2 = client.post(f"/api/v1/deportistas/{deportista_id}/reactivar", headers=headers)
+    assert r2.status_code == 200 and r2.json()["activo"] is True
+
+
+@pytest.mark.db
+def test_baja_404_si_no_existe() -> None:
+    """Baja/reactivar de un id inexistente en la org -> 404."""
+    import uuid as _uuid
+
+    client = _client_or_skip()
+    token = _login_admin(client)
+    headers = {"Authorization": f"Bearer {token}"}
+    fantasma = str(_uuid.uuid4())
+
+    assert client.post(f"/api/v1/deportistas/{fantasma}/baja", headers=headers).status_code == 404
+    assert (
+        client.post(f"/api/v1/deportistas/{fantasma}/reactivar", headers=headers).status_code == 404
+    )
+
+
+@pytest.mark.db
+def test_baja_reactivar_solo_admin_entrenador_403() -> None:
+    """ENTRENADOR -> 403 en baja y reactivar (escritura SOLO ADMIN, C4)."""
+    client = _client_or_skip()
+    admin_token = _login_admin(client)
+    admin_headers = {"Authorization": f"Bearer {admin_token}"}
+
+    deportista_id = _crear_deportista_basico(client, admin_headers)
+
+    coach = client.post(
+        "/api/v1/auth/login",
+        json={"email": "coach@latinosport.bo", "password": "coach1234"},
+    )
+    if coach.status_code != 200:
+        pytest.skip("Entrenador no sembrado")
+    coach_headers = {"Authorization": f"Bearer {coach.json()['access_token']}"}
+
+    assert (
+        client.post(f"/api/v1/deportistas/{deportista_id}/baja", headers=coach_headers).status_code
+        == 403
+    )
+    assert (
+        client.post(
+            f"/api/v1/deportistas/{deportista_id}/reactivar", headers=coach_headers
+        ).status_code
+        == 403
+    )
+    # El deportista sigue activo (el coach no pudo tocarlo).
+    detalle = client.get(f"/api/v1/deportistas/{deportista_id}", headers=admin_headers).json()
+    assert detalle["activo"] is True
+
+
+@pytest.mark.db
+def test_baja_conserva_historial_tutores_y_cuotas() -> None:
+    """La baja es soft-delete: conserva tutores y cuotas (historial). Nunca borra."""
+    client = _client_or_skip()
+    token = _login_admin(client)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    deportista_id = _crear_deportista_basico(client, headers)
+
+    # Genera cuotas de la org (idempotente) para tener historial asociado.
+    client.post("/api/v1/cobranza/generar", headers=headers)
+
+    antes = client.get(f"/api/v1/deportistas/{deportista_id}", headers=headers).json()
+    tutores_antes = len(antes["tutores"])
+    assert tutores_antes >= 1
+    cuotas_antes = client.get(
+        f"/api/v1/cobranza/cuotas?deportista_id={deportista_id}&page_size=100",
+        headers=headers,
+    ).json()["total"]
+
+    # Baja.
+    resp = client.post(f"/api/v1/deportistas/{deportista_id}/baja", headers=headers)
+    assert resp.status_code == 200 and resp.json()["activo"] is False
+
+    # Tutores y cuotas se conservan tras la baja (mismo conteo, nada borrado).
+    despues = client.get(f"/api/v1/deportistas/{deportista_id}", headers=headers).json()
+    assert len(despues["tutores"]) == tutores_antes
+    cuotas_despues = client.get(
+        f"/api/v1/cobranza/cuotas?deportista_id={deportista_id}&page_size=100",
+        headers=headers,
+    ).json()["total"]
+    assert cuotas_despues == cuotas_antes

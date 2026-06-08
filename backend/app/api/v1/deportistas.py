@@ -19,7 +19,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
-from app.core.tenant import CurrentUser, set_tenant_context
+from app.core.tenant import CurrentUser, require_role, set_tenant_context
 from app.models.categoria import Categoria
 from app.models.consentimiento import Consentimiento
 from app.models.deportista import Deportista
@@ -82,6 +82,7 @@ def _puede_ver_ficha(user: CurrentUser, deportista: Deportista) -> bool:
 def list_deportistas(
     q: str | None = Query(default=None),
     sucursal_id: uuid.UUID | None = Query(default=None),
+    solo_activos: bool = Query(default=False),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     user: CurrentUser = Depends(set_tenant_context),
@@ -95,10 +96,16 @@ def list_deportistas(
     asignadas, NO se filtra por disciplina (cae al comportamiento por sucursal de
     antes; ve lo de su org/sucursales, no vacío). ADMIN ve todo. El filtro por
     disciplina es **aditivo** sobre el existente de sucursal.
+
+    `?solo_activos=true` excluye a los dados de baja (`activo=false`); por defecto
+    (`false`) muestra TODOS (espejo exacto de `/entrenadores`). El filtro es
+    **aditivo** sobre el scoping de sucursal y disciplina.
     """
     base = select(Deportista)
     if sucursal_id is not None:
         base = base.where(Deportista.sucursal_id == sucursal_id)
+    if solo_activos:
+        base = base.where(Deportista.activo.is_(True))
 
     # Scoping por disciplina para no-ADMIN (red de seguridad):
     #   - disc_ids vacío -> sin filtro de disciplina (ve por sucursal, no vacío).
@@ -388,4 +395,58 @@ def update_deportista(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
         ) from exc
+    return get_deportista(deportista_id=deportista.id, user=user, db=db)
+
+
+# --------------------------------------------------------------------------- #
+# POST /deportistas/{id}/baja  (soft-delete, SOLO ADMIN)
+# --------------------------------------------------------------------------- #
+@router.post("/{deportista_id}/baja", response_model=DeportistaDetailOut)
+def baja_deportista(
+    deportista_id: uuid.UUID,
+    user: CurrentUser = Depends(require_role("ADMIN")),
+    db: Session = Depends(get_db),
+) -> DeportistaDetailOut:
+    """Da de baja al deportista (soft-delete): setea `activo=False` (C4).
+
+    **Nunca** un DELETE físico: solo cambia el flag, conservando todo el historial
+    (pagos, asistencia, tutores). Idempotente: dar de baja a alguien ya inactivo
+    no es error. 404 si el deportista no existe en la org (RLS). El commit lo hace
+    `get_db` al cerrar la request.
+    """
+    deportista = db.execute(
+        select(Deportista).where(Deportista.id == deportista_id)
+    ).scalar_one_or_none()
+    if deportista is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Deportista no encontrado"
+        )
+    deportista.activo = False
+    db.flush()
+    return get_deportista(deportista_id=deportista.id, user=user, db=db)
+
+
+# --------------------------------------------------------------------------- #
+# POST /deportistas/{id}/reactivar  (revierte la baja, SOLO ADMIN)
+# --------------------------------------------------------------------------- #
+@router.post("/{deportista_id}/reactivar", response_model=DeportistaDetailOut)
+def reactivar_deportista(
+    deportista_id: uuid.UUID,
+    user: CurrentUser = Depends(require_role("ADMIN")),
+    db: Session = Depends(get_db),
+) -> DeportistaDetailOut:
+    """Reactiva al deportista dado de baja: setea `activo=True` (C4).
+
+    Reversible (espejo de `baja_deportista`). Idempotente: reactivar a alguien ya
+    activo no es error. 404 si el deportista no existe en la org (RLS).
+    """
+    deportista = db.execute(
+        select(Deportista).where(Deportista.id == deportista_id)
+    ).scalar_one_or_none()
+    if deportista is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Deportista no encontrado"
+        )
+    deportista.activo = True
+    db.flush()
     return get_deportista(deportista_id=deportista.id, user=user, db=db)

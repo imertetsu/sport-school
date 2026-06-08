@@ -44,6 +44,13 @@ export function Entrenadores() {
   const [editing, setEditing] = useState<EntrenadorOut | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
+  // Baja/reactivación directa desde la fila (epic escuela-y-bajas, Fase 2):
+  // entrenador a confirmar, request en vuelo (deshabilita el botón) y error de
+  // la acción. Reusa el contrato existente (PUT /entrenadores/{id} con activo).
+  const [confirmandoBaja, setConfirmandoBaja] = useState<EntrenadorOut | null>(null);
+  const [bajaEnVuelo, setBajaEnVuelo] = useState(false);
+  const [bajaError, setBajaError] = useState<string | null>(null);
+
   // Recordatorio de deudores: id del entrenador con la request en vuelo (deshabilita
   // su botón para evitar doble envío), resultado a mostrar y error si falló la red.
   const [enviandoId, setEnviandoId] = useState<string | null>(null);
@@ -88,6 +95,30 @@ export function Entrenadores() {
     },
     [],
   );
+
+  // Da de baja / reactiva (soft-delete reversible) vía el contrato existente
+  // (PUT /entrenadores/{id} con activo). Tras confirmar, recarga la lista.
+  async function ejecutarBajaReactivar(entrenador: EntrenadorOut) {
+    setBajaEnVuelo(true);
+    setBajaError(null);
+    try {
+      await api.updateEntrenador(entrenador.id, { activo: !entrenador.activo });
+      setConfirmandoBaja(null);
+      recargar();
+    } catch (err) {
+      const mensaje =
+        err instanceof ApiError
+          ? err.status === 404
+            ? 'Ese entrenador ya no existe.'
+            : err.isForbidden
+              ? 'No tienes permiso para esta acción.'
+              : err.message
+          : 'No se pudo conectar con el servidor.';
+      setBajaError(mensaje);
+    } finally {
+      setBajaEnVuelo(false);
+    }
+  }
 
   useEffect(() => {
     const controller = new AbortController();
@@ -198,6 +229,18 @@ export function Entrenadores() {
             <Button variant="ghost" size="sm" onClick={() => abrirEditar(e)}>
               Editar
             </Button>
+            {/* Baja/Reactivación DIRECTA (fuera del modal Editar), con
+                confirmación. Soft-delete reversible (epic escuela-y-bajas). */}
+            <Button
+              variant={e.activo ? 'danger' : 'primary'}
+              size="sm"
+              onClick={() => {
+                setBajaError(null);
+                setConfirmandoBaja(e);
+              }}
+            >
+              {e.activo ? 'Dar de baja' : 'Reactivar'}
+            </Button>
           </div>
         ),
       },
@@ -257,6 +300,69 @@ export function Entrenadores() {
             recargar();
           }}
         />
+      )}
+
+      {confirmandoBaja && (
+        <div
+          className="entrenadores__modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label={
+            confirmandoBaja.activo
+              ? 'Confirmar baja del entrenador'
+              : 'Confirmar reactivación del entrenador'
+          }
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !bajaEnVuelo) setConfirmandoBaja(null);
+          }}
+        >
+          <div className="entrenadores__modal">
+            <Card
+              title={confirmandoBaja.activo ? 'Dar de baja' : 'Reactivar entrenador'}
+            >
+              <p className="entrenadores__resumen-sub">
+                {confirmandoBaja.activo ? (
+                  <>
+                    ¿Seguro que quieres dar de baja a{' '}
+                    <strong>{confirmandoBaja.nombres}</strong>? Perderá el acceso
+                    al sistema, pero se conserva su registro y puedes reactivarlo
+                    cuando quieras.
+                  </>
+                ) : (
+                  <>
+                    ¿Reactivar a <strong>{confirmandoBaja.nombres}</strong>? Volverá
+                    a poder iniciar sesión y aparecer en los listados activos.
+                  </>
+                )}
+              </p>
+              {bajaError && (
+                <div className="page-error" role="alert">
+                  {bajaError}
+                </div>
+              )}
+              <div className="entrenadores__modal-actions">
+                <Button
+                  variant="secondary"
+                  onClick={() => setConfirmandoBaja(null)}
+                  disabled={bajaEnVuelo}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  variant={confirmandoBaja.activo ? 'danger' : 'primary'}
+                  onClick={() => ejecutarBajaReactivar(confirmandoBaja)}
+                  disabled={bajaEnVuelo}
+                >
+                  {bajaEnVuelo
+                    ? 'Procesando…'
+                    : confirmandoBaja.activo
+                      ? 'Sí, dar de baja'
+                      : 'Sí, reactivar'}
+                </Button>
+              </div>
+            </Card>
+          </div>
+        </div>
       )}
 
       {resultadoError && (

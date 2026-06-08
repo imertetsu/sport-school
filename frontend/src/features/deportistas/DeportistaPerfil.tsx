@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api, ApiError } from '@/api/client';
+import { useAuth } from '@/auth/useAuth';
 import type { DeportistaDetail } from '@/api/types';
-import { Avatar, Badge, Card, Tabs, type TabItem } from '@/components/ui';
+import { Avatar, Badge, Button, Card, Tabs, type TabItem } from '@/components/ui';
 import { formatDate, formatMoney, nivelLabel } from '@/lib/format';
 import './DeportistaPerfil.css';
 
@@ -17,9 +18,51 @@ function DataRow({ label, value }: { label: string; value: React.ReactNode }) {
 
 export function DeportistaPerfil() {
   const { id } = useParams<{ id: string }>();
+  // viewRole es la verdad de la UI; el backend impone el permiso real (la
+  // baja/reactivación es solo ADMIN — el coach es lectura). Gateamos por el rol
+  // real (viewRole === user.role, sin toggle de prototipo).
+  const { viewRole } = useAuth();
+  const isAdmin = viewRole === 'ADMIN';
+
   const [deportista, setDeportista] = useState<DeportistaDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Baja/reactivación (epic escuela-y-bajas, Fase 2). confirmando = pide
+  // confirmación; bajaEnVuelo = request en curso (deshabilita el botón para
+  // evitar doble envío); bajaError = error de red/404/403 de la acción.
+  const [confirmando, setConfirmando] = useState(false);
+  const [bajaEnVuelo, setBajaEnVuelo] = useState(false);
+  const [bajaError, setBajaError] = useState<string | null>(null);
+
+  // Soft-delete reversible: si está activo, el botón da de baja; si no, reactiva.
+  // Llama al endpoint dedicado y refresca el perfil con el detalle devuelto.
+  async function ejecutarBajaReactivar() {
+    if (!deportista) return;
+    setBajaEnVuelo(true);
+    setBajaError(null);
+    try {
+      const actualizado = deportista.activo
+        ? await api.darBajaDeportista(deportista.id)
+        : await api.reactivarDeportista(deportista.id);
+      setDeportista(actualizado);
+      setConfirmando(false);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setBajaError(
+          err.status === 404
+            ? 'El deportista ya no existe.'
+            : err.isForbidden
+              ? 'No tienes permiso para esta acción.'
+              : err.message,
+        );
+      } else {
+        setBajaError('No se pudo conectar con el servidor.');
+      }
+    } finally {
+      setBajaEnVuelo(false);
+    }
+  }
 
   useEffect(() => {
     if (!id) return;
@@ -218,7 +261,11 @@ export function DeportistaPerfil() {
       <header className="perfil__header">
         <Avatar name={deportista.nombre_completo} size="lg" />
         <div className="perfil__header-main">
-          <h1 className="perfil__name">{deportista.nombre_completo}</h1>
+          <div className="perfil__name-row">
+            <h1 className="perfil__name">{deportista.nombre_completo}</h1>
+            {/* Badge "Inactivo": soft-delete (epic escuela-y-bajas, Fase 2). */}
+            {!deportista.activo && <Badge tone="neutral">Inactivo</Badge>}
+          </div>
           <div className="perfil__tags">
             {categoriaLabel && <Badge tone="accent">{categoriaLabel}</Badge>}
             <span className="perfil__tag-text">{deportista.disciplina}</span>
@@ -246,7 +293,97 @@ export function DeportistaPerfil() {
             )}
           </dl>
         </div>
+
+        {/* Acción de baja/reactivación — SOLO ADMIN (el coach es lectura; el
+            backend da 403 a ENTRENADOR). Con confirmación antes de ejecutar. */}
+        {isAdmin && (
+          <div className="perfil__acciones">
+            {deportista.activo ? (
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={() => {
+                  setBajaError(null);
+                  setConfirmando(true);
+                }}
+              >
+                Dar de baja
+              </Button>
+            ) : (
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => {
+                  setBajaError(null);
+                  setConfirmando(true);
+                }}
+              >
+                Reactivar
+              </Button>
+            )}
+          </div>
+        )}
       </header>
+
+      {bajaError && (
+        <div className="page-error" role="alert">
+          {bajaError}
+        </div>
+      )}
+
+      {isAdmin && confirmando && (
+        <div
+          className="perfil__confirm-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label={
+            deportista.activo ? 'Confirmar baja del deportista' : 'Confirmar reactivación'
+          }
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !bajaEnVuelo) setConfirmando(false);
+          }}
+        >
+          <div className="perfil__confirm">
+            <Card title={deportista.activo ? 'Dar de baja' : 'Reactivar deportista'}>
+              <p className="perfil__confirm-text">
+                {deportista.activo ? (
+                  <>
+                    ¿Seguro que quieres dar de baja a{' '}
+                    <strong>{deportista.nombre_completo}</strong>? Se ocultará de los
+                    listados activos, pero se conserva todo su historial y puedes
+                    reactivarlo cuando quieras.
+                  </>
+                ) : (
+                  <>
+                    ¿Reactivar a <strong>{deportista.nombre_completo}</strong>? Volverá a
+                    aparecer en los listados activos.
+                  </>
+                )}
+              </p>
+              <div className="perfil__confirm-actions">
+                <Button
+                  variant="secondary"
+                  onClick={() => setConfirmando(false)}
+                  disabled={bajaEnVuelo}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  variant={deportista.activo ? 'danger' : 'primary'}
+                  onClick={ejecutarBajaReactivar}
+                  disabled={bajaEnVuelo}
+                >
+                  {bajaEnVuelo
+                    ? 'Procesando…'
+                    : deportista.activo
+                      ? 'Sí, dar de baja'
+                      : 'Sí, reactivar'}
+                </Button>
+              </div>
+            </Card>
+          </div>
+        </div>
+      )}
 
       <Tabs items={tabs} />
     </div>

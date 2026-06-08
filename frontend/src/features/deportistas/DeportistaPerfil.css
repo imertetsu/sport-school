@@ -25,15 +25,64 @@
   gap: var(--space-4);
   align-items: flex-start;
   margin-bottom: var(--space-6);
+  flex-wrap: wrap;
 }
 
 .perfil__header-main {
   min-width: 0;
+  flex: 1;
+}
+
+.perfil__name-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-2);
 }
 
 .perfil__name {
   font-size: var(--fs-2xl);
-  margin-bottom: var(--space-2);
+  margin: 0;
+}
+
+/* Acción de baja/reactivación (solo ADMIN) en la cabecera del perfil */
+.perfil__acciones {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+/* Diálogo de confirmación de baja/reactivación */
+.perfil__confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: var(--space-6) var(--space-4);
+  overflow-y: auto;
+  z-index: 50;
+}
+
+.perfil__confirm {
+  width: 100%;
+  max-width: 440px;
+  margin-top: var(--space-6);
+}
+
+.perfil__confirm-text {
+  margin: 0 0 var(--space-4);
+  color: var(--color-text-muted);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+}
+
+.perfil__confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
 }
 
 .perfil__tags {
