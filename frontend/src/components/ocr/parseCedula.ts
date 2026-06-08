@@ -140,6 +140,18 @@ const PALABRAS_INSTITUCIONALES = new Set([
   'NACIMIENTO',
   'EXPEDIDA',
   'EXPEDICION',
+  // Etiquetas del propio formulario del carnet (el OCR las cuela como "nombre"
+  // cuando se sube un solo lado y no hay MRZ que dé los datos).
+  'NOMBRES',
+  'NOMBRE',
+  'APELLIDOS',
+  'APELLIDO',
+  'FECHA',
+  'EMISION',
+  'EXPIRACION',
+  'VENCIMIENTO',
+  'GRUPO',
+  'SANGUINEO',
 ]);
 
 /** ¿La palabra (deburreada + uppercase) es institucional (no un nombre)? */
@@ -804,36 +816,37 @@ export function mergeLados(anverso: string, reverso: string): CedulaFields {
   const combinado = [a, r].filter(Boolean).join('\n');
   const out: CedulaFields = {};
 
-  // La MRZ puede aparecer en cualquiera de los textos (el usuario podría haber
-  // capturado el reverso como "anverso"). Probamos ambos.
+  // Cadena de fuentes UNIFORME (independiente del formato) para que funcione
+  // aunque suban UN SOLO lado (o la primera foto). El orden importa: lo más fiable
+  // y conservador va primero; `rellenarVacios` nunca pisa un campo ya resuelto.
+
+  // 1) NOMBRE/APELLIDOS desde las etiquetas del anverso del CI NUEVO (etiqueta +
+  //    valor en la misma o la línea siguiente). Es la fuente más COMPLETA del
+  //    nombre y NO depende del MRZ → sirve con un solo lado. Va PRIMERO para que el
+  //    fallback genérico no tome las propias etiquetas ("NOMBRES"/"APELLIDOS") como
+  //    nombre. Se prueba en ambos lados por si invierten anverso/reverso.
+  rellenarVacios(out, parseNombresAnverso(a));
+  rellenarVacios(out, parseNombresAnverso(r));
+
+  // 2) MRZ del CI nuevo (en cualquiera de los dos lados): número y fecha validados
+  //    por check digits; y nombre si aún faltara.
   const mrz = parseMrz(r) ?? parseMrz(a);
-  const formato = mrz ? 'nuevo' : detectarFormato(combinado);
+  if (mrz) rellenarVacios(out, mrz);
 
-  if (formato === 'nuevo') {
-    // NOMBRE primero desde las etiquetas del anverso (más completo que la MRZ, que
-    // trunca el 2º nombre). Luego MRZ (número/fecha validados por check digits, y
-    // nombre si el anverso no se leyó). Luego anverso/combinado para huecos.
-    rellenarVacios(out, parseNombresAnverso(a));
-    if (mrz) rellenarVacios(out, mrz);
-    rellenarVacios(out, parseCedula(a));
-    rellenarVacios(out, parseCedula(combinado));
-    // Opcionales etiquetados del reverso (conservador).
-    rellenarOpcionalesReverso(out, r, a);
-    return out;
-  }
-
-  if (formato === 'antiguo') {
+  // 3) CI ANTIGUO: nombre desde el reverso ("...pertenece A:") + CI del anverso.
+  if (!mrz && detectarFormato(combinado) === 'antiguo') {
     rellenarVacios(out, parseAntiguo(a, r));
-    // Relleno conservador con el parser genérico para huecos (p.ej. fecha en el
-    // anverso, número en el reverso si el usuario invirtió las capturas).
-    rellenarVacios(out, parseAntiguo(r, a));
-    rellenarVacios(out, parseCedula(combinado));
-    rellenarOpcionalesReverso(out, r, a);
-    return out;
+    rellenarVacios(out, parseAntiguo(r, a)); // por si invirtieron las capturas
   }
 
-  // Desconocido: parser genérico sobre el texto combinado.
+  // 4) Número de CI + fecha (por etiqueta/patrón) y huecos restantes. parseCedula
+  //    es conservador (filtra palabras institucionales y etiquetas). Por lado y
+  //    luego combinado.
+  rellenarVacios(out, parseCedula(a));
+  rellenarVacios(out, parseCedula(r));
   rellenarVacios(out, parseCedula(combinado));
+
+  // 5) Opcionales etiquetados del reverso (domicilio/lugar/grupo), conservador.
   rellenarOpcionalesReverso(out, r, a);
   return out;
 }
