@@ -12,11 +12,24 @@ export interface UserOut {
   org_id: string;
 }
 
-// POST /api/v1/auth/login -> token + user
+// Org embebida en el login (epic escuela-y-bajas, C1). El login ya consulta
+// `organizacion` por org_id (estado); se amplía a nombre+color para que el TopBar
+// pinte nombre + monograma SIN llamada extra ni parpadeo. color null => el front
+// usa un default determinista.
+export interface TokenOrg {
+  id: string;
+  nombre: string;
+  color: string | null;
+}
+
+// POST /api/v1/auth/login -> token + user + org (objeto `org` aditivo; no rompe
+// consumidores existentes). /auth/me NO cambia su contrato (sigue dando UserOut);
+// la `org` viaja solo en el login y el front la persiste junto al token/usuario.
 export interface TokenOut {
   access_token: string;
   token_type: 'bearer';
   user: UserOut;
+  org: TokenOrg;
 }
 
 export interface LoginRequest {
@@ -70,6 +83,9 @@ export interface DeportistaListItem {
   disciplina: string;
   categoria: CategoriaRef | null;
   sucursal: SucursalRef;
+  // Soft-delete (epic escuela-y-bajas, C4): el front muestra badge "Inactivo" y
+  // el toggle "Mostrar inactivos". true = deportista activo.
+  activo: boolean;
 }
 
 export interface Paginated<T> {
@@ -138,6 +154,9 @@ export interface DeportistaDetail {
   consentimiento: Consentimiento | null;
   // null si el rol no tiene acceso (RNF-02).
   ficha_medica: FichaMedica | null;
+  // Soft-delete (epic escuela-y-bajas, C4): el perfil sigue accesible por id con
+  // activo=false; el front muestra badge "Inactivo" y el botón Baja/Reactivar.
+  activo: boolean;
 }
 
 // --- GET /tutores/por-ci/{ci} (recuperar-por-CI del tutor; S3) ---
@@ -208,6 +227,61 @@ export interface DeportistaCreate {
 
 // DeportistaCreate produce un DeportistaDetail al crear.
 export type DeportistaCreated = DeportistaDetail;
+
+// ---- C5/escuela-y-bajas C3: PUT /deportistas/{id} (DeportistaUpdate) ----
+// Edición completa del deportista (datos + tutores + ficha médica). Espejo EXACTO
+// de DeportistaUpdate del backend: todos los campos son OPCIONALES; lo que no llega
+// NO se toca (preserva el comportamiento actual).
+
+// Tutor reconciliable por id (C3). Como TutorCreate + `id` opcional: con `id` =>
+// edita el vínculo/tutor existente; sin `id` => alta o recupera-por-CI. La lista es
+// RECONCILIABLE: lo que NO llega se desvincula. El backend valida el invariante de
+// menores (>=1 tutor, no quitar al del consentimiento) -> 422; el front no debe
+// confiar en su propia validación.
+export interface TutorUpsert {
+  // id del vínculo/tutor existente; omitir para alta o recuperar-por-CI.
+  id?: string;
+  nombres: string;
+  telefono: string;
+  // CI del TUTOR opcional (igual que TutorCreate): "" => sin CI.
+  ci?: string;
+  parentesco: string;
+  responsable_pago: boolean;
+}
+
+// PUT /deportistas/{id} body. Todos los campos opcionales; omitir = no tocar.
+// `tutores`: si no viene, NO se tocan los tutores; si viene, se reconcilia por id
+// (alta/edición/baja) respetando el invariante de menores (server-side).
+// `ficha_medica`: ya soportada por el backend en el update.
+export interface DeportistaUpdate {
+  ap_paterno?: string;
+  ap_materno?: string;
+  nombres?: string;
+  ci?: string;
+  fecha_nac?: string; // date
+  // Texto LEGACY (S2): opcional; el backend lo deriva del FK si no se envía.
+  disciplina?: string | null;
+  // FK canónico al catálogo global (S3): "" => null en el cliente.
+  disciplina_id?: string | null;
+  sucursal_id?: string;
+  categoria_id?: string | null;
+  contacto_emergencia?: string;
+  // Campos OPCIONALES (string|null): "" => null en el cliente al enviar.
+  domicilio?: string | null;
+  lugar_nacimiento?: string | null;
+  // Lista reconciliable por id. null/omitido => no tocar los tutores.
+  tutores?: TutorUpsert[];
+  ficha_medica?: FichaMedicaCreate | null;
+}
+
+// ---- escuela-y-bajas C2: GET/PUT /mi-escuela (gated ADMIN) ----
+// La org se scopea SIEMPRE a user.org_id server-side (organizacion NO tiene RLS);
+// el endpoint ignora cualquier id del cliente. ENTRENADOR -> 403. GET y PUT usan
+// el mismo shape { nombre, color }. color null/"" => el front usa un default.
+export interface MiEscuela {
+  nombre: string;
+  color: string | null;
+}
 
 // ============================================================
 // C4: Cobranza (espejo EXACTO de los contratos del epic Cobranza)

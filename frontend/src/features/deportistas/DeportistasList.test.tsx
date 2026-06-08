@@ -44,6 +44,7 @@ const MOCK_RESPONSE: DeportistasListResponse = {
       disciplina: 'Fútbol',
       categoria: { id: 'c1', nombre: 'Sub-14', nivel: 'INTERMEDIO' },
       sucursal: { id: 's1', nombre: 'Centro' },
+      activo: true,
     },
     {
       id: 'a2',
@@ -55,6 +56,7 @@ const MOCK_RESPONSE: DeportistasListResponse = {
       disciplina: 'Natación',
       categoria: null,
       sucursal: { id: 's2', nombre: 'Cala Cala' },
+      activo: true,
     },
   ],
 };

@@ -171,6 +171,7 @@ def list_deportistas(
                     CategoriaRef(id=cat.id, nombre=cat.nombre, nivel=cat.nivel) if cat else None
                 ),
                 sucursal=SucursalRef(id=suc.id, nombre=suc.nombre) if suc else None,  # type: ignore[arg-type]
+                activo=a.activo,
             )
         )
 
@@ -325,6 +326,7 @@ def get_deportista(
             else None
         ),
         ficha_medica=ficha,
+        activo=deportista.activo,
     )
 
 

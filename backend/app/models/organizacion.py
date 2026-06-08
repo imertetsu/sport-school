@@ -24,3 +24,6 @@ class Organizacion(UUIDPkMixin, TimestampMixin, Base):
     # SUSPENDIDA bloquea el login de la escuela y pausa su cron. La autoridad del
     # esquema es la migración 0012 (db-dev); modelo↔migración deben coincidir.
     estado: Mapped[str] = mapped_column(String, nullable=False, default="ACTIVA")
+    # Color del monograma de la escuela (epic escuela-y-bajas). NULL ⇒ el front usa
+    # un default determinista. Sin logo de archivo (RNF-02): solo iniciales + color.
+    color: Mapped[str | None] = mapped_column(String, nullable=True)

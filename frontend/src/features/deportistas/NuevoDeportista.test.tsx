@@ -117,6 +117,7 @@ const DEPORTISTA_RECUPERADO: DeportistaDetail = {
   ],
   consentimiento: null,
   ficha_medica: null,
+  activo: true,
 };
 
 const TUTOR_RECUPERADO: TutorByCi = {

@@ -50,6 +50,24 @@ class TutorIn(BaseModel):
     responsable_pago: bool = False
 
 
+class TutorUpsert(BaseModel):
+    """Tutor en la edición completa de deportista (C3, epic escuela-y-bajas).
+
+    Como `TutorIn` + `id: UUID | None`. La lista es **reconciliable por id**:
+    con `id` ⇒ edita el vínculo/tutor existente; sin `id` ⇒ alta/recupera-por-CI.
+    Para desvincular un tutor se omite de la lista entrante. El invariante de
+    menores (≥1 tutor, no quitar el del consentimiento) se valida server-side
+    en el servicio (Fase 3), no aquí.
+    """
+
+    id: uuid.UUID | None = None
+    nombres: str
+    telefono: str | None = None
+    ci: str | None = None
+    parentesco: str | None = None
+    responsable_pago: bool = False
+
+
 class TutorOut(BaseModel):
     """Tutor en el detalle del deportista (incluye datos del puente deportista_tutor)."""
 
@@ -164,7 +182,12 @@ class DeportistaCreate(BaseModel):
 
 
 class DeportistaUpdate(BaseModel):
-    """Body de `PUT /deportistas/{id}` (C5). No toca tutores en este slice."""
+    """Body de `PUT /deportistas/{id}` (C5 + C3).
+
+    `tutores` es opcional (C3): si **no viene** (None), NO se tocan los tutores
+    (preserva el comportamiento actual); si viene, la lista es reconciliable por
+    id. El invariante de menores se valida server-side en el servicio (Fase 3).
+    """
 
     sucursal_id: uuid.UUID | None = None
     categoria_id: uuid.UUID | None = None
@@ -179,6 +202,7 @@ class DeportistaUpdate(BaseModel):
     domicilio: str | None = None
     lugar_nacimiento: str | None = None
     ficha_medica: FichaMedica | None = None
+    tutores: list[TutorUpsert] | None = None
 
 
 # --------------------------------------------------------------------------- #
@@ -197,6 +221,7 @@ class DeportistaListItem(BaseModel):
     disciplina_id: uuid.UUID | None = None
     categoria: CategoriaRef | None = None
     sucursal: SucursalRef
+    activo: bool
 
 
 class DeportistaDetailOut(BaseModel):
@@ -224,3 +249,4 @@ class DeportistaDetailOut(BaseModel):
     tutores: list[TutorOut]
     consentimiento: ConsentimientoOut | None = None
     ficha_medica: FichaMedica | None = None
+    activo: bool
