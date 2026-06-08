@@ -376,10 +376,12 @@ def update_deportista(
     user: CurrentUser = Depends(set_tenant_context),
     db: Session = Depends(get_db),
 ) -> DeportistaDetailOut:
-    """Actualiza datos del deportista (no toca tutores en este slice) (C5).
+    """Actualiza datos del deportista, incluyendo tutores (C5 + C3).
 
-    Un `disciplina_id` que no existe en el catálogo (o inactivo) -> 422 (la validación
-    vive en el servicio; aquí solo se traduce a HTTP).
+    `tutores` es opcional: si no viene, no se tocan; si viene, se reconcilia (alta /
+    edición por id / desvinculación) respetando el invariante de menores (≥1 tutor, no
+    quitar el del consentimiento -> 422). Un `disciplina_id` inexistente/inactivo -> 422.
+    La validación vive en el servicio; aquí solo se traduce a HTTP.
     """
     deportista = db.execute(
         select(Deportista).where(Deportista.id == deportista_id)
@@ -390,8 +392,8 @@ def update_deportista(
         )
 
     try:
-        deportista_svc.actualizar_deportista(db, deportista, body)
-    except deportista_svc.DisciplinaInvalida as exc:
+        deportista_svc.actualizar_deportista(db, deportista, body, org_id=uuid.UUID(user.org_id))
+    except (deportista_svc.DisciplinaInvalida, deportista_svc.TutorInvarianteViolado) as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
         ) from exc

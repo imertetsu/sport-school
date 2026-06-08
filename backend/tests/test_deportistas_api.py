@@ -481,3 +481,286 @@ def test_baja_conserva_historial_tutores_y_cuotas() -> None:
         headers=headers,
     ).json()["total"]
     assert cuotas_despues == cuotas_antes
+
+
+# --------------------------------------------------------------------------- #
+# Edición completa de deportista: reconciliación de tutores (C3, Fase 3)
+# Requiere BD + seed. Invariante de menores validado SERVER-SIDE.
+# --------------------------------------------------------------------------- #
+def _crear_deportista_con_tutores(client, headers, tutores: list[dict]) -> str:
+    """Crea un deportista con la lista de tutores dada y devuelve su id."""
+    import uuid as _uuid
+
+    suc = client.get("/api/v1/sucursales", headers=headers).json()
+    if not suc:
+        pytest.skip("No hay sucursales; ¿seed ejecutado?")
+    sucursal_id = suc[0]["id"]
+    ci = f"CI-REC-{_uuid.uuid4().hex[:10]}"
+    resp = client.post(
+        "/api/v1/deportistas",
+        headers=headers,
+        json={
+            "sucursal_id": sucursal_id,
+            "nombres": "Reconcilia Test",
+            "ci": ci,
+            "tutores": tutores,
+            "consentimiento": {"version_terminos": "v1", "canal": "PRESENCIAL"},
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()["id"]
+
+
+@pytest.mark.db
+def test_put_sin_tutores_no_los_toca() -> None:
+    """`tutores` ausente del body -> NO se tocan los tutores (comportamiento previo)."""
+    client = _client_or_skip()
+    headers = {"Authorization": f"Bearer {_login_admin(client)}"}
+
+    did = _crear_deportista_con_tutores(
+        client, headers, [{"nombres": "Mamá", "telefono": "111", "parentesco": "Madre"}]
+    )
+    antes = client.get(f"/api/v1/deportistas/{did}", headers=headers).json()
+    assert len(antes["tutores"]) == 1
+
+    # PUT solo de un campo del deportista: los tutores quedan intactos.
+    upd = client.put(
+        f"/api/v1/deportistas/{did}",
+        headers=headers,
+        json={"contacto_emergencia": "777-999"},
+    )
+    assert upd.status_code == 200, upd.text
+    j = upd.json()
+    assert j["contacto_emergencia"] == "777-999"
+    assert len(j["tutores"]) == 1
+    assert j["tutores"][0]["nombres"] == "Mamá"
+
+
+@pytest.mark.db
+def test_put_edita_datos_ficha_y_anade_tutor() -> None:
+    """Editar datos + ficha_medica + añadir un tutor nuevo (sin id) en un solo PUT."""
+    client = _client_or_skip()
+    headers = {"Authorization": f"Bearer {_login_admin(client)}"}
+
+    did = _crear_deportista_con_tutores(
+        client, headers, [{"nombres": "Papá", "telefono": "111", "parentesco": "Padre"}]
+    )
+    detalle = client.get(f"/api/v1/deportistas/{did}", headers=headers).json()
+    tutor_existente = detalle["tutores"][0]
+
+    upd = client.put(
+        f"/api/v1/deportistas/{did}",
+        headers=headers,
+        json={
+            "nombres": "Nombre Editado",
+            "ficha_medica": {"tipo_sangre": "O+", "alergias": "polen"},
+            "tutores": [
+                # Conserva al existente (por id).
+                {
+                    "id": tutor_existente["id"],
+                    "nombres": tutor_existente["nombres"],
+                    "telefono": tutor_existente["telefono"],
+                    "parentesco": "Padre",
+                },
+                # Tutor NUEVO sin id.
+                {"nombres": "Tía Nueva", "telefono": "222", "parentesco": "Tía"},
+            ],
+        },
+    )
+    assert upd.status_code == 200, upd.text
+    j = upd.json()
+    assert j["nombres"] == "Nombre Editado"
+    assert j["ficha_medica"]["tipo_sangre"] == "O+"
+    nombres = {t["nombres"] for t in j["tutores"]}
+    assert nombres == {"Papá", "Tía Nueva"}
+    assert len(j["tutores"]) == 2
+
+
+@pytest.mark.db
+def test_put_edita_tutor_existente_por_id() -> None:
+    """Tutor con id -> se actualiza el tutor (nombres/teléfono) y su vínculo."""
+    client = _client_or_skip()
+    headers = {"Authorization": f"Bearer {_login_admin(client)}"}
+
+    did = _crear_deportista_con_tutores(
+        client,
+        headers,
+        [{"nombres": "Original", "telefono": "111", "parentesco": "Madre"}],
+    )
+    detalle = client.get(f"/api/v1/deportistas/{did}", headers=headers).json()
+    tutor = detalle["tutores"][0]
+
+    upd = client.put(
+        f"/api/v1/deportistas/{did}",
+        headers=headers,
+        json={
+            "tutores": [
+                {
+                    "id": tutor["id"],
+                    "nombres": "Renombrada",
+                    "telefono": "999",
+                    "parentesco": "Tutora legal",
+                    "responsable_pago": True,
+                }
+            ]
+        },
+    )
+    assert upd.status_code == 200, upd.text
+    t = upd.json()["tutores"]
+    assert len(t) == 1
+    assert t[0]["id"] == tutor["id"]  # mismo tutor (editado, no recreado)
+    assert t[0]["nombres"] == "Renombrada"
+    assert t[0]["telefono"] == "999"
+    assert t[0]["parentesco"] == "Tutora legal"
+    assert t[0]["responsable_pago"] is True
+
+
+@pytest.mark.db
+def test_put_reusa_tutor_por_ci_no_duplica() -> None:
+    """Tutor sin id pero con CI ya existente en la org -> se REUSA (no se duplica)."""
+    import uuid as _uuid
+
+    client = _client_or_skip()
+    headers = {"Authorization": f"Bearer {_login_admin(client)}"}
+
+    ci_compartido = f"CI-TUT-{_uuid.uuid4().hex[:10]}"
+    # Deportista A con un tutor con CI conocido.
+    did_a = _crear_deportista_con_tutores(
+        client,
+        headers,
+        [{"nombres": "Tutor Compartido", "telefono": "111", "ci": ci_compartido}],
+    )
+    detalle_a = client.get(f"/api/v1/deportistas/{did_a}", headers=headers).json()
+    tutor_id_compartido = detalle_a["tutores"][0]["id"]
+
+    # Deportista B con su propio tutor; luego vía PUT añadimos un tutor sin id pero
+    # con el MISMO CI -> debe reusar el tutor existente (mismo id), no crear otro.
+    did_b = _crear_deportista_con_tutores(
+        client, headers, [{"nombres": "Mamá B", "telefono": "222"}]
+    )
+    detalle_b = client.get(f"/api/v1/deportistas/{did_b}", headers=headers).json()
+    tutor_b = detalle_b["tutores"][0]
+
+    upd = client.put(
+        f"/api/v1/deportistas/{did_b}",
+        headers=headers,
+        json={
+            "tutores": [
+                {
+                    "id": tutor_b["id"],
+                    "nombres": tutor_b["nombres"],
+                    "telefono": tutor_b["telefono"],
+                },
+                # Sin id, con CI ya existente -> reusa el tutor compartido.
+                {"nombres": "Tutor Compartido", "telefono": "333", "ci": ci_compartido},
+            ]
+        },
+    )
+    assert upd.status_code == 200, upd.text
+    tutores_b = upd.json()["tutores"]
+    ids = {t["id"] for t in tutores_b}
+    assert tutor_id_compartido in ids  # se reusó el mismo registro tutor
+    assert len(tutores_b) == 2
+
+
+@pytest.mark.db
+def test_put_desvincula_tutor_dejando_uno_ok() -> None:
+    """Quitar un tutor de la lista (omitirlo) lo desvincula; deja ≥1 -> OK."""
+    client = _client_or_skip()
+    headers = {"Authorization": f"Bearer {_login_admin(client)}"}
+
+    did = _crear_deportista_con_tutores(
+        client,
+        headers,
+        [
+            {"nombres": "Tutor Uno", "telefono": "111", "parentesco": "Padre"},
+            {"nombres": "Tutor Dos", "telefono": "222", "parentesco": "Madre"},
+        ],
+    )
+    detalle = client.get(f"/api/v1/deportistas/{did}", headers=headers).json()
+    assert len(detalle["tutores"]) == 2
+
+    # El tutor del consentimiento es el PRIMERO creado (crear_deportista lo ata así);
+    # conservamos ese y desvinculamos al otro.
+    cons_tutor = next(t for t in detalle["tutores"] if t["nombres"] == "Tutor Uno")
+
+    upd = client.put(
+        f"/api/v1/deportistas/{did}",
+        headers=headers,
+        json={
+            "tutores": [
+                {
+                    "id": cons_tutor["id"],
+                    "nombres": cons_tutor["nombres"],
+                    "telefono": cons_tutor["telefono"],
+                }
+            ]
+        },
+    )
+    assert upd.status_code == 200, upd.text
+    t = upd.json()["tutores"]
+    assert len(t) == 1
+    assert t[0]["nombres"] == "Tutor Uno"
+
+
+@pytest.mark.db
+def test_put_quitar_todos_los_tutores_422() -> None:
+    """Lista de tutores vacía -> 422 (invariante: ≥1 tutor siempre). Server-side."""
+    client = _client_or_skip()
+    headers = {"Authorization": f"Bearer {_login_admin(client)}"}
+
+    did = _crear_deportista_con_tutores(client, headers, [{"nombres": "Único", "telefono": "111"}])
+
+    upd = client.put(
+        f"/api/v1/deportistas/{did}",
+        headers=headers,
+        json={"tutores": []},
+    )
+    assert upd.status_code == 422, upd.text
+
+    # El tutor original sigue intacto (nada se persistió a medias).
+    detalle = client.get(f"/api/v1/deportistas/{did}", headers=headers).json()
+    assert len(detalle["tutores"]) == 1
+    assert detalle["tutores"][0]["nombres"] == "Único"
+
+
+@pytest.mark.db
+def test_put_quitar_tutor_del_consentimiento_422() -> None:
+    """Desvincular al tutor atado al consentimiento -> 422 (invariante). Server-side.
+
+    El consentimiento se ata al PRIMER tutor en el alta. Intentamos dejar SOLO al otro
+    tutor (omitiendo al del consentimiento): debe fallar con 422 aunque quede ≥1 tutor.
+    """
+    client = _client_or_skip()
+    headers = {"Authorization": f"Bearer {_login_admin(client)}"}
+
+    did = _crear_deportista_con_tutores(
+        client,
+        headers,
+        [
+            {"nombres": "Firmante", "telefono": "111", "parentesco": "Madre"},
+            {"nombres": "Secundario", "telefono": "222", "parentesco": "Padre"},
+        ],
+    )
+    detalle = client.get(f"/api/v1/deportistas/{did}", headers=headers).json()
+    secundario = next(t for t in detalle["tutores"] if t["nombres"] == "Secundario")
+
+    # Intentar quedarnos SOLO con el secundario -> quita al firmante del consentimiento.
+    upd = client.put(
+        f"/api/v1/deportistas/{did}",
+        headers=headers,
+        json={
+            "tutores": [
+                {
+                    "id": secundario["id"],
+                    "nombres": secundario["nombres"],
+                    "telefono": secundario["telefono"],
+                }
+            ]
+        },
+    )
+    assert upd.status_code == 422, upd.text
+
+    # Nada se persistió: siguen los 2 tutores.
+    despues = client.get(f"/api/v1/deportistas/{did}", headers=headers).json()
+    assert len(despues["tutores"]) == 2

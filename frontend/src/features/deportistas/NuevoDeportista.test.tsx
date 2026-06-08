@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import type {
   DeportistaDetail,
   DisciplinaRef,
@@ -17,6 +17,8 @@ const disciplinasCatalogoMock = vi.fn();
 const crearDeportistaMock = vi.fn();
 const deportistaPorCiMock = vi.fn();
 const tutorPorCiMock = vi.fn();
+const deportistaMock = vi.fn();
+const actualizarDeportistaMock = vi.fn();
 
 vi.mock('@/api/client', () => {
   class ApiError extends Error {
@@ -55,6 +57,8 @@ vi.mock('@/api/client', () => {
       crearDeportista: (...args: unknown[]) => crearDeportistaMock(...args),
       deportistaPorCi: (...args: unknown[]) => deportistaPorCiMock(...args),
       tutorPorCi: (...args: unknown[]) => tutorPorCiMock(...args),
+      deportista: (...args: unknown[]) => deportistaMock(...args),
+      actualizarDeportista: (...args: unknown[]) => actualizarDeportistaMock(...args),
     },
     ApiError,
   };
@@ -135,6 +139,19 @@ function renderForm() {
   );
 }
 
+// Monta el formulario en modo EDICIÓN (ruta con :id). El destino de navegación
+// tras guardar (/deportistas/:id) se captura con una ruta espía simple.
+function renderEdit(depId = 'dep-1') {
+  render(
+    <MemoryRouter initialEntries={[`/deportistas/${depId}/editar`]}>
+      <Routes>
+        <Route path="/deportistas/:id/editar" element={<NuevoDeportista />} />
+        <Route path="/deportistas/:id" element={<div>PERFIL {depId}</div>} />
+      </Routes>
+    </MemoryRouter>,
+  );
+}
+
 describe('NuevoDeportista — OCR + recuperar-por-CI + disciplina (S3)', () => {
   beforeEach(() => {
     sucursalesMock.mockReset();
@@ -143,6 +160,8 @@ describe('NuevoDeportista — OCR + recuperar-por-CI + disciplina (S3)', () => {
     crearDeportistaMock.mockReset();
     deportistaPorCiMock.mockReset();
     tutorPorCiMock.mockReset();
+    deportistaMock.mockReset();
+    actualizarDeportistaMock.mockReset();
     sucursalesMock.mockResolvedValue(SUCURSALES);
     categoriasMock.mockResolvedValue([]);
     disciplinasCatalogoMock.mockResolvedValue(DISCIPLINAS);
@@ -356,5 +375,173 @@ describe('NuevoDeportista — OCR + recuperar-por-CI + disciplina (S3)', () => {
     expect(
       screen.getByText('El consentimiento del tutor es obligatorio.'),
     ).toBeInTheDocument();
+  });
+});
+
+// Detalle precargado en modo EDICIÓN: 2 tutores (con id) + consentimiento ya
+// otorgado + ficha médica visible.
+const DEPORTISTA_EDIT: DeportistaDetail = {
+  id: 'dep-1',
+  ap_paterno: 'Condori',
+  ap_materno: 'Huanca',
+  nombres: 'Valentina',
+  nombre_completo: 'Valentina Condori Huanca',
+  ci: '9876543',
+  fecha_nac: '2012-06-01',
+  edad: 13,
+  disciplina: 'Natación',
+  disciplina_id: 'd2',
+  contacto_emergencia: 'Mamá 70000000',
+  domicilio: 'Calle Falsa 123',
+  lugar_nacimiento: 'La Paz',
+  sucursal: { id: 's1', nombre: 'Centro' },
+  categoria: null,
+  inscripcion: null,
+  tutores: [
+    {
+      id: 't1',
+      nombres: 'Rosa Huanca',
+      telefono: '71111111',
+      ci: '5550000',
+      parentesco: 'Madre',
+      responsable_pago: true,
+    },
+    {
+      id: 't2',
+      nombres: 'Juan Condori',
+      telefono: '72222222',
+      ci: '5551111',
+      parentesco: 'Padre',
+      responsable_pago: false,
+    },
+  ],
+  consentimiento: { aceptado_en: '2024-01-01T00:00:00Z', version_terminos: 'v1', canal: 'WEB' },
+  ficha_medica: { tipo_sangre: 'O+', alergias: 'Polen', condiciones: '' },
+  activo: true,
+};
+
+describe('NuevoDeportista — modo EDICIÓN (Fase 3)', () => {
+  beforeEach(() => {
+    sucursalesMock.mockReset();
+    categoriasMock.mockReset();
+    disciplinasCatalogoMock.mockReset();
+    crearDeportistaMock.mockReset();
+    deportistaPorCiMock.mockReset();
+    tutorPorCiMock.mockReset();
+    deportistaMock.mockReset();
+    actualizarDeportistaMock.mockReset();
+    sucursalesMock.mockResolvedValue(SUCURSALES);
+    categoriasMock.mockResolvedValue([]);
+    disciplinasCatalogoMock.mockResolvedValue(DISCIPLINAS);
+    deportistaMock.mockResolvedValue(DEPORTISTA_EDIT);
+    actualizarDeportistaMock.mockResolvedValue(DEPORTISTA_EDIT);
+  });
+  afterEach(() => vi.clearAllMocks());
+
+  it('precarga datos, tutores y ficha; el escáner OCR no se muestra', async () => {
+    renderEdit();
+    // Título de edición y carga del detalle.
+    expect(await screen.findByText('Editar deportista')).toBeInTheDocument();
+    await waitFor(() => expect(deportistaMock).toHaveBeenCalledWith('dep-1', expect.anything()));
+
+    // Datos básicos precargados.
+    expect((screen.getByLabelText(/Apellido paterno/) as HTMLInputElement).value).toBe(
+      'Condori',
+    );
+    expect((screen.getAllByLabelText(/^CI/)[0] as HTMLInputElement).value).toBe('9876543');
+    // Ficha médica precargada.
+    expect((screen.getByLabelText(/Grupo sanguíneo/) as HTMLInputElement).value).toBe('O+');
+    // Los 2 tutores precargados (nombres del tutor: índices 1 y 2 de "Nombres").
+    expect((screen.getAllByLabelText(/^Nombres/)[1] as HTMLInputElement).value).toBe(
+      'Rosa Huanca',
+    );
+    expect((screen.getAllByLabelText(/^Nombres/)[2] as HTMLInputElement).value).toBe(
+      'Juan Condori',
+    );
+    // El escáner OCR NO aparece en edición.
+    expect(screen.queryByText(/Escanea ambos lados/)).not.toBeInTheDocument();
+    // El consentimiento se informa como ya otorgado (no hay checkbox).
+    expect(screen.getByText(/ya fue otorgado y se conserva/)).toBeInTheDocument();
+    expect(
+      screen.queryByRole('checkbox', { name: /consentimiento/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('guarda con PUT incluyendo los tutores con su id y navega al perfil', async () => {
+    const user = userEvent.setup();
+    renderEdit();
+    await screen.findByText('Editar deportista');
+    await waitFor(() => expect(deportistaMock).toHaveBeenCalled());
+
+    // Edita un campo y el teléfono de un tutor.
+    const nombres = screen.getAllByLabelText(/^Nombres/)[0];
+    await user.clear(nombres);
+    await user.type(nombres, 'Valentina Sofía');
+
+    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+
+    await waitFor(() => expect(actualizarDeportistaMock).toHaveBeenCalledTimes(1));
+    const [calledId, payload] = actualizarDeportistaMock.mock.calls[0];
+    expect(calledId).toBe('dep-1');
+    expect(payload.nombres).toBe('Valentina Sofía');
+    // Los tutores van con su id (reconciliación por id) y NO se manda consentimiento.
+    expect(payload.tutores).toHaveLength(2);
+    expect(payload.tutores[0].id).toBe('t1');
+    expect(payload.tutores[1].id).toBe('t2');
+    expect(payload.consentimiento).toBeUndefined();
+    // Ficha médica incluida (tenía datos).
+    expect(payload.ficha_medica.tipo_sangre).toBe('O+');
+    // Navegó al perfil del deportista.
+    expect(await screen.findByText('PERFIL dep-1')).toBeInTheDocument();
+  });
+
+  it('permite quitar un tutor cuando hay más de uno (invariante UX: no el último)', async () => {
+    const user = userEvent.setup();
+    renderEdit();
+    await screen.findByText('Editar deportista');
+    await waitFor(() => expect(deportistaMock).toHaveBeenCalled());
+
+    // Con 2 tutores hay botón "Quitar"; quita el segundo.
+    const quitar = screen.getAllByRole('button', { name: /Quitar tutor/i });
+    expect(quitar).toHaveLength(2);
+    await user.click(quitar[1]);
+
+    // Ya solo queda 1 tutor: el botón "Quitar" desaparece (no se puede dejar 0).
+    expect(screen.queryByRole('button', { name: /Quitar tutor/i })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+    await waitFor(() => expect(actualizarDeportistaMock).toHaveBeenCalledTimes(1));
+    const payload = actualizarDeportistaMock.mock.calls[0][1];
+    expect(payload.tutores).toHaveLength(1);
+    expect(payload.tutores[0].id).toBe('t1');
+  });
+
+  it('muestra el mensaje 422 del backend (invariante de menores) sin crash', async () => {
+    const user = userEvent.setup();
+    // fieldErrors es el 4º argumento del ApiError (el 3º es `detail`). El backend
+    // ata el invariante de menores a `loc: ['body', 'tutores']`.
+    actualizarDeportistaMock.mockRejectedValue(
+      new ApiError(422, 'No se puede quitar al tutor del consentimiento.', null, [
+        { loc: ['body', 'tutores'], msg: 'No se puede quitar al tutor del consentimiento.' },
+      ]),
+    );
+    renderEdit();
+    await screen.findByText('Editar deportista');
+    await waitFor(() => expect(deportistaMock).toHaveBeenCalled());
+
+    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+
+    await waitFor(() => expect(actualizarDeportistaMock).toHaveBeenCalledTimes(1));
+    expect(
+      await screen.findByText('No se puede quitar al tutor del consentimiento.'),
+    ).toBeInTheDocument();
+  });
+
+  it('corta el render con un error si el deportista no existe (404)', async () => {
+    deportistaMock.mockRejectedValue(new ApiError(404, 'Deportista no encontrado', null));
+    renderEdit('dep-x');
+    expect(await screen.findByText('Deportista no encontrado.')).toBeInTheDocument();
+    // No se renderiza el formulario de edición.
+    expect(screen.queryByText('Editar deportista')).not.toBeInTheDocument();
   });
 });

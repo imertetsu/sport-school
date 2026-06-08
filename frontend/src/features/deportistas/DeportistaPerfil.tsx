@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, ApiError } from '@/api/client';
 import { useAuth } from '@/auth/useAuth';
 import type { DeportistaDetail } from '@/api/types';
@@ -18,6 +18,7 @@ function DataRow({ label, value }: { label: string; value: React.ReactNode }) {
 
 export function DeportistaPerfil() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   // viewRole es la verdad de la UI; el backend impone el permiso real (la
   // baja/reactivación es solo ADMIN — el coach es lectura). Gateamos por el rol
   // real (viewRole === user.role, sin toggle de prototipo).
@@ -294,10 +295,18 @@ export function DeportistaPerfil() {
           </dl>
         </div>
 
-        {/* Acción de baja/reactivación — SOLO ADMIN (el coach es lectura; el
-            backend da 403 a ENTRENADOR). Con confirmación antes de ejecutar. */}
+        {/* Acciones — SOLO ADMIN (el coach es lectura; el backend da 403/422 a
+            ENTRENADOR). Editar (Fase 3) abre el formulario en modo edición;
+            baja/reactivar (Fase 2) pide confirmación antes de ejecutar. */}
         {isAdmin && (
           <div className="perfil__acciones">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => navigate(`/deportistas/${deportista.id}/editar`)}
+            >
+              Editar
+            </Button>
             {deportista.activo ? (
               <Button
                 variant="danger"

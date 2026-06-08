@@ -48,6 +48,12 @@ export default function App() {
             <Route path="/pagos" element={<PagosHistorial />} />
             <Route path="/deportistas" element={<DeportistasList />} />
             <Route path="/deportistas/nuevo" element={<NuevoDeportista />} />
+            {/* Edición completa del deportista (epic escuela-y-bajas, Fase 3):
+                reusa NuevoDeportista en modo edición (detecta :id). React Router v6
+                rankea por especificidad, así que "/deportistas/:id/editar" gana
+                sobre "/deportistas/:id". El backend exige ADMIN en el PUT (el
+                perfil oculta el botón "Editar" a no-ADMIN). */}
+            <Route path="/deportistas/:id/editar" element={<NuevoDeportista />} />
             <Route path="/deportistas/:id" element={<DeportistaPerfil />} />
             {/* Solicitudes (auto-registro EN SISTEMA): ruta protegida normal,
                 visible a ADMIN y ENTRENADOR (sin gate de rol). El backend filtra
