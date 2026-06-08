@@ -15,6 +15,7 @@ from app.api.v1 import (
     egresos,
     entrenadores,
     horarios,
+    mi_escuela,
     plataforma,
     recibos,
     reportes,
@@ -39,6 +40,7 @@ api_router.include_router(reportes.router)
 api_router.include_router(avisos.router)
 api_router.include_router(entrenadores.router)
 api_router.include_router(horarios.router)
+api_router.include_router(mi_escuela.router)
 api_router.include_router(recibos.router)
 api_router.include_router(solicitudes.router)
 api_router.include_router(plataforma.router)

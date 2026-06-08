@@ -13,6 +13,11 @@ export const API_PREFIX = '/api/v1';
 // Clave de almacenamiento del token JWT (sesión de ESCUELA, roles ADMIN/ENTRENADOR).
 export const TOKEN_STORAGE_KEY = 'latinosport.token';
 
+// Org embebida en el login (epic escuela-y-bajas, C1): {id,nombre,color}. Se
+// persiste junto al token para pintar nombre+monograma en el TopBar tras recargar
+// sin una segunda llamada. Se limpia en el logout (igual que el token).
+export const ORG_STORAGE_KEY = 'latinosport.org';
+
 // Consola de PLATAFORMA (rol SUPERADMIN, token SIN org_id). Sesión SEPARADA de la
 // de escuela: vive en claves de storage DISTINTAS para no pisarse mutuamente.
 export const PLATFORM_TOKEN_STORAGE_KEY = 'latinosport.platform.token';

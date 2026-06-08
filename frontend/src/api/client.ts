@@ -3,7 +3,7 @@
 // - Agrega Authorization: Bearer desde el token guardado
 // - Maneja 401 (token inválido/expirado) y 422 (validación)
 
-import { API_BASE_URL, API_PREFIX, TOKEN_STORAGE_KEY } from '@/config';
+import { API_BASE_URL, API_PREFIX, ORG_STORAGE_KEY, TOKEN_STORAGE_KEY } from '@/config';
 import type {
   DeportistaCreate,
   DeportistaCreated,
@@ -11,6 +11,7 @@ import type {
   DeportistasListResponse,
   DeportistaUpdate,
   MiEscuela,
+  TokenOrg,
   AsistenciaReporte,
   AvisoCreate,
   AvisoCreated,
@@ -82,6 +83,35 @@ export function setToken(token: string): void {
 export function clearToken(): void {
   try {
     localStorage.removeItem(TOKEN_STORAGE_KEY);
+  } catch {
+    /* noop */
+  }
+}
+
+// ---- Org embebida (epic escuela-y-bajas, C1): {id,nombre,color} ----
+// La org viaja en el login y la persistimos junto al token para que el TopBar
+// pinte nombre+monograma tras recargar sin una segunda llamada. El editor de
+// /mi-escuela la refresca (setOrg) para reflejar el cambio al instante.
+export function getOrg(): TokenOrg | null {
+  try {
+    const raw = localStorage.getItem(ORG_STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as TokenOrg) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setOrg(org: TokenOrg): void {
+  try {
+    localStorage.setItem(ORG_STORAGE_KEY, JSON.stringify(org));
+  } catch {
+    /* almacenamiento no disponible: la org vivirá solo en memoria */
+  }
+}
+
+export function clearOrg(): void {
+  try {
+    localStorage.removeItem(ORG_STORAGE_KEY);
   } catch {
     /* noop */
   }

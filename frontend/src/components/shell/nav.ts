@@ -57,6 +57,15 @@ export const NAV_GROUPS: NavGroup[] = [
         enabled: true,
         roles: ['ADMIN'],
       },
+      // Ajustes de la escuela (nombre + color del monograma): SOLO ADMIN.
+      {
+        id: 'ajustes',
+        label: 'Ajustes',
+        icon: '⚙',
+        to: '/ajustes',
+        enabled: true,
+        roles: ['ADMIN'],
+      },
     ],
   },
   {

@@ -9,12 +9,15 @@ import {
 import {
   api,
   clearToken,
+  clearOrg,
   getToken,
+  getOrg,
   setToken,
+  setOrg as persistOrg,
   setUnauthorizedHandler,
   ApiError,
 } from '@/api/client';
-import type { Role, UserOut } from '@/api/types';
+import type { Role, TokenOrg, UserOut } from '@/api/types';
 
 // El JWT (C4) lleva org_id, role y sucursal_ids. Decodificamos el payload
 // solo para conocer el alcance (sucursal_ids) en la UI; la verdad la impone el backend.
@@ -55,6 +58,13 @@ export interface AuthState {
   sucursalIds: string[];
   token: string | null;
   loading: boolean;
+  // Org de la escuela (nombre + color del monograma), embebida en el login (C1)
+  // y persistida junto al token. El TopBar la usa para pintar nombre+monograma
+  // sin una segunda llamada. null hasta el primer login con `org`.
+  org: TokenOrg | null;
+  // Refresca la org en memoria + storage tras editarla en /mi-escuela, para que
+  // el TopBar se actualice al instante sin re-login.
+  setOrg: (org: TokenOrg) => void;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
   // Rol efectivo para la UI. SIEMPRE refleja el rol real del usuario autenticado
@@ -78,14 +88,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return t;
   });
   const [user, setUser] = useState<UserOut | null>(null);
+  // Org persistida (login C1). Si no hay token, no debe haber org colgando.
+  const [org, setOrgState] = useState<TokenOrg | null>(() =>
+    token ? getOrg() : null,
+  );
   const [loading, setLoading] = useState<boolean>(!!token);
 
   const claims = useMemo(() => (token ? decodeJwt(token) : null), [token]);
 
   const logout = useCallback(() => {
     clearToken();
+    clearOrg();
     setTokenState(null);
     setUser(null);
+    setOrgState(null);
+  }, []);
+
+  // Refresca la org (memoria + storage) tras editarla; el TopBar reacciona al instante.
+  const setOrg = useCallback((next: TokenOrg) => {
+    persistOrg(next);
+    setOrgState(next);
   }, []);
 
   // Reaccionar a 401 global desde el cliente API.
@@ -130,6 +152,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(res.access_token);
     setTokenState(res.access_token);
     setUser(res.user);
+    // C1: el login trae la org embebida; la persistimos para el TopBar.
+    persistOrg(res.org);
+    setOrgState(res.org);
   }, []);
 
   const value: AuthState = useMemo(
@@ -140,11 +165,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       sucursalIds: claims?.sucursal_ids ?? [],
       token,
       loading,
+      org,
+      setOrg,
       login,
       logout,
       viewRole: user?.role ?? null,
     }),
-    [user, claims, token, loading, login, logout],
+    [user, claims, token, loading, org, setOrg, login, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

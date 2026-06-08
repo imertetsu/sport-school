@@ -16,6 +16,7 @@ import { Egresos } from '@/features/egresos/Egresos';
 import { Entrenadores } from '@/features/entrenadores/Entrenadores';
 import { Reportes } from '@/features/reportes/Reportes';
 import { Sucursales } from '@/features/sucursales/Sucursales';
+import { AjustesEscuela } from '@/features/escuela/AjustesEscuela';
 import { NoAutorizado } from '@/features/reportes/NoAutorizado';
 // Consola de PLATAFORMA (Epic A, rol SUPERADMIN). App separada del panel de
 // escuela: su propio provider de sesión, guard y layout (sin el Sidebar de escuela).
@@ -97,6 +98,17 @@ export default function App() {
               element={
                 <RoleRoute allow={['ADMIN']}>
                   <Sucursales />
+                </RoleRoute>
+              }
+            />
+            {/* Ajustes de la escuela (epic escuela-y-bajas): nombre + color del
+                monograma. Gate de rol ADMIN; el backend impone que /mi-escuela
+                sea solo ADMIN y scopee a user.org_id. */}
+            <Route
+              path="/ajustes"
+              element={
+                <RoleRoute allow={['ADMIN']}>
+                  <AjustesEscuela />
                 </RoleRoute>
               }
             />

@@ -1,0 +1,137 @@
+.ajustes-escuela {
+  display: flex;
+  flex-direction: column;
+}
+
+.ajustes-escuela__loading {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--fs-sm);
+}
+
+.ajustes-escuela__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  max-width: 520px;
+}
+
+/* Vista previa del monograma + nombre */
+.ajustes-escuela__preview {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-2);
+}
+
+.ajustes-escuela__preview-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.ajustes-escuela__preview-name {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--fs-lg);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ajustes-escuela__preview-hint {
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+}
+
+/* Chips de color */
+.ajustes-escuela__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.ajustes-escuela__chip {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-pill);
+  border: 2px solid transparent;
+  box-shadow: inset 0 0 0 1px rgba(20, 24, 31, 0.08);
+  padding: 0;
+  cursor: pointer;
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+
+.ajustes-escuela__chip:hover {
+  transform: scale(1.08);
+}
+
+.ajustes-escuela__chip:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-ring);
+}
+
+.ajustes-escuela__chip--active {
+  border-color: var(--color-text);
+  box-shadow: 0 0 0 2px var(--color-surface), 0 0 0 4px var(--color-text);
+}
+
+/* Color personalizado (input nativo + código hex) */
+.ajustes-escuela__color-custom {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+  flex-wrap: wrap;
+}
+
+/* Texto solo para lectores de pantalla (no dependemos del de TopBar.css, que
+   puede no estar cargado en esta ruta según el orden de bundling). */
+.ajustes-escuela .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.ajustes-escuela__color-input input[type='color'] {
+  width: 38px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  cursor: pointer;
+}
+
+.ajustes-escuela__color-code {
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-sm);
+  color: var(--color-text-muted);
+}
+
+.ajustes-escuela__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}
+
+.ajustes-escuela__ok {
+  background: var(--state-paid-bg);
+  border: 1px solid var(--state-paid-border);
+  color: var(--state-paid-text);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+}
