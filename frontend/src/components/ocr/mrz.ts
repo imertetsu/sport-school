@@ -100,12 +100,13 @@ function parseNombresMrz(linea3: string): Partial<CedulaFields> {
   const out: Partial<CedulaFields> = {};
   const limpio = linea3.replace(/<+$/, ''); // quita relleno final
   const [apRaw = '', nomRaw = ''] = limpio.split('<<');
-  // Tokeniza por '<'; descarta fragmentos sueltos de 1 carácter (ruido OCR
-  // típico de la MRZ, p.ej. una "R" colgando al final de la línea de nombres).
+  // Tokeniza por '<'; limpia caracteres no-alfabéticos dentro de cada token (la
+  // MRZ es solo A-Z; el OCR cuela dígitos/símbolos, p.ej. "4CUISPE" -> "CUISPE") y
+  // descarta fragmentos sueltos de 1 carácter (ruido OCR, p.ej. una "R" colgando).
   const tokens = (s: string): string[] =>
     s
       .split('<')
-      .map((t) => t.trim())
+      .map((t) => t.replace(/[^A-Za-z]/g, '').trim())
       .filter((t) => t.length >= 2);
   const apellidos = tokens(apRaw);
   const nombres = tokens(nomRaw);

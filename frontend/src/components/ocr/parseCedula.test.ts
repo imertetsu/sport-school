@@ -559,3 +559,51 @@ describe('REAL — CI nuevo: extracción COMPLETA (anverso etiquetado + opcional
     expect(f.fechaNacimiento).toBe('2002-02-09');
   });
 });
+
+describe('UN SOLO lado (la primera foto / solo anverso o reverso) recupera bien', () => {
+  // Regresión: antes, con solo el anverso (sin MRZ), el parser genérico tomaba las
+  // ETIQUETAS "NOMBRES"/"APELLIDOS" como nombre del titular.
+  it('SOLO anverso del CI nuevo: nombres/apellidos correctos, NO las etiquetas', () => {
+    const anverso = [
+      'ESTADO PLURINACIONAL DE BOLIVIA CEDULA DE IDENTIDAD',
+      'SERIE SECCION',
+      '44444 44444',
+      'NOMBRES',
+      'MIGUEL ANGEL',
+      'APELLIDOS',
+      'QUISPE QUIROGA',
+      'N° 13719132',
+      'FECHA DE NACIMIENTO',
+      '09/02/2002',
+    ].join('\n');
+    const f = mergeLados(anverso, ''); // <-- un solo lado, sin reverso
+    expect(f.nombres).toBe('MIGUEL ANGEL');
+    expect(f.apellidoPaterno).toBe('QUISPE');
+    expect(f.apellidoMaterno).toBe('QUIROGA');
+    expect(f.numeroCi).toBe('13719132');
+    expect(f.fechaNacimiento).toBe('2002-02-09');
+    // Nunca tomar las etiquetas del formulario como datos del titular:
+    const valores = [f.nombres, f.apellidoPaterno, f.apellidoMaterno];
+    expect(valores).not.toContain('NOMBRES');
+    expect(valores).not.toContain('APELLIDOS');
+  });
+
+  it('SOLO reverso del CI nuevo: nombres del MRZ + opcionales del reverso', () => {
+    const reverso = [
+      'LUGAR DE NACIMIENTO',
+      'COCHABAMBA - QUILLACOLLO - COLCAPIRHUA',
+      'DOMICILIO',
+      'AV. CAP. VICTOR USTARIZ KM. 6',
+      'OCUPACION ESTUDIANTE',
+      'I<BOL13719132<5<<<<<<<<<<<<<<<',
+      '0202099M2912165BOL<<<<<<<<<<8',
+      'QUISPE<QUIROGA<<MIGUEL<ANGEL<<',
+    ].join('\n');
+    const f = mergeLados('', reverso); // <-- solo reverso
+    expect(f.nombres).toBe('MIGUEL ANGEL');
+    expect(f.apellidoPaterno).toBe('QUISPE');
+    expect(f.apellidoMaterno).toBe('QUIROGA');
+    expect(f.lugarNacimiento).toContain('COCHABAMBA');
+    expect(f.domicilio).toContain('USTARIZ');
+  });
+});
