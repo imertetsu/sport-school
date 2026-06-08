@@ -16,6 +16,7 @@ import { Egresos } from '@/features/egresos/Egresos';
 import { Entrenadores } from '@/features/entrenadores/Entrenadores';
 import { Reportes } from '@/features/reportes/Reportes';
 import { Sucursales } from '@/features/sucursales/Sucursales';
+import { AjustesEscuela } from '@/features/escuela/AjustesEscuela';
 import { NoAutorizado } from '@/features/reportes/NoAutorizado';
 // Consola de PLATAFORMA (Epic A, rol SUPERADMIN). App separada del panel de
 // escuela: su propio provider de sesión, guard y layout (sin el Sidebar de escuela).
@@ -47,6 +48,12 @@ export default function App() {
             <Route path="/pagos" element={<PagosHistorial />} />
             <Route path="/deportistas" element={<DeportistasList />} />
             <Route path="/deportistas/nuevo" element={<NuevoDeportista />} />
+            {/* Edición completa del deportista (epic escuela-y-bajas, Fase 3):
+                reusa NuevoDeportista en modo edición (detecta :id). React Router v6
+                rankea por especificidad, así que "/deportistas/:id/editar" gana
+                sobre "/deportistas/:id". El backend exige ADMIN en el PUT (el
+                perfil oculta el botón "Editar" a no-ADMIN). */}
+            <Route path="/deportistas/:id/editar" element={<NuevoDeportista />} />
             <Route path="/deportistas/:id" element={<DeportistaPerfil />} />
             {/* Solicitudes (auto-registro EN SISTEMA): ruta protegida normal,
                 visible a ADMIN y ENTRENADOR (sin gate de rol). El backend filtra
@@ -97,6 +104,17 @@ export default function App() {
               element={
                 <RoleRoute allow={['ADMIN']}>
                   <Sucursales />
+                </RoleRoute>
+              }
+            />
+            {/* Ajustes de la escuela (epic escuela-y-bajas): nombre + color del
+                monograma. Gate de rol ADMIN; el backend impone que /mi-escuela
+                sea solo ADMIN y scopee a user.org_id. */}
+            <Route
+              path="/ajustes"
+              element={
+                <RoleRoute allow={['ADMIN']}>
+                  <AjustesEscuela />
                 </RoleRoute>
               }
             />

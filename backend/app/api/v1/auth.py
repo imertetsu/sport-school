@@ -19,7 +19,7 @@ from app.core.security import create_access_token, verify_password
 from app.core.tenant import CurrentUser, set_tenant_context
 from app.models.sucursal import Sucursal
 from app.models.usuario import Usuario
-from app.schemas.auth import LoginIn, TokenOut, UserOut
+from app.schemas.auth import LoginIn, OrgRef, TokenOut, UserOut
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -51,13 +51,19 @@ def login(body: LoginIn, db: Session = Depends(get_db)) -> TokenOut:
     org_id = str(row["org_id"])
 
     # Escuela suspendida (Epic Super Admin): se rechaza el login con 403 antes de
-    # emitir token. `organizacion` no tiene RLS → se consulta `estado` por org_id
-    # directo (sin tocar el contrato de `login_lookup`, que pertenece a db).
-    estado = db.execute(
-        text("SELECT estado FROM organizacion WHERE id = :org"),
-        {"org": org_id},
-    ).scalar_one_or_none()
-    if estado == "SUSPENDIDA":
+    # emitir token. `organizacion` no tiene RLS → se consulta por org_id directo
+    # (sin tocar el contrato de `login_lookup`, que pertenece a db). La MISMA query
+    # trae `nombre`/`color` para embeber el objeto `org` en el login (C1) sin abrir
+    # otra lectura ni una llamada extra del front.
+    org_row = (
+        db.execute(
+            text("SELECT estado, nombre, color FROM organizacion WHERE id = :org"),
+            {"org": org_id},
+        )
+        .mappings()
+        .first()
+    )
+    if org_row is not None and org_row["estado"] == "SUSPENDIDA":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Escuela suspendida, contacta al administrador",
@@ -83,7 +89,12 @@ def login(body: LoginIn, db: Session = Depends(get_db)) -> TokenOut:
         role=row["role"],
         org_id=row["org_id"],
     )
-    return TokenOut(access_token=token, user=user)
+    org = OrgRef(
+        id=row["org_id"],
+        nombre=org_row["nombre"] if org_row is not None else "",
+        color=org_row["color"] if org_row is not None else None,
+    )
+    return TokenOut(access_token=token, user=user, org=org)
 
 
 def _select_sucursales():

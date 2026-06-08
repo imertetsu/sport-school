@@ -2,6 +2,8 @@ export { Badge, EstadoBadge } from './Badge';
 export type { BadgeProps, BadgeTone, EstadoCuota } from './Badge';
 export { Avatar, initialsFrom } from './Avatar';
 export type { AvatarProps } from './Avatar';
+export { Monogram } from './Monogram';
+export type { MonogramProps } from './Monogram';
 export { DataTable } from './DataTable';
 export type { Column, DataTableProps } from './DataTable';
 export { Tabs } from './Tabs';

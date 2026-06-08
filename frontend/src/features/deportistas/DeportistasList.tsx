@@ -35,6 +35,14 @@ export function DeportistasList() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Toggle "Mostrar inactivos" (epic escuela-y-bajas, Fase 2). ESPEJO INVERTIDO
+  // del de Entrenadores ("Mostrar solo activos"): aquí el caso común es ver los
+  // activos, así que por defecto (false) filtramos a los activos enviando
+  // solo_activos=true; al activarlo, no se envía el filtro y la lista incluye
+  // también los dados de baja. Mismo parámetro de cliente, etiqueta/default
+  // adaptados al caso por defecto de cada lista.
+  const [mostrarInactivos, setMostrarInactivos] = useState(false);
+
   useEffect(() => {
     const controller = new AbortController();
     let active = true;
@@ -45,6 +53,9 @@ export function DeportistasList() {
         {
           q: debouncedQuery || undefined,
           sucursal_id: sucursalId || undefined,
+          // mostrarInactivos OFF => solo_activos=true (solo activos);
+          // ON => sin filtro (todos, incl. inactivos).
+          solo_activos: mostrarInactivos ? undefined : true,
           page: 1,
           page_size: 50,
         },
@@ -67,7 +78,7 @@ export function DeportistasList() {
       active = false;
       controller.abort();
     };
-  }, [debouncedQuery, sucursalId]);
+  }, [debouncedQuery, sucursalId, mostrarInactivos]);
 
   const columns = useMemo<Column<DeportistaListItem>[]>(
     () => [
@@ -78,8 +89,10 @@ export function DeportistasList() {
           const cat = a.categoria
             ? `${a.categoria.nombre} ${nivelLabel(a.categoria.nivel)}`.trim()
             : 'Sin categoría';
+          // Atenúa la fila de un deportista dado de baja (soft-delete) — el
+          // badge "Inactivo" en la columna Estado lo deja explícito.
           return (
-            <div className="deportista-cell">
+            <div className={`deportista-cell${a.activo ? '' : ' deportista-cell--inactivo'}`}>
               <Avatar name={a.nombre_completo} size="md" />
               <div className="deportista-cell__text">
                 <span className="deportista-cell__name">{a.nombre_completo}</span>
@@ -106,12 +119,16 @@ export function DeportistasList() {
         key: 'estado',
         header: 'Estado',
         align: 'center',
-        // Cobranza es otro epic: placeholder "—".
-        render: () => (
-          <Badge tone="neutral" className="estado-placeholder">
-            —
-          </Badge>
-        ),
+        // Soft-delete (epic escuela-y-bajas, Fase 2): badge "Inactivo" para los
+        // dados de baja. Para los activos, la cobranza es otro epic: placeholder "—".
+        render: (a) =>
+          a.activo ? (
+            <Badge tone="neutral" className="estado-placeholder">
+              —
+            </Badge>
+          ) : (
+            <Badge tone="neutral">Inactivo</Badge>
+          ),
       },
     ],
     [],
@@ -137,6 +154,15 @@ export function DeportistasList() {
           {error}
         </div>
       )}
+
+      <label className="deportistas-list__toggle">
+        <input
+          type="checkbox"
+          checked={mostrarInactivos}
+          onChange={(e) => setMostrarInactivos(e.target.checked)}
+        />
+        Mostrar inactivos
+      </label>
 
       <Card padded={false}>
         <DataTable

@@ -41,6 +41,31 @@
   letter-spacing: -0.01em;
 }
 
+/* Identidad de la escuela: nombre prominente + marca del producto como subtítulo. */
+.topbar__brand-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.15;
+}
+
+.topbar__school-name {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--fs-lg);
+  letter-spacing: -0.01em;
+  max-width: 220px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.topbar__brand-sub {
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  color: var(--color-text-subtle);
+}
+
 .topbar__center {
   display: flex;
   align-items: center;
@@ -185,6 +210,15 @@
   .topbar__brand-name,
   .topbar__user-text {
     display: none;
+  }
+  /* En móvil ocultamos el subtítulo de marca pero mantenemos el nombre de la
+     escuela visible (es la identidad principal); lo acotamos para no desbordar. */
+  .topbar__brand-sub {
+    display: none;
+  }
+  .topbar__school-name {
+    max-width: 130px;
+    font-size: var(--fs-md);
   }
   .topbar__sucursal {
     display: none;

@@ -28,11 +28,31 @@
   font-weight: 500;
 }
 
+.deportistas-list {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Toggle "Mostrar inactivos" (espejo invertido del de Entrenadores) */
+.deportistas-list__toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--fs-sm);
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-3);
+}
+
 .deportista-cell {
   display: flex;
   align-items: center;
   gap: var(--space-3);
   min-width: 0;
+}
+
+/* Deportista dado de baja (soft-delete): fila atenuada */
+.deportista-cell--inactivo {
+  opacity: 0.55;
 }
 
 .deportista-cell__text {

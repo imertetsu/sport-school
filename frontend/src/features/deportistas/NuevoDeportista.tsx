@@ -1,14 +1,16 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, ApiError } from '@/api/client';
 import type {
   DeportistaCreate,
   DeportistaDetail,
+  DeportistaUpdate,
   DisciplinaRef,
   Categoria,
   Sucursal,
   TutorByCi,
   TutorCreate,
+  TutorUpsert,
 } from '@/api/types';
 import { Button, Card, Field, SelectField } from '@/components/ui';
 import { DocumentScanner, type CedulaFields } from '@/components/ocr/DocumentScanner';
@@ -18,7 +20,11 @@ import './NuevoDeportista.css';
 // Estado interno del formulario de tutor: campos SIEMPRE string para inputs
 // controlados. El CI del tutor es opcional (se mapea a TutorCreate.ci al enviar;
 // "" => omitido). Distinto del CI del deportista, que es obligatorio.
-type TutorForm = Omit<TutorCreate, 'ci'> & { ci: string };
+// `id`: solo en modo EDICIÓN, es el id del vínculo/tutor existente. La lista del
+// PUT es RECONCILIABLE por id: con id => edita el existente; sin id => alta o
+// recupera-por-CI; lo que NO se envía se desvincula (el backend valida el
+// invariante de menores -> 422).
+type TutorForm = Omit<TutorCreate, 'ci'> & { ci: string; id?: string };
 
 const EMPTY_TUTOR: TutorForm = {
   nombres: '',
@@ -33,6 +39,17 @@ const CONSENT_VERSION = 'v1';
 
 export function NuevoDeportista() {
   const navigate = useNavigate();
+  // Distingue ALTA de EDICIÓN: si la ruta trae :id (/deportistas/:id/editar),
+  // estamos editando un deportista existente; si no, es un alta nueva
+  // (/deportistas/nuevo). isEdit gobierna título/botones, la precarga, el OCR y
+  // el endpoint (PUT vs POST).
+  const { id } = useParams<{ id: string }>();
+  const isEdit = Boolean(id);
+
+  // Carga del detalle en modo edición (precarga). loadError corta el render del
+  // formulario (no tiene sentido editar lo que no se pudo cargar).
+  const [loading, setLoading] = useState(isEdit);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Datos del deportista
   const [apPaterno, setApPaterno] = useState('');
@@ -59,6 +76,9 @@ export function NuevoDeportista() {
   // Tutores (≥1) + consentimiento obligatorio
   const [tutores, setTutores] = useState<TutorForm[]>([{ ...EMPTY_TUTOR }]);
   const [consentimiento, setConsentimiento] = useState(false);
+  // En EDICIÓN el consentimiento ya existe y NO se reenvía (DeportistaUpdate no
+  // lo incluye); guardamos el flag solo para mostrarlo como ya otorgado.
+  const [consentimientoExistente, setConsentimientoExistente] = useState(false);
 
   // Catálogos
   const [sucursales, setSucursales] = useState<Sucursal[]>([]);
@@ -123,6 +143,51 @@ export function NuevoDeportista() {
     return () => controller.abort();
   }, [sucursalId]);
 
+  // Precarga en modo EDICIÓN: trae el detalle por id y rellena el formulario
+  // (datos + tutores con su id + ficha médica). 404/403/red cortan el render con
+  // un error claro. No dispara el recuperar-por-CI (ya tenemos el registro).
+  useEffect(() => {
+    if (!id) return;
+    const controller = new AbortController();
+    let active = true;
+    setLoading(true);
+    setLoadError(null);
+    api
+      .deportista(id, controller.signal)
+      .then((d) => {
+        if (!active) return;
+        cargarDeportista(d);
+        // El aviso "Se recuperó el registro anterior" es del flujo de alta; en
+        // edición no aplica (siempre estamos editando un registro existente).
+        setRecuperadoDeportista(false);
+        setConsentimientoExistente(d.consentimiento != null);
+      })
+      .catch((err) => {
+        if (!active) return;
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        if (err instanceof ApiError) {
+          setLoadError(
+            err.isNotFound
+              ? 'Deportista no encontrado.'
+              : err.isForbidden
+                ? 'No tienes acceso a este deportista.'
+                : err.message,
+          );
+        } else {
+          setLoadError('No se pudo cargar el deportista para editar.');
+        }
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+      controller.abort();
+    };
+    // Solo re-ejecutar al cambiar el id de la ruta; cargarDeportista no se incluye
+    // en deps a propósito (es estable para los fines de este efecto de precarga).
+  }, [id]);
+
   // Carga los datos de un deportista recuperado en el formulario (modo recuperado).
   function cargarDeportista(d: DeportistaDetail) {
     setApPaterno(d.ap_paterno ?? '');
@@ -146,6 +211,9 @@ export function NuevoDeportista() {
     if (d.tutores && d.tutores.length > 0) {
       setTutores(
         d.tutores.map((t) => ({
+          // Conservamos el id del tutor: en EDICIÓN el PUT reconcilia por id; en
+          // alta-recuperada el POST lo ignora (usa TutorCreate sin id).
+          id: t.id,
           nombres: t.nombres ?? '',
           telefono: t.telefono ?? '',
           ci: t.ci ?? '',
@@ -159,7 +227,10 @@ export function NuevoDeportista() {
 
   // Recuperar-por-CI del deportista: si existe un registro con ese CI en la org, lo
   // carga (evita duplicado; el backend además da 409 al crear). 404 => alta nueva.
+  // En EDICIÓN no aplica (ya estamos sobre un registro existente): no queremos que
+  // tocar el CI dispare un lookup que sobrescriba el formulario.
   async function recuperarDeportistaPorCi(ciValor: string) {
+    if (isEdit) return;
     const valor = ciValor.trim();
     if (!valor || valor === ciConsultado) return;
     setCiConsultado(valor);
@@ -260,7 +331,10 @@ export function NuevoDeportista() {
     if (tutoresValidos.length === 0) {
       errs.tutores = 'Se requiere al menos un tutor con nombre.';
     }
-    if (!consentimiento) {
+    // El consentimiento solo se captura en el ALTA. En EDICIÓN ya existe y no se
+    // reenvía (DeportistaUpdate no lo incluye); el invariante de menores (>=1
+    // tutor, no quitar al del consentimiento) lo valida el backend -> 422.
+    if (!isEdit && !consentimiento) {
       errs.consentimiento = 'El consentimiento del tutor es obligatorio.';
     }
     return errs;
@@ -285,6 +359,36 @@ export function NuevoDeportista() {
     setFieldErrors(mapped);
   }
 
+  // Ficha médica para el payload (alta/edición): solo si hay algún dato (toda
+  // OPCIONAL). El backend acepta null/omitido. En edición, enviar "" en todos los
+  // campos equivale a limpiarla; aquí solo la incluimos cuando hay contenido.
+  function fichaMedicaPayload() {
+    if (tipoSangre.trim() || alergias.trim() || condiciones.trim()) {
+      return {
+        tipo_sangre: tipoSangre.trim(),
+        alergias: alergias.trim(),
+        condiciones: condiciones.trim(),
+      };
+    }
+    return null;
+  }
+
+  // Tutores a enviar (filtra los vacíos). En EDICIÓN conserva el `id` del vínculo
+  // existente (reconciliación por id: con id => edita; sin id => alta/recupera-por-CI;
+  // omitido => desvincula). En ALTA el id se descarta (TutorCreate no lo lleva).
+  function tutoresPayload(): TutorUpsert[] {
+    return tutores
+      .filter((t) => t.nombres.trim())
+      .map((t) => ({
+        ...(isEdit && t.id ? { id: t.id } : {}),
+        nombres: t.nombres.trim(),
+        telefono: t.telefono.trim(),
+        ci: t.ci.trim(),
+        parentesco: t.parentesco.trim(),
+        responsable_pago: t.responsable_pago,
+      }));
+  }
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setFormError(null);
@@ -295,51 +399,67 @@ export function NuevoDeportista() {
       return;
     }
 
-    const payload: DeportistaCreate = {
-      ap_paterno: apPaterno.trim(),
-      ap_materno: apMaterno.trim(),
-      nombres: nombres.trim(),
-      ci: ci.trim(),
-      fecha_nac: fechaNac,
-      // FK canónico (S3): "" => null. El backend valida y deriva el nombre legacy.
-      disciplina_id: disciplinaId || null,
-      sucursal_id: sucursalId,
-      categoria_id: categoriaId || null,
-      contacto_emergencia: contactoEmergencia.trim(),
-      // Campos OPCIONALES: "" => null (no se envían como string vacío).
-      domicilio: domicilio.trim() || null,
-      lugar_nacimiento: lugarNacimiento.trim() || null,
-      tutores: tutores
-        .filter((t) => t.nombres.trim())
-        .map((t) => ({
-          nombres: t.nombres.trim(),
-          telefono: t.telefono.trim(),
-          ci: t.ci.trim(),
-          parentesco: t.parentesco.trim(),
-          responsable_pago: t.responsable_pago,
-        })),
-      consentimiento: { version_terminos: CONSENT_VERSION, canal: 'WEB' },
-    };
-
-    // Ficha médica: solo se envía si hay algún dato (toda OPCIONAL). El backend
-    // acepta null/omitido.
-    if (tipoSangre.trim() || alergias.trim() || condiciones.trim()) {
-      payload.ficha_medica = {
-        tipo_sangre: tipoSangre.trim(),
-        alergias: alergias.trim(),
-        condiciones: condiciones.trim(),
-      };
-    }
-
     setSubmitting(true);
     try {
+      if (isEdit && id) {
+        // EDICIÓN: PUT con todos los campos (los que no llegan no se tocan en el
+        // backend; aquí los enviamos siempre para reflejar el estado del formulario).
+        // El consentimiento NO va en el update (ya existe).
+        const updatePayload: DeportistaUpdate = {
+          ap_paterno: apPaterno.trim(),
+          ap_materno: apMaterno.trim(),
+          nombres: nombres.trim(),
+          ci: ci.trim(),
+          fecha_nac: fechaNac,
+          disciplina_id: disciplinaId || null,
+          sucursal_id: sucursalId,
+          categoria_id: categoriaId || null,
+          contacto_emergencia: contactoEmergencia.trim(),
+          domicilio: domicilio.trim() || null,
+          lugar_nacimiento: lugarNacimiento.trim() || null,
+          tutores: tutoresPayload(),
+          ficha_medica: fichaMedicaPayload(),
+        };
+        const updated = await api.actualizarDeportista(id, updatePayload);
+        navigate(`/deportistas/${updated.id}`);
+        return;
+      }
+
+      // ALTA: POST.
+      const payload: DeportistaCreate = {
+        ap_paterno: apPaterno.trim(),
+        ap_materno: apMaterno.trim(),
+        nombres: nombres.trim(),
+        ci: ci.trim(),
+        fecha_nac: fechaNac,
+        // FK canónico (S3): "" => null. El backend valida y deriva el nombre legacy.
+        disciplina_id: disciplinaId || null,
+        sucursal_id: sucursalId,
+        categoria_id: categoriaId || null,
+        contacto_emergencia: contactoEmergencia.trim(),
+        // Campos OPCIONALES: "" => null (no se envían como string vacío).
+        domicilio: domicilio.trim() || null,
+        lugar_nacimiento: lugarNacimiento.trim() || null,
+        tutores: tutoresPayload(),
+        consentimiento: { version_terminos: CONSENT_VERSION, canal: 'WEB' },
+      };
+
+      const ficha = fichaMedicaPayload();
+      if (ficha) {
+        payload.ficha_medica = ficha;
+      }
+
       const created = await api.crearDeportista(payload);
       navigate(`/deportistas/${created.id}`, { replace: true });
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.isValidation) {
           applyApiErrors(err);
-          setFormError('El servidor rechazó los datos. Revisa los campos marcados.');
+          setFormError(
+            isEdit
+              ? 'El servidor rechazó los cambios. Revisa los campos marcados y los tutores.'
+              : 'El servidor rechazó los datos. Revisa los campos marcados.',
+          );
         } else if (err.isConflict) {
           // CI duplicado: el deportista ya existe en la org (RNF-06, sin duplicar).
           setFieldErrors((prev) => ({
@@ -349,8 +469,14 @@ export function NuevoDeportista() {
           setFormError(
             'Ya hay un deportista registrado con ese CI. Búscalo en la lista para editarlo en vez de crear un duplicado.',
           );
+        } else if (err.isNotFound) {
+          setFormError('El deportista ya no existe.');
         } else if (err.isForbidden) {
-          setFormError('No tienes permiso para crear deportistas en esa sucursal.');
+          setFormError(
+            isEdit
+              ? 'No tienes permiso para editar este deportista.'
+              : 'No tienes permiso para crear deportistas en esa sucursal.',
+          );
         } else {
           setFormError(err.message);
         }
@@ -362,17 +488,43 @@ export function NuevoDeportista() {
     }
   }
 
+  // Modo edición: mientras carga el detalle no pintamos el formulario (evita
+  // mostrarlo vacío y luego rellenarlo); si la carga falla, cortamos con el error.
+  if (isEdit && loading) {
+    return <div className="perfil__state">Cargando deportista…</div>;
+  }
+  if (isEdit && loadError) {
+    return (
+      <div className="nuevo-deportista">
+        <Link to="/deportistas" className="perfil__back">
+          ← Volver a deportistas
+        </Link>
+        <div className="page-error" role="alert">
+          {loadError}
+        </div>
+      </div>
+    );
+  }
+
+  // Destino del enlace "Volver": al perfil en edición; a la lista en alta.
+  const volverHref = isEdit && id ? `/deportistas/${id}` : '/deportistas';
+  const volverLabel = isEdit ? '← Volver al perfil' : '← Volver a deportistas';
+
   return (
     <div className="nuevo-deportista">
-      <Link to="/deportistas" className="perfil__back">
-        ← Volver a deportistas
+      <Link to={volverHref} className="perfil__back">
+        {volverLabel}
       </Link>
 
       <header className="page-head">
         <div>
-          <h1 className="page-head__title">Nuevo deportista</h1>
+          <h1 className="page-head__title">
+            {isEdit ? 'Editar deportista' : 'Nuevo deportista'}
+          </h1>
           <p className="page-head__subtitle">
-            Se requiere al menos un tutor y su consentimiento.
+            {isEdit
+              ? 'Actualiza los datos, tutores y ficha médica. Debe quedar al menos un tutor.'
+              : 'Se requiere al menos un tutor y su consentimiento.'}
           </p>
         </div>
       </header>
@@ -385,18 +537,23 @@ export function NuevoDeportista() {
 
       <form onSubmit={handleSubmit} noValidate className="nuevo-deportista__form">
         <Card title="Datos del deportista">
-          <div className="nuevo-deportista__ocr">
-            <p className="nuevo-deportista__ocr-hint">
-              Escanea ambos lados de la cédula del deportista para pre-llenar los datos.
-              Siempre puedes corregirlos a mano.
-            </p>
-            <DocumentScanner
-              onExtract={handleOcr}
-              label="Escanea anverso y reverso de la cédula del deportista."
-            />
-          </div>
+          {/* OCR + recuperar-por-CI son del flujo de ALTA (pre-llenar una cédula
+              nueva y evitar duplicados). En EDICIÓN ya tenemos el registro: el
+              escáner no aplica y se oculta para no estorbar. */}
+          {!isEdit && (
+            <div className="nuevo-deportista__ocr">
+              <p className="nuevo-deportista__ocr-hint">
+                Escanea ambos lados de la cédula del deportista para pre-llenar los datos.
+                Siempre puedes corregirlos a mano.
+              </p>
+              <DocumentScanner
+                onExtract={handleOcr}
+                label="Escanea anverso y reverso de la cédula del deportista."
+              />
+            </div>
+          )}
 
-          {recuperadoDeportista && (
+          {!isEdit && recuperadoDeportista && (
             <div className="nuevo-deportista__notice" role="status">
               Se recuperó el registro anterior del deportista. Revisa los datos antes de
               guardar.
@@ -435,7 +592,11 @@ export function NuevoDeportista() {
               onBlur={(e) => void recuperarDeportistaPorCi(e.target.value)}
               error={fieldErrors.ci}
               placeholder="9123456 LP"
-              hint="Obligatorio. El escaneo lo pre-llena; puedes corregirlo, no dejarlo vacío."
+              hint={
+                isEdit
+                  ? 'Obligatorio. No lo dejes vacío.'
+                  : 'Obligatorio. El escaneo lo pre-llena; puedes corregirlo, no dejarlo vacío.'
+              }
               required
             />
             <Field
@@ -623,35 +784,51 @@ export function NuevoDeportista() {
         </Card>
 
         <Card title="Consentimiento">
-          <label
-            className={`checkbox-row checkbox-row--lg${
-              fieldErrors.consentimiento ? ' checkbox-row--error' : ''
-            }`}
-          >
-            <input
-              type="checkbox"
-              checked={consentimiento}
-              onChange={(e) => setConsentimiento(e.target.checked)}
-              required
-            />
-            <span>
-              El tutor acepta los términos y otorga su consentimiento para la inscripción del
-              deportista. <strong>(Obligatorio)</strong>
-            </span>
-          </label>
-          {fieldErrors.consentimiento && (
-            <p className="field__error" role="alert">
-              {fieldErrors.consentimiento}
-            </p>
+          {isEdit ? (
+            // En EDICIÓN el consentimiento ya existe y no se reedita por aquí
+            // (DeportistaUpdate no lo incluye). Solo se informa su estado.
+            <div className="nuevo-deportista__notice" role="status">
+              {consentimientoExistente
+                ? 'El consentimiento del tutor ya fue otorgado y se conserva. El cambio de tutores respeta el invariante de menores (queda ≥1 tutor y no se quita al del consentimiento).'
+                : 'Este deportista no tiene un consentimiento registrado. El editor de datos no lo modifica.'}
+            </div>
+          ) : (
+            <>
+              <label
+                className={`checkbox-row checkbox-row--lg${
+                  fieldErrors.consentimiento ? ' checkbox-row--error' : ''
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={consentimiento}
+                  onChange={(e) => setConsentimiento(e.target.checked)}
+                  required
+                />
+                <span>
+                  El tutor acepta los términos y otorga su consentimiento para la inscripción
+                  del deportista. <strong>(Obligatorio)</strong>
+                </span>
+              </label>
+              {fieldErrors.consentimiento && (
+                <p className="field__error" role="alert">
+                  {fieldErrors.consentimiento}
+                </p>
+              )}
+            </>
           )}
         </Card>
 
         <div className="nuevo-deportista__actions">
-          <Button variant="secondary" onClick={() => navigate('/deportistas')}>
+          <Button variant="secondary" onClick={() => navigate(volverHref)}>
             Cancelar
           </Button>
           <Button type="submit" variant="primary" disabled={submitting}>
-            {submitting ? 'Guardando…' : 'Crear deportista'}
+            {submitting
+              ? 'Guardando…'
+              : isEdit
+                ? 'Guardar cambios'
+                : 'Crear deportista'}
           </Button>
         </div>
       </form>

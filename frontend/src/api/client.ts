@@ -3,12 +3,15 @@
 // - Agrega Authorization: Bearer desde el token guardado
 // - Maneja 401 (token inválido/expirado) y 422 (validación)
 
-import { API_BASE_URL, API_PREFIX, TOKEN_STORAGE_KEY } from '@/config';
+import { API_BASE_URL, API_PREFIX, ORG_STORAGE_KEY, TOKEN_STORAGE_KEY } from '@/config';
 import type {
   DeportistaCreate,
   DeportistaCreated,
   DeportistaDetail,
   DeportistasListResponse,
+  DeportistaUpdate,
+  MiEscuela,
+  TokenOrg,
   AsistenciaReporte,
   AvisoCreate,
   AvisoCreated,
@@ -80,6 +83,35 @@ export function setToken(token: string): void {
 export function clearToken(): void {
   try {
     localStorage.removeItem(TOKEN_STORAGE_KEY);
+  } catch {
+    /* noop */
+  }
+}
+
+// ---- Org embebida (epic escuela-y-bajas, C1): {id,nombre,color} ----
+// La org viaja en el login y la persistimos junto al token para que el TopBar
+// pinte nombre+monograma tras recargar sin una segunda llamada. El editor de
+// /mi-escuela la refresca (setOrg) para reflejar el cambio al instante.
+export function getOrg(): TokenOrg | null {
+  try {
+    const raw = localStorage.getItem(ORG_STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as TokenOrg) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setOrg(org: TokenOrg): void {
+  try {
+    localStorage.setItem(ORG_STORAGE_KEY, JSON.stringify(org));
+  } catch {
+    /* almacenamiento no disponible: la org vivirá solo en memoria */
+  }
+}
+
+export function clearOrg(): void {
+  try {
+    localStorage.removeItem(ORG_STORAGE_KEY);
   } catch {
     /* noop */
   }
@@ -258,17 +290,51 @@ export const api = {
       signal,
     });
   },
+  // GET /deportistas?q=&sucursal_id=&solo_activos=&page=&page_size= -> lista scoped
+  // por rol/RLS. solo_activos (epic escuela-y-bajas, C4): ESPEJO del de
+  // /entrenadores; por defecto (omitido) muestra TODOS; true filtra a los activos.
   deportistas(
-    params: { q?: string; sucursal_id?: string; page?: number; page_size?: number } = {},
+    params: {
+      q?: string;
+      sucursal_id?: string;
+      solo_activos?: boolean;
+      page?: number;
+      page_size?: number;
+    } = {},
     signal?: AbortSignal,
   ): Promise<DeportistasListResponse> {
-    return request<DeportistasListResponse>('/deportistas', { query: params, signal });
+    const { solo_activos, ...rest } = params;
+    return request<DeportistasListResponse>('/deportistas', {
+      query: { ...rest, solo_activos: solo_activos ? 'true' : undefined },
+      signal,
+    });
   },
   deportista(id: string, signal?: AbortSignal): Promise<DeportistaDetail> {
     return request<DeportistaDetail>(`/deportistas/${id}`, { signal });
   },
   crearDeportista(data: DeportistaCreate, signal?: AbortSignal): Promise<DeportistaCreated> {
     return request<DeportistaCreated>('/deportistas', { method: 'POST', body: data, signal });
+  },
+  // PUT /deportistas/{id} (epic escuela-y-bajas, C3) -> edición completa (datos +
+  // tutores + ficha médica) y devuelve el detalle actualizado. `tutores` se
+  // reconcilia por id; el backend valida el invariante de menores (>=1 tutor, no
+  // quitar al del consentimiento) -> 422. Campos omitidos NO se tocan.
+  actualizarDeportista(
+    id: string,
+    data: DeportistaUpdate,
+    signal?: AbortSignal,
+  ): Promise<DeportistaDetail> {
+    return request<DeportistaDetail>(`/deportistas/${id}`, { method: 'PUT', body: data, signal });
+  },
+  // POST /deportistas/{id}/baja (ADMIN; epic escuela-y-bajas, C4) -> soft-delete
+  // (activo=false, NUNCA borrado físico). Devuelve el detalle actualizado.
+  darBajaDeportista(id: string, signal?: AbortSignal): Promise<DeportistaDetail> {
+    return request<DeportistaDetail>(`/deportistas/${id}/baja`, { method: 'POST', signal });
+  },
+  // POST /deportistas/{id}/reactivar (ADMIN; epic escuela-y-bajas, C4) -> restaura
+  // (activo=true). Devuelve el detalle actualizado.
+  reactivarDeportista(id: string, signal?: AbortSignal): Promise<DeportistaDetail> {
+    return request<DeportistaDetail>(`/deportistas/${id}/reactivar`, { method: 'POST', signal });
   },
   // GET /deportistas/por-ci/{ci} -> detalle del deportista (200) o 404 si no existe
   // en la org. Recuperar-por-CI (S3): al ingresar/escanear el CI, precarga el
@@ -584,6 +650,18 @@ export const api = {
   // (deportistas/horarios/sesiones); el cliente refleja el mensaje del backend.
   eliminarCategoria(id: string, signal?: AbortSignal): Promise<void> {
     return request<void>(`/categorias/${id}`, { method: 'DELETE', signal });
+  },
+
+  // ---- Mi escuela (epic escuela-y-bajas, C2) — SOLO ADMIN (403 a ENTRENADOR) ----
+  // organizacion NO tiene RLS: el endpoint scopea SIEMPRE a user.org_id server-side
+  // e ignora cualquier id del cliente. GET y PUT comparten el shape { nombre, color }.
+  // GET /mi-escuela -> { nombre, color } de la org del usuario.
+  miEscuela(signal?: AbortSignal): Promise<MiEscuela> {
+    return request<MiEscuela>('/mi-escuela', { signal });
+  },
+  // PUT /mi-escuela -> actualiza nombre + color del monograma y devuelve el recurso.
+  actualizarMiEscuela(body: MiEscuela, signal?: AbortSignal): Promise<MiEscuela> {
+    return request<MiEscuela>('/mi-escuela', { method: 'PUT', body, signal });
   },
 
   // GET /reportes/asistencia?desde=&hasta=&sucursal_id=&categoria_id=

@@ -38,8 +38,9 @@ export function NuevoEntrenador({ entrenador, onClose, onSaved }: NuevoEntrenado
   );
   // Sucursales asignadas (M:N). Al editar precarga las actuales del entrenador.
   const [sucursalIds, setSucursalIds] = useState<string[]>(entrenador?.sucursal_ids ?? []);
-  // Solo relevante en edición: toggle de baja/reactivación.
-  const [activo, setActivo] = useState(entrenador?.activo ?? true);
+  // La baja/reactivación se hace con un botón DIRECTO en la fila (Entrenadores.tsx),
+  // no desde este modal (epic escuela-y-bajas, Fase 2). Por eso el update NO envía
+  // `activo` (campo opcional => "no tocar"): editar datos no cambia el estado activo.
 
   // Catálogo de sucursales para el multiselect (reusa GET /sucursales).
   const [sucursales, setSucursales] = useState<Sucursal[]>([]);
@@ -160,7 +161,7 @@ export function NuevoEntrenador({ entrenador, onClose, onSaved }: NuevoEntrenado
           especialidad: especialidad.trim() || null,
           // Lista = REEMPLAZA el set actual (el backend resuelve el delta).
           disciplina_ids: disciplinaIds,
-          activo,
+          // `activo` NO se envía: la baja/reactivación vive en el botón de la fila.
           telefono: telefono.trim() || null,
           sucursal_ids: sucursalIds,
         };
@@ -368,17 +369,6 @@ export function NuevoEntrenador({ entrenador, onClose, onSaved }: NuevoEntrenado
                 </ul>
               )}
             </fieldset>
-
-            {editar && (
-              <label className="entrenadores__toggle">
-                <input
-                  type="checkbox"
-                  checked={activo}
-                  onChange={(e) => setActivo(e.target.checked)}
-                />
-                {activo ? 'Activo (puede iniciar sesión)' : 'Inactivo (dado de baja)'}
-              </label>
-            )}
 
             <div className="entrenadores__modal-actions">
               <Button variant="secondary" onClick={onClose} disabled={submitting}>

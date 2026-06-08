@@ -6,7 +6,7 @@ import uuid
 from datetime import date
 from typing import Any
 
-from sqlalchemy import Date, ForeignKey, String
+from sqlalchemy import Boolean, Date, ForeignKey, String, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -41,3 +41,11 @@ class Deportista(UUIDPkMixin, OrgScoped, TimestampMixin, Base):
     domicilio: Mapped[str | None] = mapped_column(String, nullable=True)
     lugar_nacimiento: Mapped[str | None] = mapped_column(String, nullable=True)
     ficha_medica: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    # Soft-delete: dar de baja oculta de los flujos activos pero conserva el
+    # registro y su historial; reactivar lo restaura. Patrón de `aviso.activo`:
+    # `server_default=func.true()` para que los INSERT por SQL crudo (seed/tests)
+    # backfilleen sin violar el NOT NULL; `default=True` cubre los INSERT por ORM.
+    # La migración 0020 conserva el DEFAULT físico (esquema ↔ modelo coinciden).
+    activo: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=func.true(), default=True
+    )

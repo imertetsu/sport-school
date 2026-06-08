@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { BrandName } from '@/components/BrandName';
 import { useAuth } from '@/auth/useAuth';
 import { useAccent } from '@/theme/useAccent';
-import { Avatar } from '@/components/ui';
+import { Avatar, Monogram } from '@/components/ui';
 import { useSucursales } from './SucursalContext';
 import { useSearch } from './SearchContext';
 import type { Role } from '@/api/types';
@@ -18,7 +18,7 @@ export interface TopBarProps {
 }
 
 export function TopBar({ onToggleSidebar }: TopBarProps) {
-  const { user, viewRole, logout } = useAuth();
+  const { user, viewRole, org, logout } = useAuth();
   const { accent, toggle: toggleAccent } = useAccent();
   const { sucursales, selected, setSelected } = useSucursales();
   const { query, setQuery } = useSearch();
@@ -43,12 +43,28 @@ export function TopBar({ onToggleSidebar }: TopBarProps) {
         >
           ☰
         </button>
-        <div className="topbar__brand">
-          <span className="topbar__logo" aria-hidden="true">
-            ⬡
-          </span>
-          <BrandName className="topbar__brand-name" />
-        </div>
+        {/* Identidad de la ESCUELA: monograma (iniciales con org.color, default
+            determinista si null) + nombre. Es lo primero que el admin reconoce al
+            entrar; sale del login (sin fetch extra). Si aún no hay org (sesión
+            previa al epic), cae a la marca del producto. */}
+        {org ? (
+          <div className="topbar__brand">
+            <Monogram name={org.nombre} color={org.color} size="md" />
+            <span className="topbar__brand-text">
+              <span className="topbar__school-name" title={org.nombre}>
+                {org.nombre}
+              </span>
+              <BrandName className="topbar__brand-sub" />
+            </span>
+          </div>
+        ) : (
+          <div className="topbar__brand">
+            <span className="topbar__logo" aria-hidden="true">
+              ⬡
+            </span>
+            <BrandName className="topbar__brand-name" />
+          </div>
+        )}
       </div>
 
       <div className="topbar__center">
