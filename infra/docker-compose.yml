@@ -17,6 +17,7 @@ name: latinosport
 services:
   db:
     image: postgres:16
+    restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
       # Password del superusuario. Viene del .env (en prod el bootstrap genera uno
@@ -44,6 +45,7 @@ services:
 
   redis:
     image: redis:7
+    restart: unless-stopped
     ports:
       - "${REDIS_PORT:-6379}:6379"
     healthcheck:
@@ -60,6 +62,7 @@ services:
       context: ..
       dockerfile: infra/Dockerfile.api
     image: latinosport-api
+    restart: unless-stopped
     # Solo este servicio aplica migraciones (migrador único, evita carreras).
     environment:
       RUN_MIGRATIONS: "1"
@@ -78,6 +81,7 @@ services:
       context: ..
       dockerfile: infra/Dockerfile.api
     image: latinosport-api
+    restart: unless-stopped
     environment:
       RUN_MIGRATIONS: "0"
     env_file:
@@ -96,6 +100,7 @@ services:
       context: ..
       dockerfile: infra/Dockerfile.api
     image: latinosport-api
+    restart: unless-stopped
     environment:
       RUN_MIGRATIONS: "0"
     env_file:
@@ -111,6 +116,7 @@ services:
     command: ["celery", "-A", "app.workers.celery_app", "beat", "--loglevel=info"]
 
   web:
+    restart: unless-stopped
     build:
       context: ../frontend
       dockerfile: ../infra/Dockerfile.web
