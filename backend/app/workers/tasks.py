@@ -27,8 +27,10 @@ from sqlalchemy import select, text, update
 
 from app.core.config import settings
 from app.core.db import SessionLocal
+from app.models.aviso import Aviso
 from app.models.cuota import Cuota
 from app.models.organizacion import Organizacion
+from app.services import aviso_notificacion as aviso_notif_svc
 from app.services import horarios as horarios_svc
 from app.services import recordatorio_deudores as deudores_svc
 from app.services.deps import get_whatsapp_port
@@ -238,3 +240,51 @@ def recordatorio_deudores_semanal() -> dict[str, int]:
         total_enviados,
     )
     return {"orgs": orgs_procesadas, "enviados": total_enviados}
+
+
+# --------------------------------------------------------------------------- #
+# Notificación de aviso por WhatsApp (epic avisos-whatsapp) — a demanda
+# --------------------------------------------------------------------------- #
+@celery_app.task(name="app.workers.tasks.enviar_aviso_whatsapp_task")
+def enviar_aviso_whatsapp_task(
+    org_id: str,
+    aviso_id: str,
+    notificar_entrenadores: bool,
+    notificar_tutores: bool,
+) -> dict[str, int]:
+    """Envía un aviso por WhatsApp a sus destinatarios (a demanda, encolada en `POST /avisos`).
+
+    NO está en `beat_schedule` (no es cron): la encola el alta del aviso si algún flag
+    está en `true`. Fija `app.current_org` de la org del aviso (patrón `_set_org`), carga
+    el aviso bajo RLS, llama al servicio idempotente con `get_whatsapp_port()` y commitea.
+    Reencolar la misma task NO produce doble envío (INSERT `ON CONFLICT DO NOTHING`).
+    """
+    org_uuid = uuid.UUID(org_id)
+    aviso_uuid = uuid.UUID(aviso_id)
+    db = SessionLocal()
+    enviados = 0
+    try:
+        _set_org(db, org_uuid)
+        aviso = db.get(Aviso, aviso_uuid)
+        if aviso is None:
+            logger.warning(
+                "enviar_aviso_whatsapp_task: aviso %s no existe en org %s", aviso_id, org_id
+            )
+            return {"enviados": 0}
+        enviados = aviso_notif_svc.enviar_aviso_whatsapp(
+            db,
+            aviso=aviso,
+            port=get_whatsapp_port(),
+            notificar_entrenadores=notificar_entrenadores,
+            notificar_tutores=notificar_tutores,
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("enviar_aviso_whatsapp_task falló aviso=%s", aviso_id)
+        raise
+    finally:
+        db.close()
+
+    logger.info("enviar_aviso_whatsapp_task OK: aviso=%s enviados=%s", aviso_id, enviados)
+    return {"enviados": enviados}
