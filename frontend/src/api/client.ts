@@ -37,6 +37,8 @@ import type {
   LoginRequest,
   PagoOut,
   PanelCobranza,
+  PreviewNotificacionIn,
+  PreviewNotificacionOut,
   QrResponse,
   RecordatorioDeudoresResult,
   RecordatorioOut,
@@ -419,6 +421,20 @@ export const api = {
   // PUT /avisos/{id} (ADMIN) -> edita el aviso (misma validación de invariante).
   actualizarAviso(id: string, body: AvisoCreate, signal?: AbortSignal): Promise<AvisoCreated> {
     return request<AvisoCreated>(`/avisos/${id}`, { method: 'PUT', body, signal });
+  },
+  // POST /avisos/notificacion/preview (ADMIN) -> cuenta destinatarios SIN enviar
+  // (avisos-whatsapp C2). Valida la misma invariante alcance↔ids que el alta
+  // (422 si no cumple). Solo se usa antes de publicar cuando hay algún grupo
+  // marcado, para confirmar el conteo. No inserta ni envía nada.
+  previewNotificacionAviso(
+    body: PreviewNotificacionIn,
+    signal?: AbortSignal,
+  ): Promise<PreviewNotificacionOut> {
+    return request<PreviewNotificacionOut>('/avisos/notificacion/preview', {
+      method: 'POST',
+      body,
+      signal,
+    });
   },
   // DELETE /avisos/{id} (ADMIN) -> soft-delete (activo=false), responde 204.
   eliminarAviso(id: string, signal?: AbortSignal): Promise<void> {

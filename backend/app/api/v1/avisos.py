@@ -22,8 +22,16 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.core.tenant import CurrentUser, require_role, set_tenant_context
-from app.schemas.aviso import AvisoCreate, AvisoOut, AvisosPage, AvisoUpdate
+from app.schemas.aviso import (
+    AvisoCreate,
+    AvisoOut,
+    AvisosPage,
+    AvisoUpdate,
+    PreviewNotificacionIn,
+    PreviewNotificacionOut,
+)
 from app.services import aviso as svc
+from app.services import aviso_notificacion as notif_svc
 
 router = APIRouter(prefix="/avisos", tags=["avisos"])
 
@@ -67,12 +75,60 @@ def crear_aviso(
 
     El body se valida con Pydantic (no vacíos + invariante alcance<->ids -> 422).
     Devuelve el aviso creado con sucursal/categoría/autor resueltos.
+
+    Si `notificar_entrenadores`/`notificar_tutores` (epic avisos-whatsapp): tras crear el
+    aviso, **encola** el envío por WhatsApp en segundo plano (Celery, idempotente). La
+    respuesta NO espera al envío. Sin ningún flag ⇒ comportamiento idéntico al actual.
     """
-    return svc.crear(
+    org_id = uuid.UUID(user.org_id)
+    out = svc.crear(
         db,
         body,
-        org_id=uuid.UUID(user.org_id),
+        org_id=org_id,
         usuario_id=uuid.UUID(user.user_id),
+    )
+    if body.notificar_entrenadores or body.notificar_tutores:
+        # Import diferido: evita que importar el router arrastre Celery/Redis al arrancar
+        # tests/herramientas que no usan el worker.
+        from app.workers.tasks import enviar_aviso_whatsapp_task
+
+        enviar_aviso_whatsapp_task.delay(
+            str(org_id),
+            str(out.id),
+            body.notificar_entrenadores,
+            body.notificar_tutores,
+        )
+    return out
+
+
+# --------------------------------------------------------------------------- #
+# POST /avisos/notificacion/preview  (SOLO ADMIN) — cuenta sin enviar
+# --------------------------------------------------------------------------- #
+@router.post("/notificacion/preview", response_model=PreviewNotificacionOut)
+def preview_notificacion(
+    body: PreviewNotificacionIn,
+    _user: CurrentUser = Depends(require_role("ADMIN")),
+    db: Session = Depends(get_db),
+) -> PreviewNotificacionOut:
+    """Cuenta destinatarios del envío (con/sin teléfono) sin insertar ni enviar (C2).
+
+    Valida la misma invariante alcance<->ids que el alta (Pydantic -> 422). Solo cuenta
+    los grupos marcados; `entrenadores`/`tutores` = con teléfono, `sin_telefono` =
+    omitidos por no tener teléfono. Dedupe por id aplicado.
+    """
+    conteo = notif_svc.preview_notificacion(
+        db,
+        alcance=body.alcance,
+        sucursal_id=body.sucursal_id,
+        categoria_id=body.categoria_id,
+        notificar_entrenadores=body.notificar_entrenadores,
+        notificar_tutores=body.notificar_tutores,
+    )
+    return PreviewNotificacionOut(
+        entrenadores=conteo.entrenadores,
+        tutores=conteo.tutores,
+        total=conteo.total,
+        sin_telefono=conteo.sin_telefono,
     )
 
 

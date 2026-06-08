@@ -591,10 +591,39 @@ export interface AvisoCreate {
   sucursal_id?: string | null; // requerido si alcance=SUCURSAL (422 si falta)
   categoria_id?: string | null; // requerido si alcance=CATEGORIA (422 si falta)
   vigente_hasta?: string | null; // YYYY-MM-DD opcional; null = sin caducidad
+  // Notificación opt-in por WhatsApp (avisos-whatsapp C2). Solo en el ALTA
+  // (NO en AvisoUpdate). Default false ⇒ no encola nada y el alta se comporta
+  // como hoy. Si alguno es true, el backend crea el aviso y encola el envío en
+  // segundo plano (Celery, idempotente); la respuesta no espera al envío.
+  notificar_entrenadores?: boolean;
+  notificar_tutores?: boolean;
 }
 
 // POST/PUT /avisos devuelven el aviso (mismo shape que un item del feed).
 export type AvisoCreated = AvisoOut;
+
+// --- POST /avisos/notificacion/preview (body) — avisos-whatsapp C2 (ADMIN) ---
+// Cuenta destinatarios SIN enviar (para confirmar antes de publicar). Valida la
+// misma invariante alcance↔ids que AvisoCreate (422 si no cumple).
+export interface PreviewNotificacionIn {
+  alcance: AlcanceAviso;
+  sucursal_id?: string | null; // requerido si alcance=SUCURSAL
+  categoria_id?: string | null; // requerido si alcance=CATEGORIA
+  notificar_entrenadores: boolean;
+  notificar_tutores: boolean;
+}
+
+// --- POST /avisos/notificacion/preview -> conteo ---
+// entrenadores/tutores = destinatarios CON teléfono de cada grupo marcado (0 si
+// el flag está en false). total = entrenadores + tutores. sin_telefono =
+// destinatarios resueltos (de los grupos marcados) omitidos por no tener
+// teléfono. Dedupe aplicado.
+export interface PreviewNotificacionOut {
+  entrenadores: number;
+  tutores: number;
+  total: number;
+  sin_telefono: number;
+}
 
 // ============================================================
 // C2: Programación de clases / Horarios (espejo EXACTO del contrato C2 del

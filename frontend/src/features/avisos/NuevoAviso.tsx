@@ -6,6 +6,7 @@ import type {
   AvisoCreated,
   AvisoOut,
   Categoria,
+  PreviewNotificacionOut,
   Sucursal,
 } from '@/api/types';
 import { Button, Card, Field, SelectField } from '@/components/ui';
@@ -40,9 +41,22 @@ export function NuevoAviso({ sucursales, aviso, onClose, onSaved }: NuevoAvisoPr
   // Categorías para el selector de alcance=CATEGORIA (scoped por rol en backend).
   const [categorias, setCategorias] = useState<Categoria[]>([]);
 
+  // Notificación opt-in por WhatsApp (solo en ALTA). Desmarcados por defecto:
+  // sin flag marcado, el alta se comporta exactamente como hoy (sin preview).
+  const [notificarEntrenadores, setNotificarEntrenadores] = useState(false);
+  const [notificarTutores, setNotificarTutores] = useState(false);
+
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+  // Paso de confirmación con conteo: cuando hay algún grupo marcado, antes de
+  // crear se pide el preview y se muestra "se enviará a N personas…". Mientras
+  // pending != null, el modal muestra ese paso y espera confirmar/cancelar.
+  const [pending, setPending] = useState<AvisoCreate | null>(null);
+  const [preview, setPreview] = useState<PreviewNotificacionOut | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   // Carga las categorías la primera vez que se elige el alcance CATEGORIA.
   useEffect(() => {
@@ -85,26 +99,8 @@ export function NuevoAviso({ sucursales, aviso, onClose, onSaved }: NuevoAvisoPr
     setFieldErrors(mapped);
   }
 
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault();
-    setFormError(null);
-    const errs = validate();
-    setFieldErrors(errs);
-    if (Object.keys(errs).length > 0) {
-      setFormError('Revisa los campos marcados.');
-      return;
-    }
-
-    // Respeta la invariante C1: solo se envía el id que corresponde al alcance.
-    const payload: AvisoCreate = {
-      titulo: titulo.trim(),
-      cuerpo: cuerpo.trim(),
-      alcance,
-      sucursal_id: alcance === 'SUCURSAL' ? sucursalId : null,
-      categoria_id: alcance === 'CATEGORIA' ? categoriaId : null,
-      vigente_hasta: vigenteHasta || null,
-    };
-
+  // Crea (o edita) el aviso y avisa al padre. Mapea 422/403 a la UI.
+  async function persistir(payload: AvisoCreate) {
     setSubmitting(true);
     try {
       const saved = aviso
@@ -112,6 +108,9 @@ export function NuevoAviso({ sucursales, aviso, onClose, onSaved }: NuevoAvisoPr
         : await api.crearAviso(payload);
       onSaved(saved);
     } catch (err) {
+      // Si veníamos del paso de confirmación, vuelve al formulario para mostrar
+      // el error (la invariante o el 403 se reflejan en los campos/banner).
+      setPending(null);
       if (err instanceof ApiError) {
         if (err.isValidation) {
           applyApiErrors(err);
@@ -126,6 +125,95 @@ export function NuevoAviso({ sucursales, aviso, onClose, onSaved }: NuevoAvisoPr
       }
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setFormError(null);
+    const errs = validate();
+    setFieldErrors(errs);
+    if (Object.keys(errs).length > 0) {
+      setFormError('Revisa los campos marcados.');
+      return;
+    }
+
+    // Respeta la invariante C1: solo se envía el id que corresponde al alcance.
+    // Las flags de notificación SOLO aplican al alta (nunca al editar).
+    const notificar = !editar && (notificarEntrenadores || notificarTutores);
+    const payload: AvisoCreate = {
+      titulo: titulo.trim(),
+      cuerpo: cuerpo.trim(),
+      alcance,
+      sucursal_id: alcance === 'SUCURSAL' ? sucursalId : null,
+      categoria_id: alcance === 'CATEGORIA' ? categoriaId : null,
+      vigente_hasta: vigenteHasta || null,
+      ...(editar
+        ? {}
+        : {
+            notificar_entrenadores: notificarEntrenadores,
+            notificar_tutores: notificarTutores,
+          }),
+    };
+
+    // Sin notificación: alta normal, sin preview ni confirmación (como hoy).
+    if (!notificar) {
+      await persistir(payload);
+      return;
+    }
+
+    // Con algún grupo marcado: primero el conteo (preview), luego confirmación.
+    setPreview(null);
+    setPreviewError(null);
+    setPreviewLoading(true);
+    setPending(payload);
+    try {
+      const counts = await api.previewNotificacionAviso({
+        alcance,
+        sucursal_id: payload.sucursal_id ?? null,
+        categoria_id: payload.categoria_id ?? null,
+        notificar_entrenadores: notificarEntrenadores,
+        notificar_tutores: notificarTutores,
+      });
+      setPreview(counts);
+    } catch (err) {
+      // El conteo es informativo: si falla, NO bloqueamos el alta. Mostramos un
+      // aviso y dejamos confirmar igual (o reintentar el preview).
+      if (err instanceof ApiError && err.isForbidden) {
+        setPreviewError('No tienes permiso para enviar notificaciones.');
+      } else if (err instanceof ApiError) {
+        setPreviewError(err.message);
+      } else {
+        setPreviewError('No se pudo calcular el número de destinatarios.');
+      }
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
+  // Reintenta el preview desde el paso de confirmación (cuando falló el conteo).
+  async function reintentarPreview() {
+    setPreviewError(null);
+    setPreviewLoading(true);
+    try {
+      const counts = await api.previewNotificacionAviso({
+        alcance,
+        sucursal_id: alcance === 'SUCURSAL' ? sucursalId : null,
+        categoria_id: alcance === 'CATEGORIA' ? categoriaId : null,
+        notificar_entrenadores: notificarEntrenadores,
+        notificar_tutores: notificarTutores,
+      });
+      setPreview(counts);
+    } catch (err) {
+      if (err instanceof ApiError && err.isForbidden) {
+        setPreviewError('No tienes permiso para enviar notificaciones.');
+      } else if (err instanceof ApiError) {
+        setPreviewError(err.message);
+      } else {
+        setPreviewError('No se pudo calcular el número de destinatarios.');
+      }
+    } finally {
+      setPreviewLoading(false);
     }
   }
 
@@ -146,6 +234,89 @@ export function NuevoAviso({ sucursales, aviso, onClose, onSaved }: NuevoAvisoPr
               {formError}
             </div>
           )}
+
+          {/* Paso de confirmación con conteo (solo alta con algún grupo marcado). */}
+          {pending ? (
+            <div
+              className="avisos__confirm-envio"
+              role="alertdialog"
+              aria-label="Confirmar envío de notificación"
+            >
+              {previewLoading && (
+                <p className="avisos__confirm-texto">Calculando destinatarios…</p>
+              )}
+
+              {!previewLoading && previewError && (
+                <>
+                  <p className="page-error" role="alert">
+                    {previewError}
+                  </p>
+                  <p className="avisos__confirm-texto">
+                    No pudimos calcular cuántas personas recibirán el WhatsApp.
+                    Puedes reintentar el conteo o publicar de todos modos (se
+                    enviará a los destinatarios del alcance elegido).
+                  </p>
+                </>
+              )}
+
+              {!previewLoading && !previewError && preview && (
+                <p className="avisos__confirm-texto">
+                  {preview.total === 0 ? (
+                    <>No hay destinatarios con teléfono para este aviso. </>
+                  ) : (
+                    <>
+                      Se enviará un WhatsApp a <strong>{preview.total}</strong>{' '}
+                      {preview.total === 1 ? 'persona' : 'personas'} (
+                      {preview.entrenadores}{' '}
+                      {preview.entrenadores === 1 ? 'entrenador' : 'entrenadores'},{' '}
+                      {preview.tutores}{' '}
+                      {preview.tutores === 1 ? 'tutor' : 'tutores'}).{' '}
+                    </>
+                  )}
+                  {preview.sin_telefono > 0 && (
+                    <>
+                      {preview.sin_telefono}{' '}
+                      {preview.sin_telefono === 1
+                        ? 'persona sin teléfono se omitirá'
+                        : 'personas sin teléfono se omitirán'}
+                      .{' '}
+                    </>
+                  )}
+                  ¿Confirmar?
+                </p>
+              )}
+
+              <div className="avisos__modal-actions">
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setPending(null);
+                    setPreview(null);
+                    setPreviewError(null);
+                  }}
+                  disabled={submitting}
+                >
+                  Cancelar
+                </Button>
+                {!previewLoading && previewError && (
+                  <Button
+                    variant="ghost"
+                    onClick={reintentarPreview}
+                    disabled={submitting}
+                  >
+                    Reintentar conteo
+                  </Button>
+                )}
+                <Button
+                  variant="primary"
+                  onClick={() => persistir(pending)}
+                  disabled={submitting || previewLoading}
+                >
+                  {submitting ? 'Publicando…' : 'Confirmar y publicar'}
+                </Button>
+              </div>
+            </div>
+          ) : (
           <form onSubmit={handleSubmit} noValidate className="avisos__modal-form">
             <Field
               label="Título"
@@ -234,6 +405,37 @@ export function NuevoAviso({ sucursales, aviso, onClose, onSaved }: NuevoAvisoPr
               hint="Opcional: déjalo vacío para un aviso sin caducidad."
             />
 
+            {/* Notificación opt-in por WhatsApp: SOLO en el alta (editar no
+                notifica). Desmarcados por defecto (RNF-07: el envío tiene
+                costo). El conteo y la confirmación van al pulsar "Publicar". */}
+            {!editar && (
+              <fieldset className="avisos__notificar">
+                <legend className="avisos__notificar-legend">
+                  Notificar por WhatsApp
+                </legend>
+                <p className="avisos__notificar-hint">
+                  Opcional: avisa a quienes alcance este aviso. El envío tiene
+                  costo; verás el número de destinatarios antes de confirmar.
+                </p>
+                <label className="avisos__notificar-opcion">
+                  <input
+                    type="checkbox"
+                    checked={notificarEntrenadores}
+                    onChange={(e) => setNotificarEntrenadores(e.target.checked)}
+                  />
+                  Entrenadores
+                </label>
+                <label className="avisos__notificar-opcion">
+                  <input
+                    type="checkbox"
+                    checked={notificarTutores}
+                    onChange={(e) => setNotificarTutores(e.target.checked)}
+                  />
+                  Tutores
+                </label>
+              </fieldset>
+            )}
+
             <div className="avisos__modal-actions">
               <Button variant="secondary" onClick={onClose} disabled={submitting}>
                 Cancelar
@@ -243,6 +445,7 @@ export function NuevoAviso({ sucursales, aviso, onClose, onSaved }: NuevoAvisoPr
               </Button>
             </div>
           </form>
+          )}
         </Card>
       </div>
     </div>

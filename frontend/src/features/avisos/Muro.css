@@ -149,3 +149,47 @@
   gap: var(--space-3);
   padding-top: var(--space-2);
 }
+
+/* --- Notificación por WhatsApp (solo alta) --- */
+.avisos__notificar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.avisos__notificar-legend {
+  padding: 0 var(--space-1);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.avisos__notificar-hint {
+  margin: 0 0 var(--space-1);
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+}
+
+.avisos__notificar-opcion {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+/* --- Paso de confirmación con conteo (preview) --- */
+.avisos__confirm-envio {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.avisos__confirm-texto {
+  margin: 0;
+  font-size: var(--fs-md);
+  line-height: 1.5;
+}

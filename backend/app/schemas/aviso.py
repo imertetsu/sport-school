@@ -75,6 +75,12 @@ class AvisoCreate(BaseModel):
     `creado_por` NO se acepta del cliente (lo fija el servidor con el usuario del
     token, auditoría RNF-03). `titulo`/`cuerpo` no vacíos -> 422. La invariante
     alcance<->ids se valida con un `model_validator` (=> 422).
+
+    `notificar_entrenadores`/`notificar_tutores` (epic avisos-whatsapp, C2) son flags
+    **opt-in** del envío por WhatsApp, **desmarcados por defecto**: si alguno es `true`
+    el alta encola el envío en segundo plano (Celery); sin ninguno, el alta se comporta
+    exactamente como antes (no encola nada). NO existen en `AvisoUpdate` (editar no
+    notifica).
     """
 
     titulo: str
@@ -83,6 +89,8 @@ class AvisoCreate(BaseModel):
     sucursal_id: uuid.UUID | None = None
     categoria_id: uuid.UUID | None = None
     vigente_hasta: date | None = None
+    notificar_entrenadores: bool = False
+    notificar_tutores: bool = False
 
     @field_validator("titulo", "cuerpo")
     @classmethod
@@ -153,3 +161,40 @@ class AvisosPage(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+# --------------------------------------------------------------------------- #
+# Preview de notificación (POST /avisos/notificacion/preview) — C2
+# --------------------------------------------------------------------------- #
+class PreviewNotificacionIn(BaseModel):
+    """Body de `POST /avisos/notificacion/preview` (C2). Cuenta sin enviar.
+
+    Mismos campos de alcance que el alta (misma invariante alcance<->ids, => 422) más
+    los flags opt-in: el conteo solo incluye los grupos marcados.
+    """
+
+    alcance: Alcance
+    sucursal_id: uuid.UUID | None = None
+    categoria_id: uuid.UUID | None = None
+    notificar_entrenadores: bool = False
+    notificar_tutores: bool = False
+
+    @model_validator(mode="after")
+    def _check_invariante(self) -> PreviewNotificacionIn:
+        validar_invariante(self.alcance, self.sucursal_id, self.categoria_id)
+        return self
+
+
+class PreviewNotificacionOut(BaseModel):
+    """Respuesta del preview (C2). Cuenta destinatarios **con** teléfono por grupo.
+
+    `entrenadores`/`tutores` = destinatarios con teléfono de cada grupo marcado (0 si su
+    flag está en `false`). `total = entrenadores + tutores`. `sin_telefono` =
+    destinatarios resueltos (de los grupos marcados) omitidos por no tener teléfono.
+    Dedupe por id aplicado. No inserta ni envía.
+    """
+
+    entrenadores: int
+    tutores: int
+    total: int
+    sin_telefono: int
