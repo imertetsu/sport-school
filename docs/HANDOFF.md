@@ -9,7 +9,9 @@ _Última actualización: 2026-06-09 — epic **escuela-y-bajas** integrado en `m
 escuela** (solo ADMIN, `GET/PUT /mi-escuela`: solo nombre + color, sin logo de archivo); (3) **baja/reactivación
 soft-delete reversible** de deportistas (`POST /deportistas/{id}/baja|reactivar` + `solo_activos` + `activo` en
 salidas) y entrenadores (botón directo en la fila); (4) **edición completa de deportista** (datos + tutores +
-ficha médica, `PUT /deportistas/{id}` reconcilia tutores con invariante de menores 422). Migraciones **0001→0020**._
+ficha médica, `PUT /deportistas/{id}` reconcilia tutores con invariante de menores 422). · **avisos-whatsapp**
+(migración **0021**): los Avisos del muro pueden **notificar por WhatsApp** a entrenadores/tutores según el alcance
+del aviso (opt-in con checkboxes + preview con conteo + confirmación; mock-first). Migraciones **0001→0021**._
 
 ## Stack snapshot
 
@@ -36,7 +38,9 @@ ficha médica, `PUT /deportistas/{id}` reconcilia tutores con invariante de meno
   el entrenador ve solo categorías de sus disciplinas asignadas, con red de seguridad).
 - **Programación de clases** (`horario_clase`/`sesion`, crons), **Auto-registro** (`solicitud_registro`,
   aprobar=ADMIN), **Reportes** (solo ADMIN, sin migración: ingresos/mes + % asistencia), **Egresos** (ADMIN),
-  **Muro de avisos** (feed scoped por rol, CRUD ADMIN con soft-delete).
+  **Muro de avisos** (feed scoped por rol, CRUD ADMIN con soft-delete; opcionalmente **notifica por WhatsApp** a
+  entrenadores/tutores según alcance, opt-in con checkboxes + preview + confirmación, mock-first, log idempotente
+  `aviso_notificacion`).
 - **Plataforma / Super Admin** (`plataforma_admin` sin org_id/RLS, consola `/plataforma`, alta de escuelas,
   catálogo GLOBAL de disciplinas), **Gestión de entrenadores** con cuenta de login, **Sucursales/Categorías** CRUD.
 - **Personas y disciplinas:** rename alumno→deportista, catálogo GLOBAL de disciplinas (`disciplina_id` FK es lo
@@ -53,7 +57,8 @@ ficha médica, `PUT /deportistas/{id}` reconcilia tutores con invariante de meno
 **Migraciones:** `0001→0020`. Hitos: Egresos=0005, Muro=0006, Horarios=0007, Auto-registro=0008, Abonos=0009,
 Recibo=0010, WhatsApp=0011, SuperAdmin=0012, Entrenadores=0013, Deudores=0014, rename deportista=0015, catálogo
 disciplinas=0016, CI deportista/tutor=0017, entrenador CI+disciplinas=0018, deportista.domicilio+lugar_nacimiento=0019,
-**deportista.activo + organizacion.color=0020** (aditivo, reversible). Reportes y Sucursales/Recibo sin migración.
+deportista.activo + organizacion.color=0020, **aviso_notificacion=0021** (log idempotente WhatsApp del muro).
+Reportes y Sucursales/Recibo sin migración.
 
 Próximos candidatos: resto de **Fase 2** (portal passwordless OTP/WhatsApp, chatbot WhatsApp entrante, factura SIN,
 OpenBCB real; credenciales Meta reales + plantillas aprobadas). Fase 3: rendimiento, voz, analítica.
@@ -106,21 +111,35 @@ deportistas repartidos (Fútbol/Voleibol/NULL). Super admin: el de `PLATFORM_ADM
 
 ## In-flight work
 
-Nada en vuelo en código. El epic **escuela-y-bajas** está **integrado en `main`** (migración 0020); su spec
-efímera (`docs/specs/escuela-y-bajas.md`) se borró en el commit de cierre.
+Nada en vuelo en código. **escuela-y-bajas** (0020) y **avisos-whatsapp** (0021) están **integrados en `main`**
+(escuela-y-bajas mergeó directo; avisos encadenó su 0021 sobre 0020 — cadena 0019→0020→0021 verificada + gates);
+sus specs efímeras (`escuela-y-bajas.md`, `avisos-whatsapp.md`) se borraron en el cierre.
 
 **Pendientes operativos:**
 - **Epics multi-sesión se integran en rama `staging`** (no `main` directo) → validar → `staging`→`main`.
 - **Prod** (servidor `177.222.39.139`, `/opt/latinosport`) sigue ~**0014**: **pendiente desplegar** el chain
-  **0015→0020** (0019/0020 son aditivos y seguros). Deploy **gateado** (`DEPLOY_ENABLED` off), manual: `pg_dump`
+  **0015→0021** (0019/0020/0021 son aditivos y seguros). Deploy **gateado** (`DEPLOY_ENABLED` off), manual: `pg_dump`
   → `git pull` → `bash infra/deploy.sh`. **Antes de aplicar 0017/0018 en prod: correr la detección de CI
   duplicados** en deportista/tutor/entrenador (si hay dup no-null, el índice único parcial falla al crearse).
+- **Job de deploy (CI) roto:** la sesión SSH se cae a mitad del build-on-server (`Broken pipe`, exit 255) —
+  probable OOM al buildear web+api+worker en paralelo o timeout SSH. Fix pendiente en `infra/deploy.sh` + workflow
+  (builds secuenciales / swap / SSH keepalive). NO es código de la app.
+- **WhatsApp avisos:** la entrega REAL necesita la plantilla `nuevo_aviso` aprobada en Meta + `WHATSAPP_PROVIDER=meta`
+  + credenciales; hoy mock-first (noop/mock no envía nada real). Mismo estado que cobro/deudores.
 
 Remoto `imertetsu/sport-school` (push vía `http.sslBackend=schannel` por el proxy TLS). Al abrir el próximo epic,
 `product-owner` crea `docs/specs/<epic>.md`.
 
 ## Recent decisions
 
+- **2026-06-09 Avisos por WhatsApp (epic, migración 0021, integrado vía staging junto a escuela-y-bajas).** Al
+  crear un Aviso, el ADMIN puede notificar por WhatsApp a **Entrenadores y/o Tutores** (opt-in con checkboxes,
+  desmarcados) a los destinatarios del **alcance** del aviso (ORG / SUCURSAL / CATEGORIA). En CATEGORIA los
+  entrenadores salen por `entrenador_disciplina` de la disciplina de la categoría (tutores = los de deportistas de
+  esa categoría). **Preview con conteo + confirmación** antes de enviar (evita blasts accidentales). Envío en
+  segundo plano (task Celery a demanda), **idempotente** (`aviso_notificacion` UNIQUE(aviso_id,tipo_destinatario,
+  destinatario_id); sin teléfono → SIN_TELEFONO). `send_template` plantilla `nuevo_aviso`. **Mock-first** (sin
+  envíos reales hasta Meta + plantilla aprobada). **Editar un aviso NO notifica** (solo el alta).
 - **2026-06-09 Escuela + bajas (epic, migración 0020).** (1) Borrado = **dar de baja** (soft-delete reversible,
   conserva historial); **nunca borrado físico** de deportistas/entrenadores. (2) Editar escuela = **solo nombre +
   color** del monograma; el "logo" es un monograma de iniciales, **sin almacenar imágenes** (RNF-02). (3) Editar
