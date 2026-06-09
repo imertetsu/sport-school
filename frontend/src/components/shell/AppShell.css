@@ -20,6 +20,25 @@
   background: var(--color-bg);
 }
 
+/* Velo oscuro tras el drawer en móvil (solo se renderiza con el drawer abierto).
+   Por debajo del sidebar (z-50) y por encima del contenido. */
+.appshell__overlay {
+  position: fixed;
+  inset: var(--topbar-h) 0 0 0;
+  background: rgba(8, 12, 20, 0.45);
+  z-index: 40;
+  animation: appshell-overlay-in 0.18s ease;
+}
+
+@keyframes appshell-overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 @media (max-width: 720px) {
   .appshell__main {
     padding: var(--space-4);

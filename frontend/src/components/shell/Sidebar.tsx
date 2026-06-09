@@ -10,16 +10,22 @@ const ROLE_LABEL: Record<string, string> = {
 
 export interface SidebarProps {
   collapsed: boolean;
+  /** En móvil el sidebar es un drawer; true = abierto (deslizado en pantalla). */
+  mobileOpen?: boolean;
+  /** Se llama al tocar un item de navegación (para cerrar el drawer en móvil). */
+  onNavigate?: () => void;
 }
 
-export function Sidebar({ collapsed }: SidebarProps) {
+export function Sidebar({ collapsed, mobileOpen = false, onNavigate }: SidebarProps) {
   const { user, viewRole } = useAuth();
   const roleLabel = viewRole ? ROLE_LABEL[viewRole] ?? viewRole : '';
   // Items gerenciales (Reportes) solo para ADMIN; el resto sigue igual.
   const groups = navGroupsForRole(viewRole);
 
   return (
-    <aside className={`sidebar${collapsed ? ' sidebar--collapsed' : ''}`}>
+    <aside
+      className={`sidebar${collapsed ? ' sidebar--collapsed' : ''}${mobileOpen ? ' sidebar--open' : ''}`}
+    >
       <nav className="sidebar__nav" aria-label="Navegación principal">
         {groups.map((group) => (
           <div className="sidebar__group" key={group.title}>
@@ -30,6 +36,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
                   <li key={item.id}>
                     <NavLink
                       to={item.to}
+                      onClick={onNavigate}
                       className={({ isActive }) =>
                         `sidebar__item${isActive ? ' sidebar__item--active' : ''}`
                       }

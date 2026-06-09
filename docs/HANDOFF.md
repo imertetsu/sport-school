@@ -141,8 +141,10 @@ Remoto `imertetsu/sport-school` (push vía `http.sslBackend=schannel` por el pro
   mobile-deportistas; datos = escuela demo ficticia), logo SnapCoding en footer (`snapcoding.jpg`), contacto real
   (WhatsApp +591 70723756, snapcodecbba@gmail.com, Cochabamba). (3) **Responsive móvil landing:** la tarjeta
   `.feat.span2` mantenía `grid-column: span 2` en móvil → forzaba una 2ª columna implícita en `.feat-grid`; fix:
-  `grid-column: auto` en `@media (max-width:760px)`. **Pendiente (app, NO landing):** el **AppShell no colapsa el
-  sidebar en móvil** (se ve apretado; en Asistencia el nombre se parte por carácter) — responsive del producto a revisar.
+  `grid-column: auto` en `@media (max-width:760px)`. (4) **Responsive móvil de la APP (AppShell):** el sidebar ahora
+  es un **drawer off-canvas** en ≤768px (hook `useMediaQuery`; `☰` del TopBar lo abre, overlay lo cierra, se cierra al
+  navegar); el contenido usa ancho completo → se resuelve el char-wrap del nombre en Asistencia. Verificado a 390px
+  (Panel/Deportistas/Asistencia).
 - **2026-06-09 Landing page de marketing en la RAÍZ (`/`).** Página estática (HTML+CSS, sin build extra) en
   `frontend/public/landing.html` + `landing.css` + `logo.png` (lockup LatinoSport). **nginx** (`infra/Dockerfile.web`):
   `location = /` → `landing.html`; el resto (`/login`, `/panel`, assets) → SPA. Los CTA "Probar demo"/"Iniciar
