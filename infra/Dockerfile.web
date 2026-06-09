@@ -59,7 +59,16 @@ server {
     location /docs           { set $api_upstream api; proxy_pass http://$api_upstream:8000$request_uri; proxy_set_header Host $host; }
     location /redoc          { set $api_upstream api; proxy_pass http://$api_upstream:8000$request_uri; proxy_set_header Host $host; }
 
+    # Landing page (marketing) en la RAIZ. Es lo primero que ve un visitante;
+    # los botones "Probar demo"/"Iniciar sesion" navegan a /login (la SPA).
+    # `location = /` (match exacto) gana sobre el prefijo `location /`.
+    location = / {
+        try_files /landing.html =404;
+    }
+
     # SPA: cualquier otra ruta -> index.html (React Router).
+    # Los assets estaticos (/landing.css, /logo.png, /assets/*) se sirven tal cual;
+    # las rutas de React (/login, /panel, ...) caen al index.html.
     location / {
         try_files $uri $uri/ /index.html;
     }

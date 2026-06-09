@@ -132,6 +132,13 @@ Remoto `imertetsu/sport-school` (push vía `http.sslBackend=schannel` por el pro
 
 ## Recent decisions
 
+- **2026-06-09 Landing page de marketing en la RAÍZ (`/`).** Página estática (HTML+CSS, sin build extra) en
+  `frontend/public/landing.html` + `landing.css` + `logo.png` (lockup LatinoSport). **nginx** (`infra/Dockerfile.web`):
+  `location = /` → `landing.html`; el resto (`/login`, `/panel`, assets) → SPA. Los CTA "Probar demo"/"Iniciar
+  sesión" entran a `/login`. El **logo** se usa en el **Login** (`login__logo-img`, fondo blanco se funde con la
+  tarjeta) y como **favicon** (`frontend/index.html`). Pendiente de reemplazo en la landing: WhatsApp real
+  (`59170000000`), email (`hola@snapcoding.bo`), ciudad, e imágenes (`.img-ph` placeholders). En **dev (Vite)** `/`
+  sigue siendo la SPA; el ruteo `/`→landing es solo del nginx de prod. Sin migración.
 - **2026-06-09 Avisos por WhatsApp (epic, migración 0021, integrado vía staging junto a escuela-y-bajas).** Al
   crear un Aviso, el ADMIN puede notificar por WhatsApp a **Entrenadores y/o Tutores** (opt-in con checkboxes,
   desmarcados) a los destinatarios del **alcance** del aviso (ORG / SUCURSAL / CATEGORIA). En CATEGORIA los

@@ -6,15 +6,22 @@
 <title>LATINOSPORT — Gestión para escuelas deportivas</title>
 <meta name="description" content="LATINOSPORT: cobranza de cuotas, control de morosidad, asistencia y perfiles de deportistas en una sola plataforma. Pensado para escuelas deportivas de Bolivia. Por SnapCoding." />
 
+<!-- Favicon + preview social (el logo es cuadrado, fondo blanco) -->
+<link rel="icon" type="image/png" href="logo.png" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="LATINOSPORT — Gestión para escuelas deportivas" />
+<meta property="og:description" content="Cobranza, morosidad, asistencia y perfiles de deportistas en una sola plataforma. Pensado para Bolivia." />
+<!-- TODO: og:image necesita URL absoluta cuando tengas dominio, p. ej. https://tudominio/logo.png -->
+<meta property="og:image" content="logo.png" />
+
 <!-- ============================================================
      PENDIENTES DE REEMPLAZO (datos reales de SnapCoding):
-       1. data-app-url / href de "Probar demo" e "Iniciar sesión"
-          → hoy apuntan a "#contacto". Cambia por la URL del sistema.
-       2. Número de WhatsApp: 59170000000  (en wa.me/... y en el footer)
-       3. Email:  hola@snapcoding.bo
-       4. Ciudad: Cochabamba, Bolivia
-       5. Imágenes: los bloques .img-ph son placeholders; reemplázalos
+       1. Número de WhatsApp: 59170000000  (en wa.me/... y en el footer)
+       2. Email:  hola@snapcoding.bo
+       3. Ciudad: Cochabamba, Bolivia
+       4. Imágenes: los bloques .img-ph son placeholders; reemplázalos
           por <img> con tus capturas/fotos reales (ver landing.css).
+     Los botones "Probar demo" / "Iniciar sesión" entran al sistema en /login.
      ============================================================ -->
 
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -45,9 +52,8 @@
     </nav>
 
     <div class="header-cta">
-      <!-- TODO: reemplazar href="#contacto" por la URL del sistema -->
-      <a class="btn btn-outline btn-sm demo-btn" href="#contacto">Probar demo</a>
-      <a class="btn btn-light btn-sm" href="#contacto">
+      <a class="btn btn-outline btn-sm demo-btn" href="/login">Probar demo</a>
+      <a class="btn btn-light btn-sm" href="/login">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5M15 12H3"/></svg>
         <span class="login-text">Iniciar sesión</span>
       </a>
@@ -65,12 +71,11 @@
       <p class="hero-sub">Cobra cuotas, controla la morosidad, toma asistencia y administra los perfiles de tus deportistas — desde el celular o la computadora. Pensado para escuelas de Bolivia.</p>
 
       <div class="hero-cta">
-        <!-- TODO: reemplazar href="#contacto" por la URL del sistema -->
-        <a class="btn btn-primary btn-lg" href="#contacto">
+        <a class="btn btn-primary btn-lg" href="/login">
           Probar demo gratis
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
         </a>
-        <a class="btn btn-outline btn-lg" href="#contacto">Iniciar sesión</a>
+        <a class="btn btn-outline btn-lg" href="/login">Iniciar sesión</a>
       </div>
       <div class="hero-note">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
@@ -276,8 +281,7 @@
           <p>Conoce la plataforma en una demo guiada o escríbenos por WhatsApp y te ayudamos a montarla.</p>
         </div>
         <div class="cta-actions">
-          <!-- TODO: reemplazar href="#" por la URL del sistema -->
-          <a class="btn btn-light btn-lg" href="#">Probar demo</a>
+          <a class="btn btn-light btn-lg" href="/login">Probar demo</a>
           <a class="btn btn-wapp btn-lg" href="https://wa.me/59170000000?text=Hola%20SnapCoding,%20quiero%20conocer%20LATINOSPORT" target="_blank" rel="noopener">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 20.5l1.3-4.2A8 8 0 1 1 8 19.5l-4.5 1z"/><path d="M9 9.2c0 3 2.2 5.2 5 5.5"/></svg>
             Escríbenos por WhatsApp
@@ -309,15 +313,14 @@
           <li><a href="#features">Características</a></li>
           <li><a href="#how">Cómo funciona</a></li>
           <li><a href="#benefits">Beneficios</a></li>
-          <li><a href="#contacto">Probar demo</a></li>
+          <li><a href="/login">Probar demo</a></li>
         </ul>
       </div>
       <div>
         <h5>Acceso</h5>
         <ul>
-          <!-- TODO: reemplazar href="#contacto" por la URL del sistema -->
-          <li><a href="#contacto">Iniciar sesión</a></li>
-          <li><a href="#contacto">Ver demo</a></li>
+          <li><a href="/login">Iniciar sesión</a></li>
+          <li><a href="/login">Ver demo</a></li>
           <li><a href="https://wa.me/59170000000" target="_blank" rel="noopener">WhatsApp</a></li>
         </ul>
       </div>

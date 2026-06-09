@@ -1,6 +1,5 @@
 import { useState, type FormEvent } from 'react';
 import { useLocation, useNavigate, Navigate } from 'react-router-dom';
-import { BrandName } from '@/components/BrandName';
 import { ApiError } from '@/api/client';
 import { Button, Field } from '@/components/ui';
 import { useAuth } from './useAuth';
@@ -52,10 +51,7 @@ export function Login() {
     <div className="login">
       <form className="login__card" onSubmit={handleSubmit} noValidate>
         <div className="login__brand">
-          <span className="login__logo" aria-hidden="true">
-            ⬡
-          </span>
-          <BrandName className="login__brand-name" />
+          <img className="login__logo-img" src="/logo.png" alt="LatinoSport" />
         </div>
         <h1 className="login__title">Iniciar sesión</h1>
         <p className="login__subtitle">Panel de administración y entrenadores</p>

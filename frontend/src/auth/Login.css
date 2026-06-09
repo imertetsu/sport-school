@@ -23,25 +23,15 @@
 .login__brand {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-}
-
-.login__logo {
-  display: inline-flex;
-  align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
-  border-radius: var(--radius-sm);
-  background: var(--accent);
-  color: #fff;
-  font-size: var(--fs-xl);
+  margin-bottom: var(--space-2);
 }
 
-.login__brand-name {
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-size: var(--fs-xl);
+/* Logo (lockup cuadrado, fondo blanco): se funde con la tarjeta blanca. */
+.login__logo-img {
+  height: 84px;
+  width: auto;
+  display: block;
 }
 
 .login__title {
