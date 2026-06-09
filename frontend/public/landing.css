@@ -301,6 +301,17 @@ img { max-width: 100%; display: block; }
 .mock-slot.img-ph { min-height: 230px; }
 .benef-slot.img-ph { min-height: 320px; }
 
+/* Capturas reales: la <img> llena el slot (respeta el aspect-ratio del slot y recorta). */
+img.mock-slot, img.feat-slot, img.benef-slot {
+  height: 100%;
+  object-fit: cover;
+  object-position: top left;
+}
+img.benef-slot { object-position: top center; }
+
+/* Logo de SnapCoding en el footer (lockup sobre fondo oscuro). */
+.snap-logo-img { height: 52px; width: auto; display: block; border-radius: 10px; }
+
 /* ---------- Responsive ---------- */
 @media (max-width: 960px) {
   .hero .wrap { grid-template-columns: 1fr; gap: 48px; }
@@ -316,6 +327,8 @@ img { max-width: 100%; display: block; }
   .burger { display: grid; }
   .header-cta .login-text { display: none; }
   .feat-grid { grid-template-columns: 1fr; }
+  /* la tarjeta ancha deja de spanear 2 columnas (si no, fuerza una 2ª col implícita). */
+  .feat.span2 { grid-column: auto; }
   .steps { grid-template-columns: 1fr; }
   .step-line { display: none; }
   .hero-stats { gap: 20px; flex-wrap: wrap; }
