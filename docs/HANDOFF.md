@@ -132,6 +132,17 @@ Remoto `imertetsu/sport-school` (push vía `http.sslBackend=schannel` por el pro
 
 ## Recent decisions
 
+- **2026-06-09 Fix crash Panel de cobranza + capturas/logo en landing.** (1) **Bug:** `PanelCobranza`/
+  `PagosHistorial`/`RegistrarPago` leían `cuota.sucursal.nombre` y `cuota.categoria.nombre` sin guard; una
+  cuota de deportista **sin categoría/sucursal** (p. ej. disciplina NULL) → null → **crash de toda la pantalla**
+  (sin error boundary). El backend (`schemas/cobranza.py`) ya los devolvía opcionales pero el tipo del front
+  (`api/types.ts: CuotaListItem`) los tenía no-null. Fix: tipo a `… | null` + `?.` con fallback ("Sin categoría"
+  / "—"). (2) **Landing:** capturas REALES del sistema (`frontend/public/capturas/`: panel-vencido, deportistas,
+  mobile-deportistas; datos = escuela demo ficticia), logo SnapCoding en footer (`snapcoding.jpg`), contacto real
+  (WhatsApp +591 70723756, snapcodecbba@gmail.com, Cochabamba). (3) **Responsive móvil landing:** la tarjeta
+  `.feat.span2` mantenía `grid-column: span 2` en móvil → forzaba una 2ª columna implícita en `.feat-grid`; fix:
+  `grid-column: auto` en `@media (max-width:760px)`. **Pendiente (app, NO landing):** el **AppShell no colapsa el
+  sidebar en móvil** (se ve apretado; en Asistencia el nombre se parte por carácter) — responsive del producto a revisar.
 - **2026-06-09 Landing page de marketing en la RAÍZ (`/`).** Página estática (HTML+CSS, sin build extra) en
   `frontend/public/landing.html` + `landing.css` + `logo.png` (lockup LatinoSport). **nginx** (`infra/Dockerfile.web`):
   `location = /` → `landing.html`; el resto (`/login`, `/panel`, assets) → SPA. Los CTA "Probar demo"/"Iniciar
