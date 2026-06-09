@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>LATINOSPORT — Gestión para escuelas deportivas</title>
+<meta name="description" content="LATINOSPORT: cobranza de cuotas, control de morosidad, asistencia y perfiles de deportistas en una sola plataforma. Pensado para escuelas deportivas de Bolivia. Por SnapCoding." />
+
+<!-- ============================================================
+     PENDIENTES DE REEMPLAZO (datos reales de SnapCoding):
+       1. data-app-url / href de "Probar demo" e "Iniciar sesión"
+          → hoy apuntan a "#contacto". Cambia por la URL del sistema.
+       2. Número de WhatsApp: 59170000000  (en wa.me/... y en el footer)
+       3. Email:  hola@snapcoding.bo
+       4. Ciudad: Cochabamba, Bolivia
+       5. Imágenes: los bloques .img-ph son placeholders; reemplázalos
+          por <img> con tus capturas/fotos reales (ver landing.css).
+     ============================================================ -->
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="landing.css" />
+</head>
+<body>
+
+<!-- ============ HEADER ============ -->
+<header class="header">
+  <div class="wrap">
+    <a class="brand" href="#top" aria-label="LATINOSPORT inicio">
+      <span class="brand-mark">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18M3.5 9h17M3.5 15h17M12 3c-2.5 2.4-4 5.6-4 9s1.5 6.6 4 9c2.5-2.4 4-5.6 4-9s-1.5-6.6-4-9z"/></svg>
+      </span>
+      <span>
+        <span class="brand-name">LATINO<b>SPORT</b></span>
+        <span class="brand-by">por <b>SnapCoding</b></span>
+      </span>
+    </a>
+
+    <nav class="nav">
+      <a href="#features">Características</a>
+      <a href="#how">Cómo funciona</a>
+      <a href="#benefits">Beneficios</a>
+      <a href="#contacto">Contacto</a>
+    </nav>
+
+    <div class="header-cta">
+      <!-- TODO: reemplazar href="#contacto" por la URL del sistema -->
+      <a class="btn btn-outline btn-sm demo-btn" href="#contacto">Probar demo</a>
+      <a class="btn btn-light btn-sm" href="#contacto">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5M15 12H3"/></svg>
+        <span class="login-text">Iniciar sesión</span>
+      </a>
+    </div>
+    <button class="burger" aria-label="Menú"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg></button>
+  </div>
+</header>
+
+<!-- ============ HERO ============ -->
+<section class="hero" id="top">
+  <div class="wrap">
+    <div class="hero-copy">
+      <span class="hero-pill"><span class="tag">NUEVO</span> Carga deportistas escaneando su carnet</span>
+      <h1>La gestión de tu <span class="grad">escuela deportiva</span>, en una sola plataforma.</h1>
+      <p class="hero-sub">Cobra cuotas, controla la morosidad, toma asistencia y administra los perfiles de tus deportistas — desde el celular o la computadora. Pensado para escuelas de Bolivia.</p>
+
+      <div class="hero-cta">
+        <!-- TODO: reemplazar href="#contacto" por la URL del sistema -->
+        <a class="btn btn-primary btn-lg" href="#contacto">
+          Probar demo gratis
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </a>
+        <a class="btn btn-outline btn-lg" href="#contacto">Iniciar sesión</a>
+      </div>
+      <div class="hero-note">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+        Demo guiada — sin tarjeta, sin instalación.
+      </div>
+
+      <div class="hero-stats">
+        <div class="hstat"><div class="n">QR + <b>efectivo</b></div><div class="l">conciliación automática</div></div>
+        <div class="hstat"><div class="n"><b>Multi</b>-sucursal</div><div class="l">varias sedes, un solo panel</div></div>
+        <div class="hstat"><div class="n"><b>Móvil</b> + escritorio</div><div class="l">del panel a la cancha</div></div>
+      </div>
+    </div>
+
+    <div class="hero-visual">
+      <div class="mock-frame">
+        <div class="mock-bar"><i></i><i></i><i></i></div>
+        <!-- Reemplaza por: <img class="mock-slot" src="capturas/panel.png" alt="Panel de LATINOSPORT"> -->
+        <div class="mock-slot img-ph">
+          <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="M21 16l-5-5L5 20"/></svg>
+          <span>Captura del panel de LATINOSPORT<small>imagen 16:10</small></span>
+        </div>
+      </div>
+      <div class="hero-badge badge-pay">
+        <span class="ic" style="background:#e8f0ff;color:#2f6bd6"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 9.5h19"/></svg></span>
+        <span><span class="bk">Ingresos del mes</span><br><span class="bv">Bs 28.450</span></span>
+      </div>
+      <div class="hero-badge badge-qr">
+        <span class="ic" style="background:#e2f7ec;color:#1faa55"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+        <span><span class="bk">Pago QR</span><br><span class="bv">Confirmado</span></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ TRUST / CO-BRAND ============ -->
+<div class="trust">
+  <div class="wrap">
+    <span class="t-label">Una solución de</span>
+    <span class="t-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3.5 9h17M3.5 15h17M12 3c-2.5 2.4-4 5.6-4 9s1.5 6.6 4 9"/></svg> LATINOSPORT</span>
+    <span class="t-label" style="color:rgba(255,255,255,.3)">×</span>
+    <span class="t-item"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m8 6-5 6 5 6M16 6l5 6-5 6"/></svg> Desarrollado por SnapCoding</span>
+  </div>
+</div>
+
+<!-- ============ CARACTERÍSTICAS ============ -->
+<section class="section" id="features">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">Características clave</span>
+      <h2 class="h2" style="margin-top:16px">Todo lo que tu escuela necesita, sin planillas.</h2>
+      <p class="lead">Módulos que trabajan juntos para que dejes de perseguir pagos y empieces a gestionar de verdad.</p>
+    </div>
+
+    <div class="feat-grid">
+      <article class="feat span2">
+        <div>
+          <div class="feat-ic" style="background:linear-gradient(140deg,#3b82f6,#1b4aaa)">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 9.5h19M6 14.5h4"/></svg>
+          </div>
+          <h3>Cobro de cuotas y control de morosidad</h3>
+          <p>Genera las cuotas de cada mes automáticamente, registra pagos en efectivo o por QR y visualiza al instante quién está al día, pendiente o vencido. Cada pago emite su comprobante listo para enviar.</p>
+          <div class="tagrow"><span class="chip">Estados Pagado / Pendiente / Vencido</span><span class="chip">Comprobante PDF</span><span class="chip">Recordatorio por WhatsApp</span></div>
+        </div>
+        <!-- Reemplaza por: <img class="feat-slot" src="capturas/cobranza.png" alt="Pantalla de cobranza y morosidad"> -->
+        <div class="feat-slot img-ph">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="M21 16l-5-5L5 20"/></svg>
+          <span>Pantalla de cobranza / morosidad<small>imagen 16:9</small></span>
+        </div>
+      </article>
+
+      <article class="feat">
+        <div class="feat-ic" style="background:linear-gradient(140deg,#2dd4ff,#2f6bd6)">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M21 14v.01M21 21v-4M17 21h-3"/></svg>
+        </div>
+        <h3>Pagos por QR</h3>
+        <p>El tutor escanea y paga desde su app bancaria. La conciliación es automática: el estado de la cuota se actualiza solo, sin cargar nada a mano.</p>
+        <div class="tagrow"><span class="chip">Conciliación automática</span></div>
+      </article>
+
+      <article class="feat">
+        <div class="feat-ic" style="background:linear-gradient(140deg,#3b82f6,#163a86)">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9h6a1 1 0 0 1 1 1v1a5 5 0 0 1-5 5h-1l-2.5 3.2a1 1 0 0 1-1.8-.6V16a5 5 0 0 1 0-7z"/><circle cx="7" cy="11.5" r="2.2"/></svg>
+        </div>
+        <h3>Asistencia del entrenador</h3>
+        <p>Toma de lista en segundos desde el celular en la cancha. Cada entrenador ve solo las categorías de las disciplinas que tiene asignadas.</p>
+        <div class="tagrow"><span class="chip">Optimizado para móvil</span><span class="chip">Por disciplina</span></div>
+      </article>
+
+      <article class="feat">
+        <div class="feat-ic" style="background:linear-gradient(140deg,#2f6bd6,#1b4aaa)">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M16 5.2a3 3 0 0 1 0 5.6M17.5 19a5 5 0 0 0-2.3-4.2"/></svg>
+        </div>
+        <h3>Perfil del deportista</h3>
+        <p>Datos personales, tutores, contacto de emergencia y ficha médica con consentimiento — todo en un solo lugar, seguro y a mano.</p>
+        <div class="tagrow"><span class="chip">Ficha médica</span><span class="chip">Tutores</span></div>
+      </article>
+
+      <article class="feat">
+        <div class="feat-ic" style="background:linear-gradient(140deg,#2dd4ff,#1b4aaa)">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7V5a2 2 0 0 1 2-2h2M16 3h2a2 2 0 0 1 2 2v2M20 17v2a2 2 0 0 1-2 2h-2M8 21H6a2 2 0 0 1-2-2v-2"/><path d="M3 12h18"/></svg>
+        </div>
+        <h3>Alta con foto del carnet</h3>
+        <p>Da de alta a un deportista escaneando su cédula: los datos se completan solos. La imagen se procesa en el propio dispositivo y nunca se sube a internet.</p>
+        <div class="tagrow"><span class="chip">Lectura on-device</span><span class="chip">Privacidad por diseño</span></div>
+      </article>
+
+      <article class="feat">
+        <div class="feat-ic" style="background:linear-gradient(140deg,#3b82f6,#2f6bd6)">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11v2a1 1 0 0 0 1 1h2l4 3.5a1 1 0 0 0 1.6-.8V7.3a1 1 0 0 0-1.6-.8L6 10H4a1 1 0 0 0-1 1z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/></svg>
+        </div>
+        <h3>Avisos y comunicación</h3>
+        <p>Publica avisos en el muro y, si quieres, notifícalos por WhatsApp a tutores y entrenadores según el alcance que elijas: toda la escuela, una sucursal o una categoría.</p>
+        <div class="tagrow"><span class="chip">Muro de avisos</span><span class="chip">WhatsApp</span></div>
+      </article>
+
+      <article class="feat">
+        <div class="feat-ic" style="background:linear-gradient(140deg,#1b4aaa,#163a86)">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M9 7h.01M15 7h.01M9 11h.01M15 11h.01M9 21v-3h6v3"/></svg>
+        </div>
+        <h3>Multi-sucursal</h3>
+        <p>Administra varias sedes y disciplinas desde un único panel, con la información consolidada o filtrada por sucursal.</p>
+        <div class="tagrow"><span class="chip">Panel unificado</span></div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ============ CÓMO FUNCIONA ============ -->
+<section class="section steps-sec" id="how">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">Cómo funciona</span>
+      <h2 class="h2" style="margin-top:16px">Tu escuela funcionando en tres pasos.</h2>
+    </div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-n">01</div>
+        <h3>Carga tu escuela</h3>
+        <p>Registra sucursales, disciplinas, categorías y el monto de cada cuota. Da de alta a tus deportistas y sus tutores — escaneando el carnet o a mano.</p>
+        <svg class="step-line" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </div>
+      <div class="step is-accent">
+        <div class="step-n">02</div>
+        <h3>Cobra y registra</h3>
+        <p>Recibe pagos por QR o efectivo. El sistema concilia, marca el estado de la cuota y guarda el comprobante automáticamente.</p>
+        <svg class="step-line" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </div>
+      <div class="step">
+        <div class="step-n">03</div>
+        <h3>Controla todo</h3>
+        <p>Sigue ingresos, morosidad y asistencia en tiempo real desde el panel — en la oficina o desde el celular en la cancha.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ BENEFICIOS ============ -->
+<section class="section" id="benefits">
+  <div class="wrap">
+    <div class="benef">
+      <div>
+        <span class="eyebrow">Por qué LATINOSPORT</span>
+        <h2 class="h2" style="margin:16px 0 28px">Menos planillas, más deporte.</h2>
+        <div class="benef-list">
+          <div class="benef-item">
+            <span class="benef-check"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+            <div><h4>Cero cuotas perdidas</h4><p>Los recordatorios de morosidad por WhatsApp te avisan antes de que el atraso se vuelva un problema.</p></div>
+          </div>
+          <div class="benef-item">
+            <span class="benef-check"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+            <div><h4>Hecho para Bolivia</h4><p>Cobros en bolivianos, pago por QR y la forma de trabajar de las escuelas locales.</p></div>
+          </div>
+          <div class="benef-item">
+            <span class="benef-check"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+            <div><h4>Funciona en cualquier dispositivo</h4><p>Panel completo en la computadora y toma de asistencia desde el celular del entrenador.</p></div>
+          </div>
+          <div class="benef-item">
+            <span class="benef-check"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+            <div><h4>Soporte de SnapCoding</h4><p>Te acompañamos en la puesta en marcha y en cada actualización del sistema.</p></div>
+          </div>
+        </div>
+      </div>
+      <div class="benef-visual">
+        <!-- Reemplaza por: <img class="benef-slot" src="fotos/entrenamiento.jpg" alt="Deportistas entrenando"> -->
+        <div class="benef-slot img-ph">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="M21 16l-5-5L5 20"/></svg>
+          <span>Foto de deportistas / entrenamiento<small>imagen 4:5</small></span>
+        </div>
+        <div class="benef-stat"><div class="n">100% digital</div><div class="l">de la cobranza al control de asistencia</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ CTA BAND ============ -->
+<section class="section" id="contacto" style="padding-top:0">
+  <div class="wrap">
+    <div class="cta-band">
+      <div class="inner">
+        <div>
+          <span class="eyebrow on-dark">Empieza hoy</span>
+          <h2 style="margin-top:14px">Prueba LATINOSPORT con tu escuela.</h2>
+          <p>Conoce la plataforma en una demo guiada o escríbenos por WhatsApp y te ayudamos a montarla.</p>
+        </div>
+        <div class="cta-actions">
+          <!-- TODO: reemplazar href="#" por la URL del sistema -->
+          <a class="btn btn-light btn-lg" href="#">Probar demo</a>
+          <a class="btn btn-wapp btn-lg" href="https://wa.me/59170000000?text=Hola%20SnapCoding,%20quiero%20conocer%20LATINOSPORT" target="_blank" rel="noopener">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 20.5l1.3-4.2A8 8 0 1 1 8 19.5l-4.5 1z"/><path d="M9 9.2c0 3 2.2 5.2 5 5.5"/></svg>
+            Escríbenos por WhatsApp
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FOOTER ============ -->
+<footer class="footer">
+  <div class="wrap">
+    <div class="footer-grid">
+      <div class="footer-about">
+        <a class="brand" href="#top">
+          <span class="brand-mark"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3.5 9h17M3.5 15h17M12 3c-2.5 2.4-4 5.6-4 9s1.5 6.6 4 9"/></svg></span>
+          <span class="brand-name">LATINO<b>SPORT</b></span>
+        </a>
+        <p>La plataforma para administrar escuelas deportivas en Bolivia: cobranza, asistencia y perfiles en un solo lugar.</p>
+        <div class="cobrand">
+          <span class="t-label" style="color:rgba(255,255,255,.4);font-size:12px">Desarrollado por</span>
+          <a class="snap-logo" href="#top"><span class="snap-mark">S</span><span class="sn">Snap<b>Coding</b></span></a>
+        </div>
+      </div>
+      <div>
+        <h5>Producto</h5>
+        <ul>
+          <li><a href="#features">Características</a></li>
+          <li><a href="#how">Cómo funciona</a></li>
+          <li><a href="#benefits">Beneficios</a></li>
+          <li><a href="#contacto">Probar demo</a></li>
+        </ul>
+      </div>
+      <div>
+        <h5>Acceso</h5>
+        <ul>
+          <!-- TODO: reemplazar href="#contacto" por la URL del sistema -->
+          <li><a href="#contacto">Iniciar sesión</a></li>
+          <li><a href="#contacto">Ver demo</a></li>
+          <li><a href="https://wa.me/59170000000" target="_blank" rel="noopener">WhatsApp</a></li>
+        </ul>
+      </div>
+      <div>
+        <h5>Contacto</h5>
+        <ul>
+          <li><a href="https://wa.me/59170000000" target="_blank" rel="noopener">+591 7000 0000</a></li>
+          <li><a href="mailto:hola@snapcoding.bo">hola@snapcoding.bo</a></li>
+          <li><a href="#top">Cochabamba, Bolivia</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 LATINOSPORT · Un producto de SnapCoding. Todos los derechos reservados.</span>
+      <span class="row"><a href="#top">Términos</a><a href="#top">Privacidad</a></span>
+    </div>
+  </div>
+</footer>
+
+<a class="wapp-float" href="https://wa.me/59170000000?text=Hola%20SnapCoding,%20quiero%20conocer%20LATINOSPORT" target="_blank" rel="noopener" aria-label="Contactar por WhatsApp">
+  <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 20.5l1.3-4.2A8 8 0 1 1 8 19.5l-4.5 1z"/><path d="M9 9.2c0 3 2.2 5.2 5 5.5.6.1 1.3-.4 1.4-1"/></svg>
+</a>
+
+</body>
+</html>
