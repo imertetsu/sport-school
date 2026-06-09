@@ -313,8 +313,10 @@ export interface CuotaCategoriaRef {
 export interface CuotaListItem {
   id: string;
   deportista: CuotaDeportistaRef;
-  sucursal: CuotaSucursalRef;
-  categoria: CuotaCategoriaRef;
+  // El backend (schemas/cobranza.py) las devuelve opcionales: un deportista sin
+  // categoría/sucursal asignada (p. ej. disciplina NULL) produce cuotas con estos nulos.
+  sucursal: CuotaSucursalRef | null;
+  categoria: CuotaCategoriaRef | null;
   periodo_inicio: string; // date
   vence_el: string; // date
   monto: string; // numeric(10,2) serializado como string

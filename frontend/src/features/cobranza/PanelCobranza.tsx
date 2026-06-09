@@ -205,7 +205,7 @@ export function PanelCobranza() {
             <Avatar name={c.deportista.nombre_completo} size="md" />
             <div className="cuota-cell__text">
               <span className="cuota-cell__name">{c.deportista.nombre_completo}</span>
-              <span className="cuota-cell__meta">{c.categoria.nombre}</span>
+              <span className="cuota-cell__meta">{c.categoria?.nombre ?? 'Sin categoría'}</span>
             </div>
           </div>
         ),
@@ -214,7 +214,7 @@ export function PanelCobranza() {
         key: 'sucursal',
         header: 'Sucursal',
         hideOnNarrow: true,
-        render: (c) => c.sucursal.nombre,
+        render: (c) => c.sucursal?.nombre ?? '—',
       },
       {
         key: 'estado',

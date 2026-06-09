@@ -173,7 +173,7 @@ export function RegistrarPago({ cuotaInicial, onClose, onConfirmado }: Registrar
         <p className="rp-deportista">
           <strong>{cuotaInicial.deportista.nombre_completo}</strong>
           <span className="rp-deportista__meta">
-            {cuotaInicial.categoria.nombre} · {cuotaInicial.sucursal.nombre}
+            {cuotaInicial.categoria?.nombre ?? 'Sin categoría'} · {cuotaInicial.sucursal?.nombre ?? '—'}
           </span>
         </p>
       )}
