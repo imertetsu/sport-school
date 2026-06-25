@@ -18,11 +18,15 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# Dependencias de sistema minimas. libpq para psycopg, curl para healthchecks.
+# Dependencias de sistema minimas. libpq para psycopg, curl para healthchecks,
+# tesseract-ocr (+ idioma spa) para el OCR server-side del comprobante (app.services.ocr,
+# usado tanto por la api como por el worker, que reusan esta imagen).
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         libpq5 \
         curl \
+        tesseract-ocr \
+        tesseract-ocr-spa \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

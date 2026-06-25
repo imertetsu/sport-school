@@ -1,17 +1,18 @@
 """Recordatorios de cobro por WhatsApp (epic WhatsApp Cobro, saliente).
 
 Envía recordatorios de cuota a los tutores responsables de pago vía el puerto
-`WhatsAppPort`, adjuntando un **QR de cobro reconciliable**: el QR se crea con el
-MISMO flujo de pago QR existente (`crear_pago_qr` + proveedor OpenBCB), de modo
-que cuando el tutor paga, lo concilia el webhook `POST /webhooks/openbcb` ya
-existente (idempotente por `transaccion_id`). NO se abre un segundo camino de
-pago.
+`WhatsAppPort`. **Epic pagos-qr-comprobante (C7):** adjunta el **QR estático de la
+escuela** (`qr_cobro`, subido por el ADMIN) como **imagen** (`send_image`) con un
+caption (deportista + monto + escuela + vence); si la escuela **no** tiene QR subido,
+**degrada al texto** (`send_text`) — sin romper el flujo. La conciliación de este pago
+es **asistida-manual** (el tutor responde con la captura → cola "Pagos por verificar");
+por eso este recordatorio **ya NO crea** el `crear_pago_qr` reconciliable OpenBCB
+(OpenBCB fuera de este epic).
 
 **Idempotencia (C1/RNF):** una fila `recordatorio_pago` por `(cuota_id, tipo,
 ciclo)` (UNIQUE). El INSERT usa `ON CONFLICT DO NOTHING` (mismo patrón que
-`_asignar_numero_recibo`): re-correr el cron el mismo día NO reenvía ni genera un
-segundo QR. `estado` se marca `ENVIADO` solo tras `result.ok`; si el proveedor
-falla queda `FALLIDO`.
+`_asignar_numero_recibo`): re-correr el cron el mismo día NO reenvía. `estado` se marca
+`ENVIADO` solo tras `result.ok`; si el proveedor falla queda `FALLIDO`.
 
 Ciclo por tipo:
 - `PROXIMO_VENCIMIENTO` → `cuota.vence_el.isoformat()` (1 recordatorio por
@@ -27,6 +28,7 @@ no commitea (sigue la tx del caller).
 
 from __future__ import annotations
 
+import base64
 import logging
 import uuid
 from datetime import UTC, date, datetime
@@ -37,25 +39,43 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
-from app.domain.ports.whatsapp import WhatsAppPort, WhatsAppTemplateMessage
+from app.domain.ports.whatsapp import (
+    WhatsAppImageMessage,
+    WhatsAppPort,
+    WhatsAppTextMessage,
+)
 from app.models.cuota import Cuota
 from app.models.deportista import Deportista
 from app.models.deportista_tutor import DeportistaTutor
 from app.models.inscripcion import Inscripcion
 from app.models.organizacion import Organizacion
+from app.models.qr_cobro import QrCobro
 from app.models.recordatorio_pago import RecordatorioPago
 from app.models.tutor import Tutor
-from app.services import pagos as pagos_svc
-from app.services.deps import get_payment_provider
 
 logger = logging.getLogger(__name__)
 
-# Plantillas pre-aprobadas (RNF-07): nombre por tipo de recordatorio.
-_TEMPLATE_POR_TIPO = {
-    "PROXIMO_VENCIMIENTO": "recordatorio_cuota_qr",
-    "MOROSIDAD": "morosidad_cuota_qr",
-}
-_LANG_CODE = "es"
+
+def _texto_recordatorio(
+    tipo: str, *, deportista: str, monto: Decimal, escuela: str, vence: str
+) -> str:
+    """Caption/texto del recordatorio (deportista + monto + escuela + vence).
+
+    Mismo cuerpo se usa como caption de la imagen del QR o como texto plano si la
+    escuela no tiene QR subido (degradación). RNF-07: mensaje claro, sin datos
+    sensibles de menores más allá del nombre.
+    """
+    if tipo == "MOROSIDAD":
+        return (
+            f"La cuota de {deportista} en {escuela} está vencida: Bs {monto:.2f} "
+            f"(venció el {vence}). Adjuntamos el QR de pago de la escuela; "
+            f"al pagar, responda con la captura del comprobante."
+        )
+    return (
+        f"Recordatorio de cuota de {deportista} en {escuela}: Bs {monto:.2f}, "
+        f"vence el {vence}. Adjuntamos el QR de pago de la escuela; "
+        f"al pagar, responda con la captura del comprobante."
+    )
 
 
 class RecordatorioResult(NamedTuple):
@@ -140,16 +160,17 @@ def enviar_recordatorio_cuota(
 ) -> RecordatorioResult:
     """Envía (idempotentemente) un recordatorio de cobro de `cuota` por WhatsApp.
 
-    Flujo:
+    Flujo (C7):
     1. Resuelve `ciclo` por `tipo`.
     2. Resuelve el tutor responsable de pago y su teléfono. Sin teléfono ⇒ fila
-       `FALLIDO`/`sin_telefono` (idempotente), sin llamar al puerto ni crear QR.
+       `FALLIDO`/`sin_telefono` (idempotente), sin llamar al puerto.
     3. INSERT idempotente de la fila (estado provisional `ENVIADO`). Ya existía y
-       `forzar=False` ⇒ `ya_enviado` (no reenvía, no crea QR).
-    4. Crea un QR de cobro RECONCILIABLE (reusa `crear_pago_qr` + proveedor) y lo
-       guarda en `qr_ref`. El `payload` (deep-link) es la variable `{{5}}`.
-    5. Arma y envía la plantilla pre-aprobada vía el puerto.
-    6. `result.ok` ⇒ fija `ENVIADO` + `provider_message_id` + `enviado_en`; si no,
+       `forzar=False` ⇒ `ya_enviado` (no reenvía).
+    4. Lee el `qr_cobro` de la org. Si existe ⇒ `send_image` (QR como imagen + caption);
+       si NO existe ⇒ degrada a `send_text` (mismo cuerpo, sin imagen). **Ya NO crea**
+       el `crear_pago_qr` reconciliable OpenBCB (conciliación asistida-manual: el tutor
+       responde con la captura → cola "Pagos por verificar").
+    5. `result.ok` ⇒ fija `ENVIADO` + `provider_message_id` + `enviado_en`; si no,
        `FALLIDO`. Todo en la MISMA tx del caller (no commitea aquí).
     """
     ciclo = _ciclo(tipo, cuota=cuota, hoy=hoy)
@@ -194,7 +215,7 @@ def enviar_recordatorio_cuota(
     )
 
     if inserted_id is None and not forzar:
-        # Ya existía y no se fuerza: no reenvía ni genera un segundo QR.
+        # Ya existía y no se fuerza: no reenvía.
         return RecordatorioResult(enviado=False, provider_message_id=None, motivo="ya_enviado")
 
     # Fila sobre la que operar: la recién insertada o la existente (forzar=True).
@@ -206,48 +227,41 @@ def enviar_recordatorio_cuota(
         )
     ).scalar_one()
 
-    # 4) QR de cobro RECONCILIABLE: mismo flujo que el pago QR del router. Cuando el
-    #    tutor pague, lo concilia el webhook OpenBCB existente (idempotente).
+    # 4) QR estático de la escuela (C7). Lo lee de `qr_cobro`; si existe, se adjunta como
+    #    imagen (send_image) con el caption; si NO, degrada a texto (send_text). NO crea
+    #    el pago QR reconciliable OpenBCB (conciliación asistida-manual de este epic).
     org = db.execute(
         select(Organizacion).where(Organizacion.id == cuota.org_id)
     ).scalar_one_or_none()
-    moneda = org.moneda if org is not None else "BOB"
     nombre_escuela = org.nombre if org is not None else "Escuela"
 
-    provider = get_payment_provider()
-    charge = provider.create_qr_charge(reference="pending", amount=cuota.monto, currency=moneda)
-    # Pago QR PENDIENTE reconciliable (side effect): lo confirmará el webhook OpenBCB.
-    pagos_svc.crear_pago_qr(
-        db,
-        org_id=cuota.org_id,
-        cuota_ids=[cuota.id],
-        qr_ref=charge.qr_ref,
-    )
-    fila.qr_ref = charge.qr_ref
-    db.flush()
-
-    # 5) Plantilla pre-aprobada. body_params posicionales (RNF-07):
-    #    {{1}} nombre deportista, {{2}} monto, {{3}} escuela, {{4}} vence (DD/MM/YYYY),
-    #    {{5}} payload del QR (deep-link de cobro).
     nombre = _nombre_completo(deportista) if deportista is not None else "—"
     monto: Decimal = cuota.monto
     vence_el_ddmmyyyy = cuota.vence_el.strftime("%d/%m/%Y")
-    msg = WhatsAppTemplateMessage(
-        to=telefono,
-        template_name=_TEMPLATE_POR_TIPO.get(tipo, _TEMPLATE_POR_TIPO["PROXIMO_VENCIMIENTO"]),
-        lang_code=_LANG_CODE,
-        body_params=[
-            nombre,
-            f"Bs {monto:.2f}",
-            nombre_escuela,
-            vence_el_ddmmyyyy,
-            charge.payload,
-        ],
-        header_image=None,
+    cuerpo = _texto_recordatorio(
+        tipo,
+        deportista=nombre,
+        monto=monto,
+        escuela=nombre_escuela,
+        vence=vence_el_ddmmyyyy,
     )
-    result = port.send_template(msg)
 
-    # 6) Resultado: ENVIADO solo si el proveedor aceptó.
+    qr = db.execute(select(QrCobro).where(QrCobro.org_id == cuota.org_id)).scalar_one_or_none()
+    if qr is not None:
+        # QR subido: se reenvía tal cual como imagen (no se decodifica) + caption.
+        result = port.send_image(
+            WhatsAppImageMessage(
+                to=telefono,
+                image_b64=base64.b64encode(qr.imagen).decode("ascii"),
+                mime=qr.mime,
+                caption=cuerpo,
+            )
+        )
+    else:
+        # Sin QR: degrada al texto (no rompe el flujo).
+        result = port.send_text(WhatsAppTextMessage(to=telefono, body=cuerpo))
+
+    # 5) Resultado: ENVIADO solo si el proveedor aceptó.
     if result.ok:
         fila.estado = "ENVIADO"
         fila.provider_message_id = result.provider_message_id

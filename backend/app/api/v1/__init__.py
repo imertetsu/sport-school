@@ -11,12 +11,14 @@ from app.api.v1 import (
     catalogo,
     categorias,
     cobranza,
+    comprobantes,
     deportistas,
     egresos,
     entrenadores,
     horarios,
     mi_escuela,
     plataforma,
+    qr_cobro,
     recibos,
     reportes,
     solicitudes,
@@ -36,6 +38,8 @@ api_router.include_router(categorias.router)
 api_router.include_router(deportistas.router)
 api_router.include_router(tutores.router)
 api_router.include_router(cobranza.router)
+api_router.include_router(qr_cobro.router)
+api_router.include_router(comprobantes.router)
 api_router.include_router(asistencia.router)
 api_router.include_router(egresos.router)
 api_router.include_router(reportes.router)

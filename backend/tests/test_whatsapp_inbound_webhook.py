@@ -91,3 +91,94 @@ def test_ruta_inbound_es_distinta_de_estados_meta(client: TestClient) -> None:
     """
     resp = client.post("/api/v1/webhooks/whatsapp", json={"entry": []})
     assert resp.status_code == 200
+
+
+# --------------------------------------------------------------------------- #
+# Imagen (comprobante de pago) — epic pagos-qr-comprobante (C4). Sin BD: se
+# parchea el servicio para verificar que el webhook lo invoca SOLO con tipo:image.
+# --------------------------------------------------------------------------- #
+_IMG_PAYLOAD = {
+    "org_id": _ORG_ID,
+    "from": "59176123456",
+    "tipo": "image",
+    "media": "Zm9v",  # base64 de "foo"
+    "mime": "image/jpeg",
+    "caption": "pago hecho",
+    "message_id": "wamid.IMG1",
+    "timestamp": 1718900000,
+}
+
+
+def test_tipo_image_invoca_servicio(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`tipo:"image"` ⇒ se llama `procesar_comprobante_inbound` con los campos del body."""
+    llamadas: list[dict] = []
+
+    def _fake(db, **kwargs):  # type: ignore[no-untyped-def]
+        llamadas.append(kwargs)
+        return None
+
+    monkeypatch.setattr(inbound_mod.comprobantes_svc, "procesar_comprobante_inbound", _fake)
+
+    resp = client.post(
+        "/api/v1/webhooks/whatsapp-inbound",
+        json=_IMG_PAYLOAD,
+        headers={"X-Gateway-Token": _TOKEN},
+    )
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "ok"}
+    assert len(llamadas) == 1
+    kw = llamadas[0]
+    assert kw["org_id"] == _ORG_ID
+    assert kw["from_telefono"] == "59176123456"
+    assert kw["media_b64"] == "Zm9v"
+    assert kw["mime"] == "image/jpeg"
+    assert kw["caption"] == "pago hecho"
+    assert kw["message_id"] == "wamid.IMG1"
+
+
+def test_tipo_text_no_invoca_servicio(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Texto (sin `tipo`) ⇒ NO se procesa imagen (solo loguea)."""
+    llamado = {"n": 0}
+
+    def _fake(db, **kwargs):  # type: ignore[no-untyped-def]
+        llamado["n"] += 1
+        return None
+
+    monkeypatch.setattr(inbound_mod.comprobantes_svc, "procesar_comprobante_inbound", _fake)
+
+    resp = client.post(
+        "/api/v1/webhooks/whatsapp-inbound",
+        json=_PAYLOAD,  # body de texto, sin `tipo`
+        headers={"X-Gateway-Token": _TOKEN},
+    )
+    assert resp.status_code == 200
+    assert llamado["n"] == 0
+
+
+def test_tipo_image_error_interno_igual_ack_200(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Si el procesamiento revienta, el webhook ACK 200 igual (no rompe el sidecar)."""
+
+    def _boom(db, **kwargs):  # type: ignore[no-untyped-def]
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(inbound_mod.comprobantes_svc, "procesar_comprobante_inbound", _boom)
+
+    resp = client.post(
+        "/api/v1/webhooks/whatsapp-inbound",
+        json=_IMG_PAYLOAD,
+        headers={"X-Gateway-Token": _TOKEN},
+    )
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "ok"}
+
+
+def test_tipo_image_token_invalido_401(client: TestClient) -> None:
+    """Imagen con token inválido ⇒ 401 (no se procesa)."""
+    resp = client.post(
+        "/api/v1/webhooks/whatsapp-inbound",
+        json=_IMG_PAYLOAD,
+        headers={"X-Gateway-Token": "otro"},
+    )
+    assert resp.status_code == 401

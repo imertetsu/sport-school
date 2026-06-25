@@ -11,12 +11,16 @@
 //   GET    /sessions/:orgId/status   -> 200 { org_id, connected, number }
 //   GET    /sessions/:orgId/qr       -> 200 { org_id, connected:false, qr:<data-url|null> [,error] }
 //                                       | 200 { org_id, connected:true, number }   (lazy: crea la Session)
-//   POST   /sessions/:orgId/send     { to, text } -> 200 { ok, message_id } | 200 { ok:false, error }
+//   POST   /sessions/:orgId/send     { to, text }                  -> 200 { ok, message_id } | { ok:false }
+//                                    { to, text, image, mime }     -> idem (envia imagen + caption)
 //   DELETE /sessions/:orgId          -> 200 { org_id, ok:true }                     (desvincular, idempotente)
 //
-// Entrante: al llegar un mensaje de texto a la Session de un org hace POST {INBOUND_CALLBACK_URL}
-// con el mismo token y body { org_id, from, text, message_id, timestamp } (el org_id sale de la
-// Session que recibio el mensaje). Tolera que el callback falle (loguea, no crashea).
+// Entrante: al llegar un mensaje a la Session de un org hace POST {INBOUND_CALLBACK_URL} con el
+// mismo token (el org_id sale de la Session que recibio el mensaje). Dos formas:
+//   - TEXTO:  { org_id, from, tipo:"text",  text, message_id, timestamp }
+//   - IMAGEN: { org_id, from, tipo:"image", media:"<base64>", mime, caption, message_id, timestamp }
+// (la imagen se descarga con downloadMediaMessage y se reenvia en base64). Tolera que el callback
+// o la descarga del media fallen (loguea, no crashea).
 //
 // Persistencia: useMultiFileAuthState en ${SESSIONS_ROOT}/${org_id} (SESSIONS_ROOT montado en
 // un volumen del compose) → no re-escanear QR en cada reinicio. Al arranque lista los
@@ -40,6 +44,7 @@ import makeWASocket, {
   fetchLatestBaileysVersion,
   DisconnectReason,
   isJidUser,
+  downloadMediaMessage,
 } from '@whiskeysockets/baileys';
 
 // --- Config por entorno -----------------------------------------------------
@@ -214,33 +219,13 @@ function extractText(message) {
   );
 }
 
-// Reenvia un mensaje entrante de texto al webhook del backend, etiquetado con su org_id.
-// Tolera fallos: el edge no debe perder el proceso por un callback caido.
-async function handleIncoming(orgId, msg) {
-  // Ignorar lo que enviamos nosotros y lo que no es de un usuario (grupos, status, etc.).
-  if (msg.key?.fromMe) return;
-  const remoteJid = msg.key?.remoteJid;
-  if (!remoteJid || !isJidUser(remoteJid)) return;
-
-  const text = extractText(msg.message);
-  if (!text) return; // solo texto en este MVP (entrante = recibir + loguear)
-
-  const payload = {
-    org_id: orgId,
-    from: jidToDigits(remoteJid),
-    text,
-    message_id: msg.key?.id || null,
-    // messageTimestamp puede ser number o Long; lo normalizamos a epoch (segundos).
-    timestamp: Number(msg.messageTimestamp) || Math.floor(Date.now() / 1000),
-  };
-
-  log.info({ org_id: orgId, from: payload.from, message_id: payload.message_id }, 'mensaje entrante');
-
+// POST helper al webhook del backend (mismo token). Tolera fallos: el edge no debe
+// perder el proceso por un callback caido (loguea y sigue).
+async function postInbound(orgId, payload) {
   if (!INBOUND_CALLBACK_URL) {
     log.warn({ org_id: orgId }, 'INBOUND_CALLBACK_URL no configurado; no se reenvia el entrante');
     return;
   }
-
   try {
     const res = await fetch(INBOUND_CALLBACK_URL, {
       method: 'POST',
@@ -257,6 +242,76 @@ async function handleIncoming(orgId, msg) {
   } catch (err) {
     log.warn({ err: err.message, org_id: orgId }, 'fallo el POST al callback entrante (ignorado)');
   }
+}
+
+// Reenvia un mensaje entrante (texto o imagen) al webhook del backend, etiquetado con su
+// org_id. Tolera fallos: el edge no debe perder el proceso por un callback (o una descarga
+// de media) caidos.
+//
+// Contrato del body (C4):
+//   - TEXTO: { org_id, from, tipo:"text", text, message_id, timestamp }
+//     (el backend trata la ausencia de `tipo` como texto: retrocompat).
+//   - IMAGEN: { org_id, from, tipo:"image", media:"<base64>", mime, caption:"<text|null>",
+//              message_id, timestamp }
+async function handleIncoming(orgId, msg) {
+  // Ignorar lo que enviamos nosotros y lo que no es de un usuario (grupos, status, etc.).
+  if (msg.key?.fromMe) return;
+  const remoteJid = msg.key?.remoteJid;
+  if (!remoteJid || !isJidUser(remoteJid)) return;
+
+  const from = jidToDigits(remoteJid);
+  const message_id = msg.key?.id || null;
+  // messageTimestamp puede ser number o Long; lo normalizamos a epoch (segundos).
+  const timestamp = Number(msg.messageTimestamp) || Math.floor(Date.now() / 1000);
+
+  const imageMessage = msg.message?.imageMessage;
+
+  // --- Comprobante (imagen): descarga el media, base64 -> callback tipo:"image" ----------
+  if (imageMessage) {
+    let mediaB64;
+    try {
+      const buffer = await downloadMediaMessage(
+        msg,
+        'buffer',
+        {},
+        { logger: log.child({ mod: 'media', org_id: orgId }), reuploadRequest: msg.sock?.updateMediaMessage },
+      );
+      mediaB64 = Buffer.from(buffer).toString('base64');
+    } catch (err) {
+      // Si la descarga del media falla, no revienta el sidecar: se ignora el entrante.
+      log.warn({ err: err.message, org_id: orgId, message_id }, 'fallo descargando media (imagen entrante ignorada)');
+      return;
+    }
+    const payload = {
+      org_id: orgId,
+      from,
+      tipo: 'image',
+      media: mediaB64,
+      mime: imageMessage.mimetype || null,
+      caption: imageMessage.caption || null,
+      message_id,
+      timestamp,
+    };
+    log.info({ org_id: orgId, from, message_id, bytes: mediaB64.length }, 'comprobante entrante (imagen)');
+    await postInbound(orgId, payload);
+    return;
+  }
+
+  // --- Texto (como hoy, ahora etiquetado tipo:"text") ------------------------------------
+  const text = extractText(msg.message);
+  if (!text) return; // ni texto ni imagen: nada que reenviar en este MVP
+
+  const payload = {
+    org_id: orgId,
+    from,
+    tipo: 'text',
+    text,
+    message_id,
+    timestamp,
+  };
+
+  log.info({ org_id: orgId, from, message_id }, 'mensaje entrante');
+  await postInbound(orgId, payload);
 }
 
 // Cierra y elimina la Session de un org (logout + borrar auth-state del disco + quitar del Map).
@@ -292,7 +347,9 @@ async function destroySession(orgId) {
 
 // --- HTTP API --------------------------------------------------------------
 const app = express();
-app.use(express.json({ limit: '256kb' }));
+// 4mb: cubre la imagen del QR saliente (image base64 en /send) y el comprobante entrante
+// reenviado por el callback. El base64 infla ~33% sobre el binario original.
+app.use(express.json({ limit: '4mb' }));
 
 // Liveness sin token (para el healthcheck del compose). NO revela estado de sesion.
 app.get('/healthz', (_req, res) => res.status(200).json({ ok: true }));
@@ -354,18 +411,29 @@ app.get('/sessions/:orgId/qr', requireToken, requireValidOrg, async (req, res) =
   }
 });
 
-// POST /sessions/:orgId/send { to, text } -> 200 { ok, message_id } | 200 { ok:false, error }
+// POST /sessions/:orgId/send { to, text } | { to, text, image, mime } -> 200 { ok, message_id }
+//   | 200 { ok:false, error }
 // Contrato: errores de negocio (org sin sesion conectada, numero invalido, no esta en
 // WhatsApp) => 200 { ok:false, error }. NUNCA 5xx por ellos.
+//
+// Dos modos (C3):
+//   - TEXTO (como hoy): { to, text } -> sendMessage(jid, { text }).
+//   - IMAGEN (nuevo): { to, text:"<caption|''>", image:"<base64 sin data-url>", mime } ->
+//     sendMessage(jid, { image: Buffer.from(image,'base64'), caption: text||undefined, mimetype }).
+// Con `image` presente el `text` actua como caption y PUEDE venir vacio (se relaja la
+// validacion de text). Sin `image`, el path de texto queda intacto (text obligatorio).
 app.post('/sessions/:orgId/send', requireToken, requireValidOrg, async (req, res) => {
   const { orgId } = req.params;
-  const { to, text } = req.body || {};
+  const { to, text, image, mime } = req.body || {};
 
   // Validacion del `to`: E.164 internacional (8-15 digitos, sin +). Relajado desde el BO previo.
   if (typeof to !== 'string' || !/^\d{8,15}$/.test(to)) {
     return res.status(200).json({ ok: false, error: 'numero invalido (se esperan digitos E.164 sin +)' });
   }
-  if (typeof text !== 'string' || text.length === 0) {
+  // ¿Viene imagen? (base64 string no vacio). Si la hay, `text` actua como caption opcional.
+  const hasImage = typeof image === 'string' && image.length > 0;
+  if (!hasImage && (typeof text !== 'string' || text.length === 0)) {
+    // Path de texto puro: text sigue siendo obligatorio (no rompemos el flujo actual).
     return res.status(200).json({ ok: false, error: 'text vacio o no es string' });
   }
 
@@ -381,7 +449,12 @@ app.post('/sessions/:orgId/send', requireToken, requireValidOrg, async (req, res
     if (!exists || !exists.exists) {
       return res.status(200).json({ ok: false, error: 'el numero no esta registrado en WhatsApp' });
     }
-    const sent = await session.sock.sendMessage(exists.jid, { text });
+    // El caption solo aplica si hay texto no vacio (Baileys no quiere caption:'' suelto).
+    const caption = typeof text === 'string' && text.length > 0 ? text : undefined;
+    const content = hasImage
+      ? { image: Buffer.from(image, 'base64'), caption, mimetype: mime }
+      : { text };
+    const sent = await session.sock.sendMessage(exists.jid, content);
     return res.status(200).json({ ok: true, message_id: sent?.key?.id || null });
   } catch (err) {
     log.warn({ err: err.message, to, org_id: orgId }, 'fallo el envio');

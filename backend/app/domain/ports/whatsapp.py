@@ -64,6 +64,27 @@ class WhatsAppTextMessage:
 
 
 @dataclass(frozen=True)
+class WhatsAppImageMessage:
+    """Mensaje con imagen adjunta (sesión de servicio al cliente abierta).
+
+    Epic pagos-qr-comprobante: se usa para adjuntar el **QR de cobro** de la escuela al
+    recordatorio de cobro. La imagen viaja como base64 (sin `data:`-url); el adaptador la
+    entrega tal cual al canal (el QR no se decodifica, se reenvía).
+
+    - `to`: número destino en formato E.164 (sin `+`, según proveedor).
+    - `image_b64`: bytes de la imagen en base64 (sin prefijo `data:`).
+    - `mime`: tipo MIME de la imagen (p.ej. `image/png`, `image/jpeg`).
+    - `caption`: texto que acompaña a la imagen (deportista + monto + escuela + vence);
+      puede ser cadena vacía.
+    """
+
+    to: str
+    image_b64: str
+    mime: str
+    caption: str
+
+
+@dataclass(frozen=True)
 class WhatsAppSendResult:
     """Resultado de un envío.
 
@@ -87,4 +108,8 @@ class WhatsAppPort(Protocol):
 
     def send_text(self, msg: WhatsAppTextMessage) -> WhatsAppSendResult:
         """Envía un mensaje de texto libre (no lanza; reporta vía `ok`/`error`)."""
+        ...
+
+    def send_image(self, msg: WhatsAppImageMessage) -> WhatsAppSendResult:
+        """Envía una imagen con caption (no lanza; reporta vía `ok`/`error`)."""
         ...

@@ -12,6 +12,7 @@ from app.models.aviso import Aviso
 from app.models.aviso_notificacion import AvisoNotificacion
 from app.models.base import Base
 from app.models.categoria import Categoria
+from app.models.comprobante_pendiente import ComprobantePendiente
 from app.models.conciliacion_pendiente import ConciliacionPendiente
 from app.models.consentimiento import Consentimiento
 from app.models.credito import Credito
@@ -30,6 +31,7 @@ from app.models.pago import Pago
 from app.models.pago_cuota import PagoCuota
 from app.models.plataforma_admin import PlataformaAdmin
 from app.models.plataforma_auditoria import PlataformaAuditoria
+from app.models.qr_cobro import QrCobro
 from app.models.recibo_contador import ReciboContador
 from app.models.recordatorio_deudores import RecordatorioDeudores
 from app.models.recordatorio_pago import RecordatorioPago
@@ -54,10 +56,12 @@ __all__ = [
     "Tutor",
     "DeportistaTutor",
     "Consentimiento",
+    "ComprobantePendiente",
     "Inscripcion",
     "Cuota",
     "Pago",
     "PagoCuota",
+    "QrCobro",
     "ReciboContador",
     "Credito",
     "ConciliacionPendiente",

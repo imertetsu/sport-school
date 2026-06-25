@@ -20,6 +20,10 @@ import type {
   CategoriaAsistencia,
   CategoriaCreate,
   CategoriaUpdate,
+  ComprobanteCuotaElegible,
+  ComprobantesPendientesPage,
+  ConfirmarComprobanteBody,
+  EstadoComprobante,
   CuotasListResponse,
   DisciplinaRef,
   EgresoCreate,
@@ -42,7 +46,9 @@ import type {
   PanelCobranza,
   PreviewNotificacionIn,
   PreviewNotificacionOut,
+  QrCobroMeta,
   QrResponse,
+  RechazarComprobanteOut,
   RecordatorioDeudoresResult,
   RecordatorioOut,
   RegistrarPagoEfectivoBody,
@@ -255,6 +261,62 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
       typeof detail === 'string'
         ? detail
         : fieldErrors[0]?.msg ?? `Error ${res.status}`;
+    throw new ApiError(res.status, message, detail, fieldErrors);
+  }
+
+  return payload as T;
+}
+
+// Variante para subir multipart/form-data (p. ej. imagen del QR de cobro).
+// NO fija Content-Type a mano: el navegador lo pone con el boundary correcto.
+// Reusa el mismo manejo de 401/422/error que request<T>.
+async function requestMultipart<T>(
+  path: string,
+  form: FormData,
+  options: { method?: string; signal?: AbortSignal } = {},
+): Promise<T> {
+  const { method = 'POST', signal } = options;
+
+  const headers: Record<string, string> = { Accept: 'application/json' };
+  const token = getToken();
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  const res = await fetch(buildUrl(path), {
+    method,
+    headers,
+    body: form,
+    signal,
+  });
+
+  if (res.status === 401) {
+    clearToken();
+    if (onUnauthorized) onUnauthorized();
+  }
+
+  if (res.status === 204) {
+    return undefined as T;
+  }
+
+  let payload: unknown = null;
+  const text = await res.text();
+  if (text) {
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      payload = text;
+    }
+  }
+
+  if (!res.ok) {
+    const detail =
+      payload && typeof payload === 'object' && 'detail' in payload
+        ? (payload as { detail: unknown }).detail
+        : payload;
+    const fieldErrors = parseFieldErrors(detail);
+    const message =
+      typeof detail === 'string' ? detail : fieldErrors[0]?.msg ?? `Error ${res.status}`;
     throw new ApiError(res.status, message, detail, fieldErrors);
   }
 
@@ -713,6 +775,67 @@ export const api = {
     });
   },
 
+  // ---- QR de cobro (epic pagos-qr-comprobante, C6) — SOLO ADMIN ----
+  // 1 fila por org. El backend scopea SIEMPRE al org del token. La imagen binaria
+  // se sirve por URL FIRMADA HMAC stateless: el meta trae `imagen_url` (resuélvela
+  // con resolveSignedUrl para el <img>). Renueva al recargar el meta.
+  // GET /qr-cobro/meta -> {tiene_qr, mime|null, tamano_bytes|null, imagen_url|null}.
+  qrCobroMeta(signal?: AbortSignal): Promise<QrCobroMeta> {
+    return request<QrCobroMeta>('/qr-cobro/meta', { signal });
+  },
+  // POST /qr-cobro (multipart `file`, image/png|image/jpeg) -> metadata del QR.
+  subirQrCobro(file: File, signal?: AbortSignal): Promise<QrCobroMeta> {
+    const form = new FormData();
+    form.append('file', file);
+    return requestMultipart<QrCobroMeta>('/qr-cobro', form, { signal });
+  },
+  // DELETE /qr-cobro -> {tiene_qr:false}.
+  eliminarQrCobro(signal?: AbortSignal): Promise<QrCobroMeta> {
+    return request<QrCobroMeta>('/qr-cobro', { method: 'DELETE', signal });
+  },
+
+  // ---- Comprobantes por verificar (epic pagos-qr-comprobante, C6) — SOLO ADMIN ----
+  // GET /comprobantes/pendientes?estado=&page=&page_size= -> cola pre-llena.
+  comprobantesPendientes(
+    params: { estado?: EstadoComprobante; page?: number; page_size?: number } = {},
+    signal?: AbortSignal,
+  ): Promise<ComprobantesPendientesPage> {
+    return request<ComprobantesPendientesPage>('/comprobantes/pendientes', {
+      query: params,
+      signal,
+    });
+  },
+  // GET /comprobantes/{id}/cuotas -> cuotas con saldo de la escuela (para asignar
+  // un comprobante "sin identificar" o reasignar la cuota antes de confirmar).
+  comprobanteCuotas(id: string, signal?: AbortSignal): Promise<ComprobanteCuotaElegible[]> {
+    return request<ComprobanteCuotaElegible[]>(`/comprobantes/${id}/cuotas`, { signal });
+  },
+  // POST /comprobantes/{id}/confirmar {cuota_id, monto} -> PagoOut (reusa
+  // registrar_pago_efectivo; marca el comprobante CONFIRMADO server-side).
+  confirmarComprobante(
+    id: string,
+    body: ConfirmarComprobanteBody,
+    signal?: AbortSignal,
+  ): Promise<PagoOut> {
+    return request<PagoOut>(`/comprobantes/${id}/confirmar`, {
+      method: 'POST',
+      body,
+      signal,
+    });
+  },
+  // POST /comprobantes/{id}/rechazar {motivo?} -> {id, estado:'RECHAZADO'}.
+  rechazarComprobante(
+    id: string,
+    motivo?: string,
+    signal?: AbortSignal,
+  ): Promise<RechazarComprobanteOut> {
+    return request<RechazarComprobanteOut>(`/comprobantes/${id}/rechazar`, {
+      method: 'POST',
+      body: { motivo },
+      signal,
+    });
+  },
+
   // GET /reportes/asistencia?desde=&hasta=&sucursal_id=&categoria_id=
   // -> % global + desglose por categoría.
   reportesAsistencia(
@@ -740,6 +863,18 @@ export const api = {
 // GET /cobranza/comprobantes/{pago_id}.pdf -> application/pdf.
 export function comprobantePdfUrl(pagoId: string): string {
   return `${API_BASE_URL}${API_PREFIX}/cobranza/comprobantes/${pagoId}.pdf`;
+}
+
+// Resuelve una URL FIRMADA (QR de cobro / comprobante) que el backend puede servir
+// como ruta relativa (p.ej. "/api/v1/qr-cobro/imagen?sig=…"). Si ya es absoluta
+// (http/https) o no hay base configurada (mismo origen) la deja igual; si es una
+// ruta relativa y hay base (dev, API en otro host), le antepone API_BASE_URL para
+// que el <img> apunte a la API y no al origen de la SPA. La URL firmada ES el
+// mecanismo de auth (HMAC stateless): no se le añade token ni header.
+export function resolveSignedUrl(url: string): string {
+  if (/^https?:\/\//i.test(url)) return url;
+  if (!API_BASE_URL) return url;
+  return `${API_BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`;
 }
 
 // ============================================================

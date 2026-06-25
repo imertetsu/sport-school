@@ -4,14 +4,17 @@
 > cada epic**. Máx ~150 líneas; poda lo viejo. Esto NO es un changelog — es un snapshot
 > de "cómo está el mundo hoy".
 
-_Última actualización: 2026-06-09 — epic **escuela-y-bajas** integrado en `main` (migración **0020**):
-(1) login devuelve `org {id,nombre,color}` → TopBar pinta nombre + monograma de iniciales; (2) **editar
-escuela** (solo ADMIN, `GET/PUT /mi-escuela`: solo nombre + color, sin logo de archivo); (3) **baja/reactivación
-soft-delete reversible** de deportistas (`POST /deportistas/{id}/baja|reactivar` + `solo_activos` + `activo` en
-salidas) y entrenadores (botón directo en la fila); (4) **edición completa de deportista** (datos + tutores +
-ficha médica, `PUT /deportistas/{id}` reconcilia tutores con invariante de menores 422). · **avisos-whatsapp**
-(migración **0021**): los Avisos del muro pueden **notificar por WhatsApp** a entrenadores/tutores según el alcance
-del aviso (opt-in con checkboxes + preview con conteo + confirmación; mock-first). Migraciones **0001→0021**._
+_Última actualización: 2026-06-25 — epic **whatsapp-multitenant** integrado en `main` y **VIVO EN PROD**
+(migración **0022**): el **gateway de WhatsApp es MULTI-TENANT** — **un número por escuela**, cada ADMIN vincula
+SU número por **QR desde Ajustes** (`features/escuela/WhatsAppVinculacion.tsx`). El sidecar Baileys es
+**multi-sesión** (`Map<org_id, Session>`, auth-state por org en `SESSIONS_ROOT/${org_id}`, reconexión al
+arranque). Tabla nueva `whatsapp_sesion` con **RLS** (metadata best-effort; la verdad LIVE es el sidecar). La org
+en curso se resuelve por **`ContextVar`** (`app/core/org_context.py`), seteada **junto al GUC `app.current_org`**
+en `core/tenant.py::set_tenant_context` y `workers/tasks.py::_set_org` — **sin** tocar la firma de `WhatsAppPort`
+ni los 4 servicios de flujo. API `/mi-escuela/whatsapp/*` (solo ADMIN, el backend es el ÚNICO que habla con el
+sidecar). **Normalizador internacional** (`core/phone.py::normalize_bo_phone`, Perú/Alemania, preserva BO 8
+dígitos). Webhook entrante `/webhooks/whatsapp-inbound` trae `org_id` y **solo loguea** (no escribe BD).
+Migraciones **0001→0022**. **PROD ya está en 0022** (se aplicó la cadena 0015→0022 en el deploy)._
 
 ## Stack snapshot
 
@@ -21,7 +24,8 @@ del aviso (opt-in con checkboxes + preview con conteo + confirmación; mock-firs
 - **Jobs:** Celery worker + beat (cron diario) → `backend/app/workers/`
 - **Frontend:** React + Vite (SPA mobile-first) → `frontend/`
 - **Infra:** Docker / docker-compose / CI → `infra/`
-- **Integraciones:** OpenBCB (QR), WhatsApp, PDF, SIN (fase 2) — detrás de puertos/adaptadores.
+- **Integraciones:** WhatsApp (adaptadores `gateway` Baileys no-oficial multi-tenant VIVO · `meta` Cloud API
+  mono-número), OpenBCB (QR sandbox), PDF, SIN (fase 2) — detrás de puertos/adaptadores.
 
 **Roles del sistema (3):** **SUPERADMIN** (plataforma, sin org_id, fail-closed sobre tablas tenant), **ADMIN**
 (escuela/org), **ENTRENADOR**. (Tutor = passwordless, fase 2; no es usuario con contraseña.)
@@ -29,39 +33,41 @@ del aviso (opt-in con checkboxes + preview con conteo + confirmación; mock-firs
 ## Estado actual — MVP fase 1 completo + fase 2 en curso
 
 **MVP fase 1 + buena parte de fase 2 COMPLETOS** y verificados E2E. Módulos vivos en `main`:
-- **Deportistas** (login, lista, perfil con ficha médica por rol, RLS; edición completa de datos+tutores+ficha;
-  baja/reactivación soft-delete).
+- **Deportistas** (login, lista, perfil/ficha médica por rol, RLS; edición completa datos+tutores+ficha;
+  baja/reactivación soft-delete). **Asistencia** (`sesion`/`asistencia`, roster get-or-create, guardar idempotente
+  por `(sesion_id,deportista_id)`; el entrenador ve solo categorías de sus disciplinas, con red de seguridad).
 - **Cobranza** (cuotas FIJO/ANIVERSARIO, pago efectivo + QR sandbox OpenBCB con webhook idempotente + cola
-  `conciliacion_pendiente`, recibo PDF, cron diario, Panel KPIs/morosidad; abonos/`PARCIAL`+`credito`, recibo
+  `conciliacion_pendiente`, recibo PDF, cron diario, Panel KPIs/morosidad; abonos `PARCIAL`+`credito`, recibo
   no-fiscal `REC-NNNNNN` correlativo por org, WhatsApp Cobro saliente + recordatorio de deudores al entrenador).
-- **Asistencia** (`sesion`/`asistencia`, roster get-or-create, guardar idempotente por `(sesion_id,deportista_id)`;
-  el entrenador ve solo categorías de sus disciplinas asignadas, con red de seguridad).
 - **Programación de clases** (`horario_clase`/`sesion`, crons), **Auto-registro** (`solicitud_registro`,
-  aprobar=ADMIN), **Reportes** (solo ADMIN, sin migración: ingresos/mes + % asistencia), **Egresos** (ADMIN),
-  **Muro de avisos** (feed scoped por rol, CRUD ADMIN con soft-delete; opcionalmente **notifica por WhatsApp** a
-  entrenadores/tutores según alcance, opt-in con checkboxes + preview + confirmación, mock-first, log idempotente
+  aprobar=ADMIN), **Reportes** (solo ADMIN, sin migración), **Egresos** (ADMIN), **Muro de avisos** (feed scoped
+  por rol, CRUD ADMIN soft-delete; notifica por WhatsApp opt-in con preview+confirmación, log idempotente
   `aviso_notificacion`).
 - **Plataforma / Super Admin** (`plataforma_admin` sin org_id/RLS, consola `/plataforma`, alta de escuelas,
-  catálogo GLOBAL de disciplinas), **Gestión de entrenadores** con cuenta de login, **Sucursales/Categorías** CRUD.
-- **Personas y disciplinas:** rename alumno→deportista, catálogo GLOBAL de disciplinas (`disciplina_id` FK es lo
-  canónico), CI único por org + recuperar-por-CI (deportista/tutor/entrenador), entrenador multi-disciplina
-  (`entrenador_disciplina` M:N con RLS), campos opcionales `domicilio`/`lugar_nacimiento`.
-- **OCR cédula on-device** (Tesseract.js, la imagen NUNCA sale del navegador — RNF-02): **CI nuevo se extrae
-  COMPLETO** (CI, nombres del anverso, apellidos, fecha + opcionales domicilio/lugar/grupo); **CI antiguo NO es
-  OCR-able on-device** (tinta roja + fondo) → **manual**. Parser conservador (ante baja confianza deja vacío;
-  nunca el serial de tarjeta, solo el "No. #######"). Guía de captura colapsable en el escáner. OCR solo en el alta.
-- **Escuela (epic más reciente):** nombre + monograma de iniciales con color en el TopBar tras el login; pantalla
-  `/ajustes` (solo ADMIN) para editar nombre + color (`frontend/src/features/escuela/AjustesEscuela.tsx`,
-  componente `Monogram`).
+  catálogo GLOBAL de disciplinas), **Entrenadores** (CRUD con cuenta de login), **Sucursales/Categorías** CRUD.
+- **Personas y disciplinas:** catálogo GLOBAL (`disciplina_id` FK canónico), CI único por org + recuperar-por-CI,
+  entrenador multi-disciplina (`entrenador_disciplina` M:N RLS), `domicilio`/`lugar_nacimiento` opcionales.
+- **OCR cédula on-device** (Tesseract.js, la imagen NUNCA sale del navegador — RNF-02): CI nuevo se extrae
+  completo; CI antiguo (tinta roja) → manual; parser conservador (baja confianza ⇒ vacío). Solo en el alta.
+- **Escuela:** nombre + monograma de color en el TopBar; `/ajustes` (ADMIN) edita nombre + color
+  (`features/escuela/AjustesEscuela.tsx`).
+- **WhatsApp gateway MULTI-TENANT (VIVO en prod, 0022):** un número por escuela; cada ADMIN lo vincula por QR
+  desde Ajustes (`WhatsAppVinculacion.tsx`, API `/mi-escuela/whatsapp/*`). Sidecar Baileys multi-sesión
+  (`infra/whatsapp-gateway/`, auth-state por org en `SESSIONS_ROOT/${org_id}`). Org por `ContextVar`
+  (`core/org_context.py`) → los 4 flujos salen del número de SU escuela sin tocar el puerto. Entrante con `org_id`
+  solo loguea (no escribe BD). Detalle en "Recent decisions".
 
-**Migraciones:** `0001→0020`. Hitos: Egresos=0005, Muro=0006, Horarios=0007, Auto-registro=0008, Abonos=0009,
+**Migraciones:** `0001→0022`. Hitos: Egresos=0005, Muro=0006, Horarios=0007, Auto-registro=0008, Abonos=0009,
 Recibo=0010, WhatsApp=0011, SuperAdmin=0012, Entrenadores=0013, Deudores=0014, rename deportista=0015, catálogo
 disciplinas=0016, CI deportista/tutor=0017, entrenador CI+disciplinas=0018, deportista.domicilio+lugar_nacimiento=0019,
-deportista.activo + organizacion.color=0020, **aviso_notificacion=0021** (log idempotente WhatsApp del muro).
+deportista.activo + organizacion.color=0020, aviso_notificacion=0021 (log idempotente WhatsApp del muro),
+**whatsapp_sesion=0022** (sesión por escuela, RLS, metadata para la UI de vinculación por QR). **Head = 0022.**
 Reportes y Sucursales/Recibo sin migración.
 
-Próximos candidatos: resto de **Fase 2** (portal passwordless OTP/WhatsApp, chatbot WhatsApp entrante, factura SIN,
-OpenBCB real; credenciales Meta reales + plantillas aprobadas). Fase 3: rendimiento, voz, analítica.
+Próximos candidatos: **Pagos v1** (epic `pagos-qr-comprobante`, spec activa, migración **0023**): QR estático por
+escuela + comprobante por WhatsApp con OCR + conciliación asistida-manual (OpenBCB fuera). Resto de **Fase 2**
+(portal passwordless OTP/WhatsApp, chatbot WhatsApp entrante, factura SIN; credenciales Meta + plantillas
+aprobadas). Fase 3: rendimiento, voz, analítica.
 **Deuda menor:** `JUSTIFICADO` en asistencia; **Horarios aún muestra todas las clases de la org al entrenador**
 (deportistas + asistencia sí se acotan por disciplina con red de seguridad: sin disciplinas asignadas ve por
 sucursal, no vacío; disciplina NULL es visible); el gating fino de ficha médica por sucursal es no-op hoy (el JWT
@@ -103,88 +109,71 @@ deportistas repartidos (Fútbol/Voleibol/NULL). Super admin: el de `PLATFORM_ADM
   **default sin decidir**, SRS §10.4); recordatorio de pago `N días antes`; toggles de notificación por org (aún sin implementar).
 - Env reales: `APP_NAME, DATABASE_URL, MIGRATION_DATABASE_URL, JWT_SECRET, JWT_EXPIRE_MINUTES, CORS_ORIGINS,
   REDIS_URL, VITE_API_URL` (ver `.env.example`). **Super Admin / Recibo:** `PLATFORM_ADMIN_EMAIL`,
-  `PLATFORM_ADMIN_PASSWORD`, `PUBLIC_BASE_URL`. **WhatsApp:** `WHATSAPP_PROVIDER` (noop|mock|meta, default noop),
-  `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_WABA_ID`, `WHATSAPP_VERIFY_TOKEN`,
-  `WHATSAPP_APP_SECRET`, `WHATSAPP_GRAPH_VERSION` (v21.0), `RECORDATORIO_QR_DIAS_ANTES` (3). Sin credenciales ⇒
-  cae al **mock**; para enviar de verdad: `WHATSAPP_PROVIDER=meta` + credenciales Meta + plantillas aprobadas.
-  Futuras: `OPENBCB_*`. **Nunca commitear secretos.**
+  `PLATFORM_ADMIN_PASSWORD`, `PUBLIC_BASE_URL`. **WhatsApp:** `WHATSAPP_PROVIDER` (`noop|mock|meta|gateway`, default
+  noop). **gateway (no-oficial, lo VIVO):** `WHATSAPP_GATEWAY_URL`, `WHATSAPP_GATEWAY_TOKEN` (== `GATEWAY_TOKEN` del
+  sidecar; secreto) + del sidecar `GATEWAY_PORT`, `SESSIONS_ROOT` (auth-state multi-sesión por org, en volumen),
+  `INBOUND_CALLBACK_URL`. **meta (oficial, mono-número):** `WHATSAPP_PHONE_NUMBER_ID/_ACCESS_TOKEN/_WABA_ID/
+  _VERIFY_TOKEN/_APP_SECRET/_GRAPH_VERSION` (v21.0), `RECORDATORIO_QR_DIAS_ANTES` (3). Sin las vars del provider
+  elegido ⇒ cae al **mock**. Futuras: `OPENBCB_*`. **Nunca commitear secretos.**
 
 ## In-flight work
 
-Nada en vuelo en código. **escuela-y-bajas** (0020) y **avisos-whatsapp** (0021) están **integrados en `main`**
-(escuela-y-bajas mergeó directo; avisos encadenó su 0021 sobre 0020 — cadena 0019→0020→0021 verificada + gates);
-sus specs efímeras (`escuela-y-bajas.md`, `avisos-whatsapp.md`) se borraron en el cierre.
+**Epic `pagos-qr-comprobante` ABIERTO** — spec activa en `docs/specs/pagos-qr-comprobante.md` (Pagos v1: QR
+estático por escuela + comprobante por WhatsApp con OCR e identificación automática del tutor; conciliación
+asistida-manual, **OpenBCB fuera**; migración **0023**). Aún sin código.
+
+**whatsapp-multitenant CERRADO** (0022): integrado en `main` y **desplegado en prod, funcionando**; su spec
+efímera `docs/specs/whatsapp-multitenant.md` **se borra en el commit que cierra el epic** (SSS, pilar 1).
 
 **Pendientes operativos:**
 - **Epics multi-sesión se integran en rama `staging`** (no `main` directo) → validar → `staging`→`main`.
-- **Prod** (servidor `177.222.39.139`, `/opt/latinosport`) sigue ~**0014**: **pendiente desplegar** el chain
-  **0015→0021** (0019/0020/0021 son aditivos y seguros). Deploy **gateado** (`DEPLOY_ENABLED` off), manual: `pg_dump`
-  → `git pull` → `bash infra/deploy.sh`. **Antes de aplicar 0017/0018 en prod: correr la detección de CI
-  duplicados** en deportista/tutor/entrenador (si hay dup no-null, el índice único parcial falla al crearse).
+- **Prod** (servidor `177.222.39.139`, `/opt/latinosport`) **ya está en migración 0022** (se aplicó la cadena
+  **0015→0022** en el deploy del gateway multi-tenant). Deploy **gateado** (`DEPLOY_ENABLED` off), manual:
+  `pg_dump` → `git pull` → `bash infra/deploy.sh`. (La detección de CI duplicados pre-0017/0018 ya se corrió como
+  parte de ese chain.) El próximo deploy aplicará **0023** (epic Pagos v1) — un solo `pg_dump` de respaldo antes.
 - **Job de deploy (CI) roto:** la sesión SSH se cae a mitad del build-on-server (`Broken pipe`, exit 255) —
   probable OOM al buildear web+api+worker en paralelo o timeout SSH. Fix pendiente en `infra/deploy.sh` + workflow
   (builds secuenciales / swap / SSH keepalive). NO es código de la app.
-- **WhatsApp avisos:** la entrega REAL necesita la plantilla `nuevo_aviso` aprobada en Meta + `WHATSAPP_PROVIDER=meta`
-  + credenciales; hoy mock-first (noop/mock no envía nada real). Mismo estado que cobro/deudores.
+- **WhatsApp envío REAL:** el **gateway no-oficial Baileys** (`WHATSAPP_PROVIDER=gateway`) envía de verdad por
+  número propio por escuela (vinculado por QR), sin esperar a Meta. El adaptador **Meta** (`provider=meta`) sigue
+  mono-número y necesita plantillas aprobadas + credenciales; hoy mock-first si no hay credenciales.
 
-Remoto `imertetsu/sport-school` (push vía `http.sslBackend=schannel` por el proxy TLS). Al abrir el próximo epic,
-`product-owner` crea `docs/specs/<epic>.md`.
+Remoto `imertetsu/sport-school` (push vía `http.sslBackend=schannel` por el proxy TLS).
 
 ## Recent decisions
 
-- **2026-06-09 Fix crash Panel de cobranza + capturas/logo en landing.** (1) **Bug:** `PanelCobranza`/
-  `PagosHistorial`/`RegistrarPago` leían `cuota.sucursal.nombre` y `cuota.categoria.nombre` sin guard; una
-  cuota de deportista **sin categoría/sucursal** (p. ej. disciplina NULL) → null → **crash de toda la pantalla**
-  (sin error boundary). El backend (`schemas/cobranza.py`) ya los devolvía opcionales pero el tipo del front
-  (`api/types.ts: CuotaListItem`) los tenía no-null. Fix: tipo a `… | null` + `?.` con fallback ("Sin categoría"
-  / "—"). (2) **Landing:** capturas REALES del sistema (`frontend/public/capturas/`: panel-vencido, deportistas,
-  mobile-deportistas; datos = escuela demo ficticia), logo SnapCoding en footer (`snapcoding.jpg`), contacto real
-  (WhatsApp +591 70723756, snapcodecbba@gmail.com, Cochabamba). (3) **Responsive móvil landing:** la tarjeta
-  `.feat.span2` mantenía `grid-column: span 2` en móvil → forzaba una 2ª columna implícita en `.feat-grid`; fix:
-  `grid-column: auto` en `@media (max-width:760px)`. (4) **Responsive móvil de la APP (AppShell):** el sidebar ahora
-  es un **drawer off-canvas** en ≤768px (hook `useMediaQuery`; `☰` del TopBar lo abre, overlay lo cierra, se cierra al
-  navegar); el contenido usa ancho completo → se resuelve el char-wrap del nombre en Asistencia. Verificado a 390px
-  (Panel/Deportistas/Asistencia).
-- **2026-06-09 Landing page de marketing en la RAÍZ (`/`).** Página estática (HTML+CSS, sin build extra) en
-  `frontend/public/landing.html` + `landing.css` + `logo.png` (lockup LatinoSport). **nginx** (`infra/Dockerfile.web`):
-  `location = /` → `landing.html`; el resto (`/login`, `/panel`, assets) → SPA. Los CTA "Probar demo"/"Iniciar
-  sesión" entran a `/login`. El **logo** se usa en el **Login** (`login__logo-img`, fondo blanco se funde con la
-  tarjeta) y como **favicon** (`frontend/index.html`). Pendiente de reemplazo en la landing: WhatsApp real
-  (`59170000000`), email (`hola@snapcoding.bo`), ciudad, e imágenes (`.img-ph` placeholders). En **dev (Vite)** `/`
-  sigue siendo la SPA; el ruteo `/`→landing es solo del nginx de prod. Sin migración.
-- **2026-06-09 Avisos por WhatsApp (epic, migración 0021, integrado vía staging junto a escuela-y-bajas).** Al
-  crear un Aviso, el ADMIN puede notificar por WhatsApp a **Entrenadores y/o Tutores** (opt-in con checkboxes,
-  desmarcados) a los destinatarios del **alcance** del aviso (ORG / SUCURSAL / CATEGORIA). En CATEGORIA los
-  entrenadores salen por `entrenador_disciplina` de la disciplina de la categoría (tutores = los de deportistas de
-  esa categoría). **Preview con conteo + confirmación** antes de enviar (evita blasts accidentales). Envío en
-  segundo plano (task Celery a demanda), **idempotente** (`aviso_notificacion` UNIQUE(aviso_id,tipo_destinatario,
-  destinatario_id); sin teléfono → SIN_TELEFONO). `send_template` plantilla `nuevo_aviso`. **Mock-first** (sin
-  envíos reales hasta Meta + plantilla aprobada). **Editar un aviso NO notifica** (solo el alta).
-- **2026-06-09 Escuela + bajas (epic, migración 0020).** (1) Borrado = **dar de baja** (soft-delete reversible,
-  conserva historial); **nunca borrado físico** de deportistas/entrenadores. (2) Editar escuela = **solo nombre +
-  color** del monograma; el "logo" es un monograma de iniciales, **sin almacenar imágenes** (RNF-02). (3) Editar
-  deportista = **completo** (datos + tutores + ficha médica); la reconciliación de tutores respeta el invariante
-  de menores **server-side** (lista vacía o quitar al tutor del consentimiento → **422**). (4) El login devuelve
-  `org {id,nombre,color}` reusando la consulta que ya hacía → TopBar pinta nombre + monograma sin llamada extra.
-- **2026-06-07 Campos opcionales deportista + red de seguridad de scoping** (migración 0019). `domicilio` y
-  `lugar_nacimiento` (TEXT nullable; grupo sanguíneo ya en `ficha_medica.tipo_sangre`). **Red de seguridad** en la
-  visibilidad del ENTRENADOR: si NO tiene disciplinas asignadas ve por **sucursal** (no vacío), y un
-  deportista/categoría con `disciplina_id` **NULL** es **visible** (el filtro por disciplina solo aplica cuando el
-  entrenador tiene disciplinas Y el registro tiene disciplina).
-- **2026-06-07 Personas y Disciplinas (S1–S4 + OCR), integrado vía `staging`.** (1) catálogo de disciplinas es
-  **GLOBAL** (gestionado por SUPERADMIN); orgs lo leen y referencian por FK `disciplina_id` (canónico). (2) **CI
-  único por org** (no global) vía índices parciales; alta con CI dup → **409** + flujo "recuperar-por-CI". (3) **OCR
-  de cédula on-device**: la imagen no sale del navegador (RNF-02); CI nuevo se extrae completo, CI antiguo → manual,
-  parser conservador. (4) Entrenador multi-disciplina. La **disciplina** acota la vista de deportistas+asistencia
-  del entrenador (server-side por request, helper `disciplina_ids_de_usuario`; NO en el JWT). 0018 renumerada
-  desde 0017 al linealizar la cadena Alembic en staging.
-- **2026-06-07 Fase 2 consolidada (varios epics).** **Super Admin**: `plataforma_admin` sin org_id/RLS,
-  fail-closed sobre tablas tenant, alta de escuela sin BYPASSRLS, bootstrap `seed_plataforma`. **Entrenadores**:
-  CRUD ADMIN crea cuenta de login en una txn. **Sucursales/Recibo**: DELETE protegido (409), recibo por enlace
-  HMAC stateless. **WhatsApp Cobro**: mock-first, solo saliente, idempotente, NO toca la conciliación. **Recibo**
-  no-fiscal `REC-NNNNNN` atómico. **Abonos**: QR siempre por el total (parciales solo efectivo); sobrepago→crédito.
-  **Recordatorio de deudores**: deudor = ≥1 `cuota.estado='VENCIDO'`, WhatsApp en 2 mensajes, idempotente.
-  **Lección:** **worktree propio por sesión** al paralelizar (una rama NO aísla el árbol).
+- **2026-06-25 WhatsApp MULTI-TENANT (epic cerrado, migración 0022, VIVO en prod).** Un **número por escuela**:
+  cada ADMIN vincula el suyo por **QR desde Ajustes** (autoservicio; el browser nunca ve token/URL del sidecar —
+  el QR viaja browser←backend←sidecar). El sidecar Baileys pasó a **multi-sesión** (`Map<org_id,Session>`,
+  auth-state por org en `SESSIONS_ROOT/${org_id}` en volumen, reconexión al arranque; la vieja ruta global `/send`
+  se eliminó). La multi-tenencia se resolvió por **`ContextVar`** (`core/org_context.py`), seteado en los MISMOS
+  dos puntos que el GUC `app.current_org` (`tenant.py`, `workers/tasks.py`) → **NO** se tocó la firma de
+  `WhatsAppPort` ni los 4 servicios de flujo. Sin contexto de org ⇒ `ok=False` **sin** pegar al sidecar
+  (fail-closed, invariante anti-fuga entre orgs consecutivas en un mismo cron). Tabla `whatsapp_sesion` con RLS
+  (metadata; verdad LIVE = sidecar). Normalizador **internacional** (`normalize_bo_phone`, Perú/Alemania, preserva
+  BO 8 dígitos; firma compat 1-arg). Entrante con `org_id` = **recibir + loguear** (chatbot/persistencia = futuro).
+- **2026-06-09 Avisos por WhatsApp (epic, migración 0021).** Al crear un Aviso, el ADMIN puede notificar por
+  WhatsApp a **Entrenadores y/o Tutores** (opt-in con checkboxes desmarcados) según el **alcance** del aviso
+  (ORG/SUCURSAL/CATEGORIA; en CATEGORIA entrenadores por `entrenador_disciplina`). **Preview con conteo +
+  confirmación** antes de enviar. Task Celery a demanda, **idempotente** (`aviso_notificacion`
+  UNIQUE(aviso_id,tipo_destinatario,destinatario_id); sin teléfono → SIN_TELEFONO). Plantilla `nuevo_aviso`.
+  **Editar un aviso NO notifica** (solo el alta).
+- **2026-06-09 Escuela + bajas (epic, migración 0020).** Borrado = **dar de baja** (soft-delete reversible; nunca
+  borrado físico de deportistas/entrenadores). Editar escuela = **solo nombre + color** del monograma (sin
+  almacenar imágenes, RNF-02). Editar deportista = **completo** (datos+tutores+ficha); reconciliar tutores respeta
+  el invariante de menores **server-side** (lista vacía / quitar al tutor del consentimiento → **422**). Login
+  devuelve `org {id,nombre,color}` → TopBar pinta nombre + monograma sin llamada extra.
+- **2026-06-09 Frontend/landing (vigente).** Sidebar = **drawer off-canvas** en ≤768px (AppShell). Cuotas sin
+  categoría/sucursal (disciplina NULL) → tipos del front a `…|null` + `?.` (evita crash de pantalla). **Landing**
+  estática en la RAÍZ vía nginx (`location = / → landing.html`; resto → SPA); en dev (Vite) `/` es la SPA.
+- **2026-06-07 Personas y Disciplinas + Fase 2 consolidada (vía `staging`).** Catálogo de disciplinas **GLOBAL**
+  (SUPERADMIN); orgs referencian por FK `disciplina_id` (canónico). **CI único por org** (índices parciales; dup →
+  409 + recuperar-por-CI). **OCR cédula on-device** (no sale del navegador). Entrenador multi-disciplina; la
+  disciplina acota deportistas+asistencia (server-side, helper `disciplina_ids_de_usuario`, NO en el JWT). Campos
+  opcionales `domicilio`/`lugar_nacimiento` (0019); red de seguridad de scoping del entrenador. **Super Admin**
+  (`plataforma_admin` sin org_id/RLS). **Recibo** no-fiscal `REC-NNNNNN` atómico, enlace HMAC stateless.
+  **Abonos** (QR siempre por el total; parciales solo efectivo; sobrepago→crédito). **Recordatorio de deudores**
+  (idempotente). **Lección:** worktree propio por sesión al paralelizar.
 - **2026-06-06 Deploy + hardening (vigente).** Rename interno cantera→latinosport (BD `latinosport`, rol
   `latinosport_app` NO superusuario; recrear BD requiere `docker compose down -v`). Deploy en `177.222.39.139`
   (IP:puerto, sin dominio/HTTPS aún). CI job `deploy` (push a `main`→SSH→`infra/deploy.sh`, build-on-server,
@@ -245,4 +234,4 @@ Remoto `imertetsu/sport-school` (push vía `http.sslBackend=schannel` por el pro
 | Esquema físico, RLS, migraciones | `migrations/` + `alembic.ini` |
 | UI admin/entrenador, consola super admin (`/plataforma`), ajustes escuela (`/ajustes`) | `frontend/src/` |
 | Docker, CI, env, despliegue worker | `infra/` |
-| Spec del epic activo | `docs/specs/<epic>.md` (efímera; hoy no hay ninguna) |
+| Spec del epic activo | `docs/specs/pagos-qr-comprobante.md` (efímera; epic Pagos v1 en vuelo) |

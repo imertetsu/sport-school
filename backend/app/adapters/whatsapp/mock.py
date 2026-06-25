@@ -10,6 +10,7 @@ from __future__ import annotations
 from uuid import uuid4
 
 from app.domain.ports.whatsapp import (
+    WhatsAppImageMessage,
     WhatsAppPort,
     WhatsAppSendResult,
     WhatsAppTemplateMessage,
@@ -26,6 +27,9 @@ class MockWhatsAppAdapter(WhatsAppPort):
         # tests de idempotencia verifican que ni `sent` ni `sent_text` crecen al
         # re-enviar el mismo período.
         self.sent_text: list[WhatsAppTextMessage] = []
+        # Lista SEPARADA para imágenes (epic pagos-qr-comprobante): el recordatorio con QR
+        # registra aquí; los tests inspeccionan caption/mime/destino sin envío real.
+        self.sent_image: list[WhatsAppImageMessage] = []
 
     def send_template(self, msg: WhatsAppTemplateMessage) -> WhatsAppSendResult:
         """Registra `msg` y simula un envío exitoso con id único."""
@@ -35,4 +39,9 @@ class MockWhatsAppAdapter(WhatsAppPort):
     def send_text(self, msg: WhatsAppTextMessage) -> WhatsAppSendResult:
         """Registra `msg` (texto libre) y simula un envío exitoso con id único."""
         self.sent_text.append(msg)
+        return WhatsAppSendResult(ok=True, provider_message_id=f"mock_{uuid4().hex}")
+
+    def send_image(self, msg: WhatsAppImageMessage) -> WhatsAppSendResult:
+        """Registra `msg` (imagen) y simula un envío exitoso con id único."""
+        self.sent_image.append(msg)
         return WhatsAppSendResult(ok=True, provider_message_id=f"mock_{uuid4().hex}")

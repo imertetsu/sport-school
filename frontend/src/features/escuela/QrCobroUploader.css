@@ -1,0 +1,64 @@
+.qr-cobro {
+  margin-top: var(--space-6);
+}
+
+.qr-cobro__intro {
+  margin: 0 0 var(--space-4);
+  color: var(--color-text-muted);
+  font-size: var(--fs-sm);
+  max-width: 520px;
+}
+
+.qr-cobro__loading {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--fs-sm);
+}
+
+.qr-cobro__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.qr-cobro__current,
+.qr-cobro__uploader {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.qr-cobro__preview {
+  display: flex;
+  justify-content: center;
+}
+
+.qr-cobro__img {
+  width: 200px;
+  height: 200px;
+  object-fit: contain;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  padding: var(--space-3);
+}
+
+.qr-cobro__meta {
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.qr-cobro__file {
+  font-size: var(--fs-sm);
+  color: var(--color-text);
+  max-width: 100%;
+}
+
+.qr-cobro__actions {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}

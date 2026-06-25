@@ -921,6 +921,86 @@ export interface WhatsAppDesvincularOut {
 }
 
 // ============================================================
+// Epic pagos-qr-comprobante · QR de cobro + comprobantes por verificar (C6).
+// SOLO ADMIN (el backend gatea con require_role("ADMIN") y scopea SIEMPRE al org
+// del token; el cliente NUNCA manda org_id). Espejo EXACTO de los shapes
+// CONGELADOS de C6; no inventar campos: si falta algo, es hand-off a backend-dev.
+// ============================================================
+
+// --- QR de cobro (1 fila por org) ---
+// GET /qr-cobro/meta, POST /qr-cobro (multipart `file`), DELETE /qr-cobro.
+// La imagen binaria se sirve por URL FIRMADA HMAC stateless (sin header
+// Authorization, para que el <img> la cargue directo): el meta trae `imagen_url`
+// con su token. Renueva al recargar el meta (subir/cambiar/quitar). null si no
+// hay QR. mime/tamano_bytes son null si no hay QR.
+export interface QrCobroMeta {
+  tiene_qr: boolean;
+  mime: string | null;
+  tamano_bytes: number | null;
+  imagen_url: string | null;
+}
+
+// --- Comprobantes por verificar (cola "Pagos por verificar") ---
+// Estado del comprobante entrante (distinto del estado de cuota/pago).
+export type EstadoComprobante = 'PENDIENTE' | 'CONFIRMADO' | 'RECHAZADO';
+
+// Tutor identificado por teléfono (null si "sin identificar").
+export interface ComprobanteTutorRef {
+  id: string;
+  nombres: string;
+}
+
+// Cuota sugerida (FIFO del tutor) o cuota elegible para asignar manualmente.
+// vence_el (date) y saldo/monto (numeric serializado como string).
+export interface ComprobanteCuotaRef {
+  cuota_id: string;
+  deportista_nombre: string;
+  vence_el: string; // date YYYY-MM-DD
+  saldo: string; // numeric(10,2) serializado como string
+  estado: EstadoCuota;
+}
+
+// GET /comprobantes/pendientes -> item de la cola. Todos los campos de OCR pueden
+// ser null (best-effort); tutor/cuota_sugerida null => "sin identificar".
+// imagen_url: URL del binario del comprobante (GET /comprobantes/{id}/imagen).
+export interface ComprobantePendienteItem {
+  id: string;
+  estado: EstadoComprobante;
+  from_telefono: string;
+  created_at: string; // timestamptz
+  tutor: ComprobanteTutorRef | null;
+  cuota_sugerida: ComprobanteCuotaRef | null;
+  monto_ocr: string | null; // numeric(10,2) serializado como string
+  transaccion_id_ocr: string | null;
+  fecha_ocr: string | null; // date YYYY-MM-DD
+  imagen_url: string;
+}
+
+export type ComprobantesPendientesPage = Paginated<ComprobantePendienteItem>;
+
+// GET /comprobantes/{id}/cuotas -> cuotas con saldo de la escuela (para asignar un
+// "sin identificar" o reasignar). Mismo shape reducido que la cuota sugerida.
+export type ComprobanteCuotaElegible = ComprobanteCuotaRef;
+
+// --- POST /comprobantes/{id}/confirmar (body) ---
+// Reusa registrar_pago_efectivo (idempotente, FIFO). monto = numeric string.
+export interface ConfirmarComprobanteBody {
+  cuota_id: string;
+  monto: string; // numeric(10,2) serializado como string
+}
+
+// --- POST /comprobantes/{id}/rechazar (body) — motivo opcional ---
+export interface RechazarComprobanteBody {
+  motivo?: string;
+}
+
+// POST /comprobantes/{id}/rechazar -> {id, estado:'RECHAZADO'}.
+export interface RechazarComprobanteOut {
+  id: string;
+  estado: 'RECHAZADO';
+}
+
+// ============================================================
 // Epic A: Super Admin / consola de plataforma (rol SUPERADMIN, token SIN org_id).
 // App SEPARADA del panel de escuela: su token vive en otra clave de storage y el
 // cliente lo manda solo a /plataforma/*. Espejo EXACTO del contrato de la spec

@@ -21,6 +21,7 @@ Los `@pytest.mark.db` los corre main contra Postgres recién migrado.
 
 from __future__ import annotations
 
+import base64
 import uuid
 from collections.abc import Iterator
 from datetime import date
@@ -262,8 +263,9 @@ def test_idempotencia_proximo_vencimiento(app_engine: Engine, recordatorio_proxi
     assert r1.motivo == "ok"
     assert r2.enviado is False
     assert r2.motivo == "ya_enviado"
-    # Idempotencia del proveedor: un solo mensaje enviado (no doble QR/envío).
-    assert len(mock.sent) == 1
+    # Idempotencia del proveedor: un solo mensaje enviado (no doble envío). C7: sin QR
+    # subido en la org del fixture, el recordatorio degrada a texto (send_text).
+    assert len(mock.sent_text) == 1
 
     with app_engine.begin() as conn:
         _set_org(conn, org)
@@ -301,7 +303,8 @@ def test_sin_telefono_registra_fallido_sin_enviar(
 
     assert res.enviado is False
     assert res.motivo == "sin_telefono"
-    assert len(mock.sent) == 0, "sin teléfono no debe llamar al puerto"
+    assert len(mock.sent_text) == 0, "sin teléfono no debe llamar al puerto"
+    assert len(mock.sent_image) == 0
 
     with app_engine.begin() as conn:
         _set_org(conn, org)
@@ -336,7 +339,7 @@ def test_morosidad_dedup_mensual(app_engine: Engine, recordatorio_morosidad: dic
 
     assert r1.enviado is True and r1.motivo == "ok"
     assert r2.enviado is False and r2.motivo == "ya_enviado"
-    assert len(mock.sent) == 1, "mismo YYYY-MM: máx. 1 morosidad por cuota por mes"
+    assert len(mock.sent_text) == 1, "mismo YYYY-MM: máx. 1 morosidad por cuota por mes"
 
     # Mes distinto (otro ciclo) ⇒ se permite un 2º envío.
     hoy_jul = date(2026, 7, 5)
@@ -347,7 +350,7 @@ def test_morosidad_dedup_mensual(app_engine: Engine, recordatorio_morosidad: dic
         db.commit()
 
     assert r3.enviado is True and r3.motivo == "ok"
-    assert len(mock.sent) == 2
+    assert len(mock.sent_text) == 2
 
     with app_engine.begin() as conn:
         _set_org(conn, org)
@@ -385,7 +388,7 @@ def test_forzar_reenvia_sin_duplicar_fila(app_engine: Engine, recordatorio_proxi
 
     assert r1.enviado is True and r1.motivo == "ok"
     assert r2.enviado is True and r2.motivo == "ok"
-    assert len(mock.sent) == 2, "forzar=True reenvía un segundo mensaje"
+    assert len(mock.sent_text) == 2, "forzar=True reenvía un segundo mensaje"
 
     with app_engine.begin() as conn:
         _set_org(conn, org)
@@ -484,6 +487,68 @@ def test_rls_recordatorio_org_a_no_ve_org_b(app_engine: Engine, owner_engine: En
         with owner_engine.begin() as conn:
             _limpiar_org(conn, org_a)
             _limpiar_org(conn, org_b)
+
+
+# --------------------------------------------------------------------------- #
+# 5b) C7: adjunta el QR de la escuela (send_image) si existe; degrada a texto si no
+# --------------------------------------------------------------------------- #
+@pytest.mark.db
+def test_c7_con_qr_envia_imagen(app_engine: Engine, recordatorio_proximo: dict) -> None:
+    """Con `qr_cobro` subido, el recordatorio usa send_image (QR + caption), no texto."""
+    from app.services.recordatorios import enviar_recordatorio_cuota
+
+    org = recordatorio_proximo["org"]
+    cuota_id = recordatorio_proximo["cuota"]
+    mock = MockWhatsAppAdapter()
+
+    # Siembra un QR de cobro para la org (1 fila por org).
+    with app_engine.begin() as conn:
+        _set_org(conn, org)
+        conn.execute(
+            text(
+                "INSERT INTO qr_cobro (id, org_id, imagen, mime, tamano_bytes, "
+                "created_at, updated_at) VALUES (:id,:org,:img,'image/png',3,now(),now())"
+            ),
+            {"id": str(uuid.uuid4()), "org": str(org), "img": b"PNG"},
+        )
+
+    with Session(app_engine, expire_on_commit=False) as db:
+        _set_org(db, org)
+        cuota = _get_cuota(db, cuota_id)
+        res = enviar_recordatorio_cuota(
+            db, cuota=cuota, tipo="PROXIMO_VENCIMIENTO", hoy=date(2026, 6, 7), port=mock
+        )
+        db.commit()
+
+    assert res.enviado is True and res.motivo == "ok"
+    assert len(mock.sent_image) == 1, "con QR ⇒ send_image"
+    assert len(mock.sent_text) == 0
+    img = mock.sent_image[0]
+    assert img.mime == "image/png"
+    assert base64.b64decode(img.image_b64) == b"PNG"
+    assert "Camila" in img.caption and "250.00" in img.caption
+
+
+@pytest.mark.db
+def test_c7_sin_qr_degrada_a_texto(app_engine: Engine, recordatorio_proximo: dict) -> None:
+    """Sin `qr_cobro`, el recordatorio degrada a texto (send_text) sin romper."""
+    from app.services.recordatorios import enviar_recordatorio_cuota
+
+    org = recordatorio_proximo["org"]
+    cuota_id = recordatorio_proximo["cuota"]
+    mock = MockWhatsAppAdapter()
+
+    with Session(app_engine, expire_on_commit=False) as db:
+        _set_org(db, org)
+        cuota = _get_cuota(db, cuota_id)
+        res = enviar_recordatorio_cuota(
+            db, cuota=cuota, tipo="PROXIMO_VENCIMIENTO", hoy=date(2026, 6, 7), port=mock
+        )
+        db.commit()
+
+    assert res.enviado is True and res.motivo == "ok"
+    assert len(mock.sent_text) == 1, "sin QR ⇒ degrada a texto"
+    assert len(mock.sent_image) == 0
 
 
 # --------------------------------------------------------------------------- #

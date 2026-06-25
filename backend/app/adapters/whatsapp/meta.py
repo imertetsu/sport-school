@@ -17,6 +17,7 @@ import httpx
 from app.core.config import settings
 from app.core.phone import normalize_bo_phone
 from app.domain.ports.whatsapp import (
+    WhatsAppImageMessage,
     WhatsAppPort,
     WhatsAppSendResult,
     WhatsAppTemplateMessage,
@@ -70,6 +71,20 @@ class MetaCloudWhatsAppAdapter(WhatsAppPort):
             )
         except Exception as exc:  # noqa: BLE001 - el puerto reporta el fallo, no lanza
             return WhatsAppSendResult(ok=False, provider_message_id=None, error=str(exc))
+
+    def send_image(self, msg: WhatsAppImageMessage) -> WhatsAppSendResult:
+        """Imagen libre por Meta: no soportada en v1 (degrada, no rompe).
+
+        Meta requiere subir el media a `POST /{phone_number_id}/media` y referenciar el
+        `media_id` (un base64 inline no es aceptado): fuera de alcance del MVP. Se reporta
+        `ok=False` para que el flujo degrade al texto, igual que `header_image` en
+        `send_template`.
+        """
+        return WhatsAppSendResult(
+            ok=False,
+            provider_message_id=None,
+            error="send_image no soportado en meta v1",
+        )
 
     def send_text(self, msg: WhatsAppTextMessage) -> WhatsAppSendResult:
         """Envía un mensaje de texto libre vía Graph API (esqueleto; no en tests)."""

@@ -9,6 +9,7 @@ import { NuevoDeportista } from '@/features/deportistas/NuevoDeportista';
 import { Solicitudes } from '@/features/solicitudes/Solicitudes';
 import { PanelCobranza } from '@/features/cobranza/PanelCobranza';
 import { PagosHistorial } from '@/features/cobranza/PagosHistorial';
+import { PagosPorVerificar } from '@/features/cobranza/PagosPorVerificar';
 import { TomarAsistencia } from '@/features/asistencia/TomarAsistencia';
 import { Horarios } from '@/features/horarios/Horarios';
 import { Muro } from '@/features/avisos/Muro';
@@ -46,6 +47,17 @@ export default function App() {
             <Route index element={<Navigate to="/panel" replace />} />
             <Route path="/panel" element={<PanelCobranza />} />
             <Route path="/pagos" element={<PagosHistorial />} />
+            {/* Pagos por verificar (epic pagos-qr-comprobante): cola de
+                comprobantes entrantes para confirmar/rechazar. SOLO ADMIN (gate
+                de rol; el backend impone require_role("ADMIN")). */}
+            <Route
+              path="/pagos-por-verificar"
+              element={
+                <RoleRoute allow={['ADMIN']}>
+                  <PagosPorVerificar />
+                </RoleRoute>
+              }
+            />
             <Route path="/deportistas" element={<DeportistasList />} />
             <Route path="/deportistas/nuevo" element={<NuevoDeportista />} />
             {/* Edición completa del deportista (epic escuela-y-bajas, Fase 3):

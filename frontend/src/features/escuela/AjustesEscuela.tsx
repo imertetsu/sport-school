@@ -3,6 +3,7 @@ import { api, ApiError } from '@/api/client';
 import { useAuth } from '@/auth/useAuth';
 import { Button, Card, Field, Monogram } from '@/components/ui';
 import { WhatsAppVinculacion } from './WhatsAppVinculacion';
+import { QrCobroUploader } from './QrCobroUploader';
 import './AjustesEscuela.css';
 
 // Paleta acotada de colores del monograma (chips). Hex #RRGGBB (el backend valida
@@ -290,6 +291,11 @@ export function AjustesEscuela() {
           backend impone require_role("ADMIN")). Carga su propio estado de forma
           independiente del editor de nombre/color. */}
       <WhatsAppVinculacion />
+
+      {/* QR de cobro (epic pagos-qr-comprobante): sube/ve/cambia/quita el QR de la
+          escuela que viaja en los recordatorios de cobro. SOLO ADMIN (la ruta
+          /ajustes ya gatea ADMIN y el backend impone require_role("ADMIN")). */}
+      <QrCobroUploader />
     </div>
   );
 }

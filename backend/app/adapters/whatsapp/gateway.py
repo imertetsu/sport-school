@@ -42,6 +42,7 @@ from app.core.config import settings
 from app.core.org_context import get_current_org_id
 from app.core.phone import normalize_bo_phone
 from app.domain.ports.whatsapp import (
+    WhatsAppImageMessage,
     WhatsAppPort,
     WhatsAppSendResult,
     WhatsAppTemplateMessage,
@@ -96,7 +97,7 @@ def _render(template_name: str, body_params: list[str]) -> str | None:
 class GatewayWhatsAppAdapter(WhatsAppPort):
     """Cliente del sidecar no-oficial (Baileys) vía `POST /send`."""
 
-    def _send(self, to: str, text: str) -> WhatsAppSendResult:
+    def _post_session(self, to: str, body_extra: dict[str, Any]) -> WhatsAppSendResult:
         """`POST {gateway_url}/sessions/{org_id}/send`. No lanza: mapea a `ok`/`error`.
 
         Resuelve la organización en curso desde el `ContextVar`
@@ -108,6 +109,10 @@ class GatewayWhatsAppAdapter(WhatsAppPort):
         Normaliza el destinatario a E.164-sin-`+` (lo que espera el sidecar) en este
         punto único; si el número no es plausible, reporta `ok=False` **sin** llamar al
         sidecar (mismo guard que `meta.py`).
+
+        `body_extra` aporta el contenido del mensaje (`text`, o `text`+`image`+`mime`);
+        este helper añade el `to` ya normalizado. Compartido por texto e imagen para no
+        duplicar la resolución de org / normalización / fail-closed / manejo de errores.
         """
         org_id = get_current_org_id()
         if not org_id:
@@ -130,7 +135,7 @@ class GatewayWhatsAppAdapter(WhatsAppPort):
             "X-Gateway-Token": settings.whatsapp_gateway_token or "",
             "Content-Type": "application/json",
         }
-        body: dict[str, Any] = {"to": normalized_to, "text": text}
+        body: dict[str, Any] = {"to": normalized_to, **body_extra}
         try:
             resp = httpx.post(url, headers=headers, json=body, timeout=_TIMEOUT_SECONDS)
             resp.raise_for_status()
@@ -156,9 +161,26 @@ class GatewayWhatsAppAdapter(WhatsAppPort):
         except Exception as exc:  # noqa: BLE001 - el puerto reporta el fallo, no lanza
             return WhatsAppSendResult(ok=False, provider_message_id=None, error=str(exc))
 
+    def _send(self, to: str, text: str) -> WhatsAppSendResult:
+        """Envía un texto al sidecar (body `{to, text}`). Delega en `_post_session`."""
+        return self._post_session(to, {"text": text})
+
     def send_text(self, msg: WhatsAppTextMessage) -> WhatsAppSendResult:
         """Envía un texto libre por el sidecar. No lanza: reporta vía `ok`/`error`."""
         return self._send(msg.to, msg.body)
+
+    def send_image(self, msg: WhatsAppImageMessage) -> WhatsAppSendResult:
+        """Envía una imagen con caption por el sidecar. No lanza: reporta vía `ok`/`error`.
+
+        Body al sidecar: `{to, text:<caption>, image:<base64>, mime}` (C3 del epic). El
+        `caption` viaja como `text` (puede ser cadena vacía: el sidecar relaja la
+        validación de `text` cuando viene `image`). Reusa la resolución de org por
+        `ContextVar` + normalización + fail-closed de `_post_session`.
+        """
+        return self._post_session(
+            msg.to,
+            {"text": msg.caption, "image": msg.image_b64, "mime": msg.mime},
+        )
 
     def send_template(self, msg: WhatsAppTemplateMessage) -> WhatsAppSendResult:
         """Renderiza la plantilla de texto local y la envía por el sidecar.

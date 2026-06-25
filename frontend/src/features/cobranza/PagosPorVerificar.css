@@ -1,0 +1,203 @@
+.por-verificar {
+  display: flex;
+  flex-direction: column;
+}
+
+.por-verificar__empty {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--fs-sm);
+}
+
+.por-verificar__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.por-verificar__pager {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  font-size: var(--fs-sm);
+  color: var(--color-text-muted);
+}
+
+/* --- Tarjeta de comprobante --- */
+.pv-card {
+  display: flex;
+  gap: var(--space-4);
+  padding: var(--space-4);
+}
+
+.pv-card__media {
+  flex: 0 0 auto;
+}
+
+.pv-card__img {
+  width: 160px;
+  height: 200px;
+  object-fit: cover;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-2);
+}
+
+.pv-card__info {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.pv-card__row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pv-card__label {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-subtle);
+}
+
+.pv-card__value {
+  font-size: var(--fs-md);
+  color: var(--color-text);
+}
+
+.pv-card__sub {
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+}
+
+.pv-card__warn {
+  color: var(--state-overdue-text);
+  font-weight: 600;
+}
+
+.pv-card__cuota,
+.pv-card__ocr {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-2);
+}
+
+.pv-card__cuota-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  align-items: flex-start;
+}
+
+.pv-card__ocr-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.pv-card__ocr-grid > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pv-card__ocr-grid .pv-card__value {
+  font-size: var(--fs-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pv-card__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-top: auto;
+}
+
+.pv-card__actions {
+  display: inline-flex;
+  gap: var(--space-2);
+}
+
+@media (max-width: 640px) {
+  .pv-card {
+    flex-direction: column;
+  }
+
+  .pv-card__img {
+    width: 100%;
+    height: 220px;
+  }
+
+  .pv-card__ocr-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* --- Modal de confirmación --- */
+.pv-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: var(--space-6) var(--space-4);
+  overflow-y: auto;
+  z-index: 50;
+}
+
+.pv-modal {
+  width: 100%;
+  max-width: 480px;
+  margin-top: var(--space-6);
+}
+
+.pv-modal__lead {
+  margin: 0 0 var(--space-3);
+  color: var(--color-text-muted);
+  font-size: var(--fs-sm);
+}
+
+.pv-modal__loading {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--fs-sm);
+}
+
+.pv-modal__notice {
+  background: var(--state-pending-bg);
+  border: 1px solid var(--state-pending-border);
+  color: var(--state-pending-text);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  font-size: var(--fs-sm);
+  margin-bottom: var(--space-3);
+}
+
+.pv-modal__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.pv-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+}

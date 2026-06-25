@@ -22,11 +22,21 @@ dependencies = [
     "python-dateutil>=2.9",
     "fpdf2>=2.7",
     "qrcode[pil]>=7.4",
+    # OCR server-side del comprobante de pago (app/services/ocr.py). pytesseract es un
+    # wrapper sobre el binario `tesseract` (lo instala infra-dev en la imagen api/worker
+    # + `tesseract-ocr-spa`). Pillow ya viene transitivo por qrcode[pil]. Si el binario
+    # falta (p.ej. esta máquina dev), el servicio degrada a {None,None,None,""} sin lanzar.
+    "pytesseract>=0.3.10",
+    "pillow>=10.0",
     # Cliente HTTP del adaptador real de WhatsApp (app/adapters/whatsapp/meta.py).
     # Es dependencia de RUNTIME: debe ir en deps base, no solo en [dev], o la imagen
     # (pip install -e .) arranca sin httpx -> ModuleNotFoundError. En CI viene transitivo
     # por el TestClient, por eso CI pasaba aunque producción crasheara.
     "httpx>=0.27",
+    # Parser de multipart/form-data: lo exige FastAPI para `UploadFile`/`File` (subida
+    # del QR de cobro en app/api/v1/qr_cobro.py). Sin él, FastAPI lanza en arranque al
+    # registrar la ruta multipart. Dependencia de RUNTIME.
+    "python-multipart>=0.0.9",
 ]
 
 [project.optional-dependencies]
