@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Iterator
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -227,9 +227,14 @@ def abono_fixture(owner_engine: Engine) -> Iterator[dict]:
             {"id": str(insc), "org": str(org), "al": str(al), "f": date(2026, 1, 10), "m": monto},
         )
         # 2 cuotas, c1 vence antes que c2 (FIFO). Ambas a futuro (no vencidas).
+        # Fechas RELATIVAS a hoy (el servicio usa la fecha real `now(UTC).date()`):
+        # con fechas fijas, al pasar el `vence_el`, un pago parcial daba VENCIDO en vez
+        # de PARCIAL y el test caducaba con el tiempo. El margen de 30/60 días evita
+        # cualquier borde de zona horaria.
+        hoy = date.today()
         for cid, pi, pf, v in (
-            (c1, date(2026, 5, 10), date(2026, 6, 10), date(2026, 6, 10)),
-            (c2, date(2026, 6, 10), date(2026, 7, 10), date(2026, 7, 10)),
+            (c1, hoy, hoy + timedelta(days=30), hoy + timedelta(days=30)),
+            (c2, hoy + timedelta(days=30), hoy + timedelta(days=60), hoy + timedelta(days=60)),
         ):
             conn.execute(
                 text(
