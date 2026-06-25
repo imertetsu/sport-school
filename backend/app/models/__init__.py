@@ -38,6 +38,7 @@ from app.models.solicitud_registro import SolicitudRegistro
 from app.models.sucursal import Sucursal
 from app.models.tutor import Tutor
 from app.models.usuario import Usuario
+from app.models.whatsapp_sesion import WhatsAppSesion
 
 __all__ = [
     "Base",
@@ -71,4 +72,5 @@ __all__ = [
     "RecordatorioDeudores",
     "PlataformaAdmin",
     "PlataformaAuditoria",
+    "WhatsAppSesion",
 ]

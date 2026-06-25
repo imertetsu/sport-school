@@ -23,6 +23,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
+from app.core.org_context import set_current_org_id
 from app.core.security import decode_access_token
 
 _bearer = HTTPBearer(auto_error=False)
@@ -105,6 +106,7 @@ def set_tenant_context(
         text("SELECT set_config('app.current_org', :org, true)"),
         {"org": user.org_id},
     )
+    set_current_org_id(str(user.org_id))
     return user
 
 

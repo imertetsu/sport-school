@@ -9,8 +9,9 @@
 # Imagen base: node:22-slim (Debian, misma familia que Dockerfile.api/web). Necesita `git`
 # porque Baileys arrastra deps que npm resuelve vía git (si falta → `ENOENT spawn git`).
 #
-# El auth-state de Baileys NO vive en la imagen: se persiste en SESSION_DIR, montado
-# en un volumen del compose (sobrevive a reinicios -> no re-escanear QR).
+# El auth-state de Baileys NO vive en la imagen: se persiste en SESSIONS_ROOT (un
+# subdirectorio por org: ${SESSIONS_ROOT}/${org_id}), montado en un volumen del compose
+# (sobrevive a reinicios -> no re-escanear QR). Multi-sesion: un proceso, N orgs.
 
 FROM node:22-slim
 
@@ -49,9 +50,10 @@ RUN if [ "$INSECURE_TLS" = "true" ]; then npm config set strict-ssl false; git c
 # Codigo del sidecar.
 COPY src ./src
 
-# Ruta por defecto del auth-state (el compose la monta en un volumen).
-ENV SESSION_DIR=/data/session
-RUN mkdir -p /data/session
+# Raiz por defecto del auth-state multi-sesion (el compose la monta en un volumen).
+# Cada org vive en ${SESSIONS_ROOT}/${org_id}. REEMPLAZA al antiguo SESSION_DIR.
+ENV SESSIONS_ROOT=/data/sessions
+RUN mkdir -p /data/sessions
 
 # Puerto HTTP por defecto (parametrizable por GATEWAY_PORT en runtime).
 EXPOSE 3000

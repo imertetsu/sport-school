@@ -1,26 +1,34 @@
-// LatinoSport — WhatsApp Gateway (sidecar Baileys, WebSocket multidevice).
+// LatinoSport — WhatsApp Gateway (sidecar Baileys, WebSocket multidevice) MULTI-SESION.
 //
-// Mantiene la sesion de UN numero de prueba (pairing por QR) y expone la HTTP API
-// del CONTRATO CONGELADO (spec whatsapp-gateway, seccion A). NO usa Puppeteer/Chrome:
-// Baileys habla el protocolo multidevice por WebSocket directo (sin navegador → sin OOM).
+// Un solo proceso mantiene un Map<org_id, Session>: CADA escuela (org) tiene su propio
+// auth-state Baileys (${SESSIONS_ROOT}/${org_id}), su socket, su QR, su selfJid y su flag
+// `connected`. Jamas se cruza un `sock` entre orgs — el aislamiento multi-tenant del envio
+// vive aqui. NO usa Puppeteer/Chrome: Baileys habla el protocolo multidevice por WebSocket
+// directo (sin navegador → sin OOM).
 //
-// HTTP API (todas con header `X-Gateway-Token`, salvo /qr/png que es para el operador):
-//   POST /send    { to, text }            -> 200 { ok, message_id } | 200 { ok:false, error }
-//   GET  /status                          -> 200 { connected, number }
-//   GET  /qr                              -> 200 { connected, qr } (data-url) | { connected:true }
-//   GET  /healthz                         -> 200 (liveness para el compose, sin token)
+// HTTP API por-org (todas con header `X-Gateway-Token`, salvo /healthz):
+//   GET    /healthz                  -> 200 { ok:true }                              (sin token)
+//   GET    /sessions/:orgId/status   -> 200 { org_id, connected, number }
+//   GET    /sessions/:orgId/qr       -> 200 { org_id, connected:false, qr:<data-url|null> [,error] }
+//                                       | 200 { org_id, connected:true, number }   (lazy: crea la Session)
+//   POST   /sessions/:orgId/send     { to, text } -> 200 { ok, message_id } | 200 { ok:false, error }
+//   DELETE /sessions/:orgId          -> 200 { org_id, ok:true }                     (desvincular, idempotente)
 //
-// Entrante: al llegar un mensaje de texto hace POST {INBOUND_CALLBACK_URL} con el mismo
-// token y body { from, text, message_id, timestamp }. Tolera que el callback falle.
+// Entrante: al llegar un mensaje de texto a la Session de un org hace POST {INBOUND_CALLBACK_URL}
+// con el mismo token y body { org_id, from, text, message_id, timestamp } (el org_id sale de la
+// Session que recibio el mensaje). Tolera que el callback falle (loguea, no crashea).
 //
-// Persistencia: useMultiFileAuthState en SESSION_DIR (montado en un volumen del compose)
-// → no re-escanear QR en cada reinicio. Reconexion automatica al caerse.
+// Persistencia: useMultiFileAuthState en ${SESSIONS_ROOT}/${org_id} (SESSIONS_ROOT montado en
+// un volumen del compose) → no re-escanear QR en cada reinicio. Al arranque lista los
+// subdirectorios de SESSIONS_ROOT y reconecta cada org (secuencial con pequeno backoff).
+// Reconexion automatica al caerse.
 //
 // IMPORTANTE (contrato): los errores de NEGOCIO (no conectado, numero invalido, etc.)
 // se reportan SIEMPRE como 200 { ok:false, error }. Nunca 5xx por ellos. El 5xx queda
 // reservado a fallos verdaderamente inesperados del propio gateway.
 
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
 import express from 'express';
 import pino from 'pino';
 import qrcode from 'qrcode';
@@ -34,12 +42,13 @@ import makeWASocket, {
   isJidUser,
 } from '@whiskeysockets/baileys';
 
-// --- Config por entorno (contrato seccion B) -------------------------------
+// --- Config por entorno -----------------------------------------------------
 const GATEWAY_TOKEN = process.env.GATEWAY_TOKEN || '';
 const GATEWAY_PORT = parseInt(process.env.GATEWAY_PORT || '3000', 10);
 const INBOUND_CALLBACK_URL = process.env.INBOUND_CALLBACK_URL || '';
-// Ruta del auth-state de Baileys. Se monta en un volumen (ver docker-compose.yml).
-const SESSION_DIR = process.env.SESSION_DIR || '/data/session';
+// Raiz del auth-state multi-sesion: cada org vive en ${SESSIONS_ROOT}/${org_id}.
+// Se monta en un volumen (ver docker-compose.yml). REEMPLAZA al antiguo SESSION_DIR.
+const SESSIONS_ROOT = process.env.SESSIONS_ROOT || '/data/sessions';
 
 const log = pino({
   level: process.env.LOG_LEVEL || 'info',
@@ -52,15 +61,26 @@ if (!GATEWAY_TOKEN) {
   process.exit(1);
 }
 
-if (!existsSync(SESSION_DIR)) {
-  mkdirSync(SESSION_DIR, { recursive: true });
+if (!existsSync(SESSIONS_ROOT)) {
+  mkdirSync(SESSIONS_ROOT, { recursive: true });
 }
 
-// --- Estado en memoria de la conexion --------------------------------------
-let sock = null;
-let connected = false;
-let selfJid = null; // JID propio del numero pareado, p.ej "59176123456@s.whatsapp.net"
-let currentQr = null; // ultimo string de QR vigente (null si ya conectado / sin QR)
+// --- Estado multi-sesion ----------------------------------------------------
+// Map<org_id, Session>. Cada Session encapsula TODO el estado de un org: nunca se comparte
+// `sock`, `connected`, `selfJid` ni `currentQr` entre orgs.
+//   { orgId, sock, connected, selfJid, currentQr, starting }
+const sessions = new Map();
+
+// Valida que el orgId sea un identificador de directorio seguro (sin path traversal).
+// Aceptamos lo tipico de un UUID/slug: letras, digitos, guion y guion-bajo.
+function isValidOrgId(orgId) {
+  return typeof orgId === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(orgId);
+}
+
+// Directorio de auth-state de un org dentro de SESSIONS_ROOT.
+function sessionDir(orgId) {
+  return join(SESSIONS_ROOT, orgId);
+}
 
 // Normaliza un JID a solo digitos (p.ej "59176123456@s.whatsapp.net:12" -> "59176123456").
 function jidToDigits(jid) {
@@ -69,79 +89,117 @@ function jidToDigits(jid) {
   return user.split(':')[0] || null;
 }
 
-// --- Baileys: arranque, QR, reconexion, entrante ---------------------------
-async function startSock() {
-  const { state, saveCreds } = await useMultiFileAuthState(SESSION_DIR);
-  const { version } = await fetchLatestBaileysVersion().catch(() => ({ version: undefined }));
+// Crea (si no existe) y devuelve la Session de un org. NO arranca el socket.
+function getOrCreateSession(orgId) {
+  let session = sessions.get(orgId);
+  if (!session) {
+    session = {
+      orgId,
+      sock: null,
+      connected: false,
+      selfJid: null,
+      currentQr: null,
+      starting: false,
+    };
+    sessions.set(orgId, session);
+  }
+  return session;
+}
 
-  sock = makeWASocket({
-    version,
-    auth: state,
-    logger: log.child({ mod: 'baileys' }),
-    // markOnlineOnConnect:false evita "robar" las notificaciones push del telefono.
-    markOnlineOnConnect: false,
-    // Sin printQRInTerminal (deprecado): el QR lo logueamos/servimos nosotros.
-  });
+// --- Baileys: arranque, QR, reconexion, entrante (POR SESSION) --------------
+async function startSession(session) {
+  const { orgId } = session;
+  if (session.starting) return session.sock;
+  session.starting = true;
 
-  sock.ev.on('creds.update', saveCreds);
+  try {
+    const dir = sessionDir(orgId);
+    if (!existsSync(dir)) {
+      mkdirSync(dir, { recursive: true });
+    }
+    const { state, saveCreds } = await useMultiFileAuthState(dir);
+    const { version } = await fetchLatestBaileysVersion().catch(() => ({ version: undefined }));
 
-  sock.ev.on('connection.update', async (update) => {
-    const { connection, lastDisconnect, qr } = update;
+    const sock = makeWASocket({
+      version,
+      auth: state,
+      logger: log.child({ mod: 'baileys', org_id: orgId }),
+      // markOnlineOnConnect:false evita "robar" las notificaciones push del telefono.
+      markOnlineOnConnect: false,
+      // Sin printQRInTerminal (deprecado): el QR lo logueamos/servimos nosotros.
+    });
+    session.sock = sock;
 
-    if (qr) {
-      currentQr = qr;
-      connected = false;
-      // Loguear el QR a stdout para que el operador lo escanee sin abrir /qr.
-      try {
-        const ascii = await qrcode.toString(qr, { type: 'terminal', small: true });
-        log.info('\n========== ESCANEA ESTE QR CON EL NUMERO DE PRUEBA ==========\n' +
-          ascii +
-          '\n=============================================================\n' +
-          '(o abre GET /qr para el data-url de la imagen)');
-      } catch (err) {
-        log.warn({ err: err.message }, 'no se pudo renderizar el QR ASCII; usa GET /qr');
+    sock.ev.on('creds.update', saveCreds);
+
+    sock.ev.on('connection.update', async (update) => {
+      const { connection, lastDisconnect, qr } = update;
+
+      if (qr) {
+        session.currentQr = qr;
+        session.connected = false;
+        // Loguear el QR a stdout para diagnostico (la UI lo obtiene via GET /sessions/:org/qr).
+        try {
+          const ascii = await qrcode.toString(qr, { type: 'terminal', small: true });
+          log.info({ org_id: orgId },
+            '\n========== ESCANEA ESTE QR (org ' + orgId + ') ==========\n' +
+            ascii +
+            '\n=======================================================\n' +
+            '(o GET /sessions/' + orgId + '/qr para el data-url de la imagen)');
+        } catch (err) {
+          log.warn({ err: err.message, org_id: orgId }, 'no se pudo renderizar el QR ASCII; usa GET /sessions/:org/qr');
+        }
       }
-    }
 
-    if (connection === 'open') {
-      connected = true;
-      currentQr = null;
-      selfJid = sock?.user?.id || null;
-      log.info({ number: jidToDigits(selfJid) }, 'WhatsApp conectado');
-    }
-
-    if (connection === 'close') {
-      connected = false;
-      const statusCode = lastDisconnect?.error?.output?.statusCode;
-      const loggedOut = statusCode === DisconnectReason.loggedOut;
-      log.warn({ statusCode, loggedOut }, 'WhatsApp desconectado');
-      if (loggedOut) {
-        // Sesion invalidada (logout desde el telefono): hay que re-parear (nuevo QR).
-        // No reintentamos en bucle; el proximo arranque pedira QR de nuevo.
-        selfJid = null;
-        currentQr = null;
-        startSock().catch((e) => log.error({ err: e.message }, 'fallo re-arranque tras logout'));
-      } else {
-        // Caida transitoria: reconectar.
-        setTimeout(() => {
-          startSock().catch((e) => log.error({ err: e.message }, 'fallo reconexion'));
-        }, 2000);
+      if (connection === 'open') {
+        session.connected = true;
+        session.currentQr = null;
+        session.selfJid = sock?.user?.id || null;
+        log.info({ org_id: orgId, number: jidToDigits(session.selfJid) }, 'WhatsApp conectado');
       }
-    }
-  });
 
-  sock.ev.on('messages.upsert', async ({ messages, type }) => {
-    if (type !== 'notify') return;
-    for (const msg of messages) {
-      try {
-        await handleIncoming(msg);
-      } catch (err) {
-        log.error({ err: err.message }, 'error procesando mensaje entrante (ignorado)');
+      if (connection === 'close') {
+        session.connected = false;
+        const statusCode = lastDisconnect?.error?.output?.statusCode;
+        const loggedOut = statusCode === DisconnectReason.loggedOut;
+        log.warn({ statusCode, loggedOut, org_id: orgId }, 'WhatsApp desconectado');
+        // Si la Session ya fue eliminada del Map (DELETE), no reintentar: es un cierre deliberado.
+        if (!sessions.has(orgId) || sessions.get(orgId) !== session) {
+          return;
+        }
+        if (loggedOut) {
+          // Sesion invalidada (logout desde el telefono): hay que re-parear (nuevo QR).
+          session.selfJid = null;
+          session.currentQr = null;
+          session.starting = false;
+          startSession(session).catch((e) => log.error({ err: e.message, org_id: orgId }, 'fallo re-arranque tras logout'));
+        } else {
+          // Caida transitoria: reconectar.
+          session.starting = false;
+          setTimeout(() => {
+            if (sessions.get(orgId) === session) {
+              startSession(session).catch((e) => log.error({ err: e.message, org_id: orgId }, 'fallo reconexion'));
+            }
+          }, 2000);
+        }
       }
-    }
-  });
+    });
 
-  return sock;
+    sock.ev.on('messages.upsert', async ({ messages, type }) => {
+      if (type !== 'notify') return;
+      for (const msg of messages) {
+        try {
+          await handleIncoming(orgId, msg);
+        } catch (err) {
+          log.error({ err: err.message, org_id: orgId }, 'error procesando mensaje entrante (ignorado)');
+        }
+      }
+    });
+
+    return sock;
+  } finally {
+    session.starting = false;
+  }
 }
 
 // Extrae el texto plano de un mensaje (texto simple o caption de media).
@@ -156,8 +214,9 @@ function extractText(message) {
   );
 }
 
-// Reenvia un mensaje entrante de texto al webhook del backend. Tolera fallos.
-async function handleIncoming(msg) {
+// Reenvia un mensaje entrante de texto al webhook del backend, etiquetado con su org_id.
+// Tolera fallos: el edge no debe perder el proceso por un callback caido.
+async function handleIncoming(orgId, msg) {
   // Ignorar lo que enviamos nosotros y lo que no es de un usuario (grupos, status, etc.).
   if (msg.key?.fromMe) return;
   const remoteJid = msg.key?.remoteJid;
@@ -167,6 +226,7 @@ async function handleIncoming(msg) {
   if (!text) return; // solo texto en este MVP (entrante = recibir + loguear)
 
   const payload = {
+    org_id: orgId,
     from: jidToDigits(remoteJid),
     text,
     message_id: msg.key?.id || null,
@@ -174,10 +234,10 @@ async function handleIncoming(msg) {
     timestamp: Number(msg.messageTimestamp) || Math.floor(Date.now() / 1000),
   };
 
-  log.info({ from: payload.from, message_id: payload.message_id }, 'mensaje entrante');
+  log.info({ org_id: orgId, from: payload.from, message_id: payload.message_id }, 'mensaje entrante');
 
   if (!INBOUND_CALLBACK_URL) {
-    log.warn('INBOUND_CALLBACK_URL no configurado; no se reenvia el entrante');
+    log.warn({ org_id: orgId }, 'INBOUND_CALLBACK_URL no configurado; no se reenvia el entrante');
     return;
   }
 
@@ -192,11 +252,41 @@ async function handleIncoming(msg) {
       signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) {
-      log.warn({ status: res.status }, 'el callback entrante respondio no-2xx (ignorado)');
+      log.warn({ status: res.status, org_id: orgId }, 'el callback entrante respondio no-2xx (ignorado)');
     }
   } catch (err) {
-    // El edge no debe perder el proceso por un callback caido: loguear y seguir.
-    log.warn({ err: err.message }, 'fallo el POST al callback entrante (ignorado)');
+    log.warn({ err: err.message, org_id: orgId }, 'fallo el POST al callback entrante (ignorado)');
+  }
+}
+
+// Cierra y elimina la Session de un org (logout + borrar auth-state del disco + quitar del Map).
+// Idempotente: si no habia Session en memoria, igual borra el dir del disco si existe.
+async function destroySession(orgId) {
+  const session = sessions.get(orgId);
+  // Quitar del Map ANTES de cerrar el socket, para que el handler de 'close' no reconecte.
+  sessions.delete(orgId);
+
+  if (session?.sock) {
+    try {
+      await session.sock.logout();
+    } catch (err) {
+      log.warn({ err: err.message, org_id: orgId }, 'fallo logout (se continua con el cierre)');
+    }
+    try {
+      session.sock.end?.(undefined);
+    } catch {
+      /* noop */
+    }
+  }
+
+  // Borrar el auth-state del disco (rm -rf del dir del org), si existe.
+  const dir = sessionDir(orgId);
+  try {
+    if (existsSync(dir)) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  } catch (err) {
+    log.warn({ err: err.message, org_id: orgId }, 'fallo borrando el auth-state del disco');
   }
 }
 
@@ -215,77 +305,154 @@ function requireToken(req, res, next) {
   next();
 }
 
-// GET /status -> { connected, number }
-app.get('/status', requireToken, (_req, res) => {
-  res.status(200).json({ connected, number: connected ? selfJid : null });
+// Guard de orgId valido (evita path traversal en el auth-state).
+function requireValidOrg(req, res, next) {
+  const { orgId } = req.params;
+  if (!isValidOrgId(orgId)) {
+    return res.status(200).json({ ok: false, error: 'org_id invalido' });
+  }
+  next();
+}
+
+// GET /sessions/:orgId/status -> { org_id, connected, number }
+app.get('/sessions/:orgId/status', requireToken, requireValidOrg, (req, res) => {
+  const { orgId } = req.params;
+  const session = sessions.get(orgId);
+  const connected = !!session?.connected;
+  res.status(200).json({
+    org_id: orgId,
+    connected,
+    number: connected ? jidToDigits(session.selfJid) : null,
+  });
 });
 
-// GET /qr -> { connected, qr } (data-url png) | { connected:true }
-app.get('/qr', requireToken, async (_req, res) => {
-  if (connected) {
-    return res.status(200).json({ connected: true, number: selfJid });
+// GET /sessions/:orgId/qr (lazy: si no hay Session, la crea y arranca pairing)
+//   -> { org_id, connected:false, qr:<data-url> }
+//   -> { org_id, connected:false, qr:null, error:'aun no hay QR; reintenta' }
+//   -> { org_id, connected:true, number:'<digitos>' }
+app.get('/sessions/:orgId/qr', requireToken, requireValidOrg, async (req, res) => {
+  const { orgId } = req.params;
+  let session = sessions.get(orgId);
+  if (!session) {
+    // Lazy: crear la Session y arrancar el pairing. El QR aparecera en proximos polls.
+    session = getOrCreateSession(orgId);
+    startSession(session).catch((err) =>
+      log.error({ err: err.message, org_id: orgId }, 'fallo arranque lazy de la sesion'));
   }
-  if (!currentQr) {
-    return res.status(200).json({ connected: false, qr: null, error: 'aun no hay QR; reintenta' });
+
+  if (session.connected) {
+    return res.status(200).json({ org_id: orgId, connected: true, number: jidToDigits(session.selfJid) });
+  }
+  if (!session.currentQr) {
+    return res.status(200).json({ org_id: orgId, connected: false, qr: null, error: 'aun no hay QR; reintenta' });
   }
   try {
-    const dataUrl = await qrcode.toDataURL(currentQr);
-    res.status(200).json({ connected: false, qr: dataUrl });
+    const dataUrl = await qrcode.toDataURL(session.currentQr);
+    res.status(200).json({ org_id: orgId, connected: false, qr: dataUrl });
   } catch (err) {
-    res.status(200).json({ connected: false, qr: null, error: err.message });
+    res.status(200).json({ org_id: orgId, connected: false, qr: null, error: err.message });
   }
 });
 
-// POST /send { to, text } -> 200 { ok, message_id } | 200 { ok:false, error }
-// Contrato: errores de negocio (no conectado, numero invalido, no esta en WhatsApp) =>
-// 200 { ok:false, error }. NUNCA 5xx por ellos.
-app.post('/send', requireToken, async (req, res) => {
+// POST /sessions/:orgId/send { to, text } -> 200 { ok, message_id } | 200 { ok:false, error }
+// Contrato: errores de negocio (org sin sesion conectada, numero invalido, no esta en
+// WhatsApp) => 200 { ok:false, error }. NUNCA 5xx por ellos.
+app.post('/sessions/:orgId/send', requireToken, requireValidOrg, async (req, res) => {
+  const { orgId } = req.params;
   const { to, text } = req.body || {};
 
-  if (typeof to !== 'string' || !/^\d{6,15}$/.test(to)) {
+  // Validacion del `to`: E.164 internacional (8-15 digitos, sin +). Relajado desde el BO previo.
+  if (typeof to !== 'string' || !/^\d{8,15}$/.test(to)) {
     return res.status(200).json({ ok: false, error: 'numero invalido (se esperan digitos E.164 sin +)' });
   }
   if (typeof text !== 'string' || text.length === 0) {
     return res.status(200).json({ ok: false, error: 'text vacio o no es string' });
   }
-  if (!connected || !sock) {
-    return res.status(200).json({ ok: false, error: 'gateway no conectado a WhatsApp' });
+
+  const session = sessions.get(orgId);
+  if (!session || !session.connected || !session.sock) {
+    return res.status(200).json({ ok: false, error: 'sesion no conectada para esta organizacion' });
   }
 
   const jid = `${to}@s.whatsapp.net`;
   try {
     // Verifica que el destino existe en WhatsApp (numero invalido -> ok:false, no 5xx).
-    const [exists] = await sock.onWhatsApp(jid).catch(() => [null]);
+    const [exists] = await session.sock.onWhatsApp(jid).catch(() => [null]);
     if (!exists || !exists.exists) {
       return res.status(200).json({ ok: false, error: 'el numero no esta registrado en WhatsApp' });
     }
-    const sent = await sock.sendMessage(exists.jid, { text });
+    const sent = await session.sock.sendMessage(exists.jid, { text });
     return res.status(200).json({ ok: true, message_id: sent?.key?.id || null });
   } catch (err) {
-    log.warn({ err: err.message, to }, 'fallo el envio');
+    log.warn({ err: err.message, to, org_id: orgId }, 'fallo el envio');
     // Tambien error de negocio/transporte: 200 ok:false para que el adaptador lo mapee.
     return res.status(200).json({ ok: false, error: err.message });
   }
 });
 
+// DELETE /sessions/:orgId (desvincular) -> 200 { org_id, ok:true } (idempotente)
+app.delete('/sessions/:orgId', requireToken, requireValidOrg, async (req, res) => {
+  const { orgId } = req.params;
+  try {
+    await destroySession(orgId);
+  } catch (err) {
+    // Idempotente: incluso si algo falla en el cierre, respondemos ok:true (la Session
+    // ya fue quitada del Map). El operador puede reintentar el DELETE sin efectos.
+    log.warn({ err: err.message, org_id: orgId }, 'incidencia al desvincular (se reporta ok:true igualmente)');
+  }
+  res.status(200).json({ org_id: orgId, ok: true });
+});
+
 app.listen(GATEWAY_PORT, '0.0.0.0', () => {
-  log.info({ port: GATEWAY_PORT, sessionDir: SESSION_DIR }, 'HTTP gateway escuchando');
+  log.info({ port: GATEWAY_PORT, sessionsRoot: SESSIONS_ROOT }, 'HTTP gateway multi-sesion escuchando');
 });
 
-// Arranque de la sesion Baileys (no bloquea el HTTP server: el /status responde
-// connected:false hasta que se parea; el /send responde ok:false mientras tanto).
-startSock().catch((err) => {
-  log.error({ err: err.message }, 'fallo el arranque inicial de Baileys; se reintentara al reconectar');
-});
+// --- Reconexion al arranque -------------------------------------------------
+// Lista los subdirectorios de SESSIONS_ROOT (un dir por org ya pareado) y reconecta cada
+// org de forma SECUENCIAL con un pequeno backoff entre ellas (evita un pico de WebSockets).
+async function reconnectExistingSessions() {
+  let orgIds = [];
+  try {
+    orgIds = readdirSync(SESSIONS_ROOT, { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => d.name)
+      .filter(isValidOrgId);
+  } catch (err) {
+    log.error({ err: err.message }, 'no se pudo listar SESSIONS_ROOT; sin reconexion al arranque');
+    return;
+  }
 
-// Apagado limpio (compose stop): cerrar el socket sin marcar logout (mantiene sesion).
+  if (orgIds.length === 0) {
+    log.info('no hay sesiones previas en SESSIONS_ROOT; esperando pairing por GET /sessions/:org/qr');
+    return;
+  }
+
+  log.info({ count: orgIds.length, orgs: orgIds }, 'reconectando sesiones existentes al arranque');
+  for (const orgId of orgIds) {
+    const session = getOrCreateSession(orgId);
+    try {
+      await startSession(session);
+    } catch (err) {
+      log.error({ err: err.message, org_id: orgId }, 'fallo el arranque de la sesion (se reintentara al reconectar)');
+    }
+    // Pequeno backoff entre orgs.
+    await new Promise((r) => setTimeout(r, 750));
+  }
+}
+
+reconnectExistingSessions().catch((err) =>
+  log.error({ err: err.message }, 'fallo la reconexion inicial de sesiones'));
+
+// Apagado limpio (compose stop): cerrar todos los sockets SIN marcar logout (mantiene sesiones).
 for (const sig of ['SIGINT', 'SIGTERM']) {
   process.on(sig, () => {
-    log.info({ sig }, 'apagando gateway');
-    try {
-      sock?.end?.(undefined);
-    } catch {
-      /* noop */
+    log.info({ sig, sessions: sessions.size }, 'apagando gateway multi-sesion');
+    for (const session of sessions.values()) {
+      try {
+        session.sock?.end?.(undefined);
+      } catch {
+        /* noop */
+      }
     }
     process.exit(0);
   });

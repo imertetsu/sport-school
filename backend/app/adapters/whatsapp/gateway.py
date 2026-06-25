@@ -5,9 +5,15 @@ esperar la verificación de negocio + plantillas aprobadas de Meta Cloud API. El
 Node (lo posee infra-dev, vive en `infra/whatsapp-gateway/`) mantiene la sesión del
 número (pairing por QR) y expone `POST /send`. Este adaptador lo consume.
 
+Multi-tenant (epic whatsapp-multitenant): el sidecar es **multi-sesión** (un número por
+escuela). La organización en curso se resuelve por `ContextVar` (`app.core.org_context`,
+fijado en el mismo punto que el GUC `app.current_org`) y se inyecta en la URL por-org,
+**sin** cambiar la firma de `WhatsAppPort`. Sin contexto de org ⇒ `ok=False` **sin** pegar
+al sidecar (fail-closed; invariante anti-fuga del `ContextVar` entre orgs consecutivas).
+
 Contrato del sidecar (sección A de la spec):
-- `POST {gateway_url}/send` con header `X-Gateway-Token: {gateway_token}` y body
-  `{"to": "<dígitos E.164 sin +>", "text": "<string, puede ser multilínea>"}`.
+- `POST {gateway_url}/sessions/{org_id}/send` con header `X-Gateway-Token: {gateway_token}`
+  y body `{"to": "<dígitos E.164 sin +>", "text": "<string, puede ser multilínea>"}`.
 - Respuesta **200** `{"ok": true, "message_id": "<id>"}` o **200**
   `{"ok": false, "error": "<msg legible>"}`. Los errores de negocio (número inválido,
   no conectado) llegan como `ok:false` (nunca 5xx) ⇒ se mapean a
@@ -33,6 +39,7 @@ from typing import Any
 import httpx
 
 from app.core.config import settings
+from app.core.org_context import get_current_org_id
 from app.core.phone import normalize_bo_phone
 from app.domain.ports.whatsapp import (
     WhatsAppPort,
@@ -90,12 +97,26 @@ class GatewayWhatsAppAdapter(WhatsAppPort):
     """Cliente del sidecar no-oficial (Baileys) vía `POST /send`."""
 
     def _send(self, to: str, text: str) -> WhatsAppSendResult:
-        """`POST {gateway_url}/send`. No lanza: mapea respuesta/errores a `ok`/`error`.
+        """`POST {gateway_url}/sessions/{org_id}/send`. No lanza: mapea a `ok`/`error`.
+
+        Resuelve la organización en curso desde el `ContextVar`
+        (`app.core.org_context`): el sidecar es **multi-sesión** (un número por
+        escuela) y la org se inyecta por contexto, **sin** cambiar la firma del puerto.
+        Si no hay contexto de org (p.ej. una task que no fijó `app.current_org`), se
+        reporta `ok=False` **sin** pegar al sidecar (fail-closed, invariante anti-fuga).
 
         Normaliza el destinatario a E.164-sin-`+` (lo que espera el sidecar) en este
         punto único; si el número no es plausible, reporta `ok=False` **sin** llamar al
         sidecar (mismo guard que `meta.py`).
         """
+        org_id = get_current_org_id()
+        if not org_id:
+            return WhatsAppSendResult(
+                ok=False,
+                provider_message_id=None,
+                error="sin contexto de organización",
+            )
+
         normalized_to = normalize_bo_phone(to)
         if normalized_to is None:
             return WhatsAppSendResult(
@@ -104,7 +125,7 @@ class GatewayWhatsAppAdapter(WhatsAppPort):
                 error=f"teléfono inválido: {to}",
             )
 
-        url = f"{(settings.whatsapp_gateway_url or '').rstrip('/')}/send"
+        url = f"{(settings.whatsapp_gateway_url or '').rstrip('/')}/sessions/{org_id}/send"
         headers = {
             "X-Gateway-Token": settings.whatsapp_gateway_token or "",
             "Content-Type": "application/json",

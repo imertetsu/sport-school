@@ -881,6 +881,46 @@ export interface RechazarBody {
 }
 
 // ============================================================
+// Epic whatsapp-multitenant · WhatsApp de la escuela (un número por org,
+// vinculado por QR desde Ajustes). SOLO ADMIN (el backend gatea con
+// require_role("ADMIN") y scopea SIEMPRE a user.org_id: el cliente NUNCA manda
+// org_id). El QR viaja browser<-backend<-sidecar; el browser nunca ve el token
+// ni la URL del sidecar. Espejo EXACTO de los schemas del backend
+// (WhatsAppEstadoOut / WhatsAppQrOut). No inventar campos: si falta algo, es
+// hand-off a backend-dev.
+// ============================================================
+
+// Estado de la sesión de WhatsApp de la escuela.
+//  DESVINCULADA  = sin número vinculado (estado inicial / tras desvincular).
+//  PENDIENTE_QR  = se generó un QR de pairing; esperando que el ADMIN lo escanee.
+//  CONECTADA     = número vinculado y sesión activa.
+export type WhatsAppEstado = 'DESVINCULADA' | 'PENDIENTE_QR' | 'CONECTADA';
+
+// --- GET /mi-escuela/whatsapp/estado -> estado reconciliado ---
+// numero: dígitos E.164 sin "+" (null si no hay sesión conectada).
+// vinculado_en: timestamptz del pareo (null si nunca se vinculó).
+export interface WhatsAppEstadoOut {
+  estado: WhatsAppEstado;
+  numero: string | null;
+  vinculado_en: string | null; // timestamptz
+}
+
+// --- POST /mi-escuela/whatsapp/vincular  y  GET /mi-escuela/whatsapp/qr ---
+// Mismo shape. estado nunca es DESVINCULADA aquí: o sigue pendiente de QR
+// (qr = data-url `data:image/png;base64,...`, o null si el sidecar aún no lo
+// generó -> reintentar) o ya quedó CONECTADA (numero presente).
+export interface WhatsAppQrOut {
+  estado: 'PENDIENTE_QR' | 'CONECTADA';
+  qr: string | null; // data-url PNG mientras PENDIENTE_QR; null si aún no hay
+  numero: string | null; // dígitos E.164 cuando CONECTADA
+}
+
+// --- DELETE /mi-escuela/whatsapp -> desvincular (idempotente) ---
+export interface WhatsAppDesvincularOut {
+  estado: 'DESVINCULADA';
+}
+
+// ============================================================
 // Epic A: Super Admin / consola de plataforma (rol SUPERADMIN, token SIN org_id).
 // App SEPARADA del panel de escuela: su token vive en otra clave de storage y el
 // cliente lo manda solo a /plataforma/*. Espejo EXACTO del contrato de la spec

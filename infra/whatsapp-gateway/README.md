@@ -1,28 +1,36 @@
-# WhatsApp Gateway (sidecar Baileys)
+# WhatsApp Gateway (sidecar Baileys, MULTI-SESION)
 
 Gateway de WhatsApp **NO-OFICIAL** (Baileys, WebSocket multidevice — **NO** Puppeteer/Chrome)
-que mantiene la sesion de **UN numero de prueba** (pairing por QR) y expone una HTTP API
-detras del puerto `WhatsAppPort` del backend. Es **un adaptador mas**: el dia que Meta Cloud
-API este listo, se flipa `WHATSAPP_PROVIDER` de vuelta a `meta` sin tocar este sidecar.
+**multi-tenant**: un solo proceso mantiene un `Map<org_id, Session>`, **un numero por escuela**
+(pairing por QR por org), y expone una HTTP API **por-org** detras del puerto `WhatsAppPort` del
+backend. Cada org tiene su propio auth-state (`${SESSIONS_ROOT}/${org_id}`), socket, QR y flag
+`connected`: el `sock` **jamas** se cruza entre orgs (ahi vive el aislamiento del envio). Es **un
+adaptador mas**: el dia que Meta Cloud API este listo, se flipa `WHATSAPP_PROVIDER` de vuelta a
+`meta` sin tocar este sidecar.
 
 ## HTTP API (contrato congelado — la consume el adaptador Python del backend)
 
 Todas las rutas (salvo `/healthz`) requieren el header `X-Gateway-Token: <token>`
 (== `GATEWAY_TOKEN` == `WHATSAPP_GATEWAY_TOKEN` del backend). Token incorrecto → **401**.
+El `org_id` va SIEMPRE en la ruta (`/sessions/{org_id}/...`); el backend usa el del token,
+nunca lo elige el cliente. La vieja ruta global `/send` (mono-numero) **ya no existe**.
 
-| Metodo | Ruta | Body / Respuesta |
-|--------|------|------------------|
-| `POST` | `/send` | `{ "to": "<digitos E.164 sin +>", "text": "<string, multilinea ok>" }` → **200** `{ "ok": true, "message_id": "<id>" }` o **200** `{ "ok": false, "error": "<msg>" }` |
-| `GET`  | `/status` | `{ "connected": <bool>, "number": "<jid o null>" }` |
-| `GET`  | `/qr` | `{ "connected": <bool>, "qr": "<data-url png o null>" }` (el QR tambien se loguea a stdout) |
-| `GET`  | `/healthz` | **200** `{ "ok": true }` (liveness, sin token) |
+| Metodo   | Ruta | Body / Respuesta |
+|----------|------|------------------|
+| `GET`    | `/healthz` | **200** `{ "ok": true }` (liveness, sin token) |
+| `GET`    | `/sessions/{org_id}/status` | **200** `{ "org_id", "connected": <bool>, "number": "<digitos o null>" }` |
+| `GET`    | `/sessions/{org_id}/qr` | **lazy** (crea la Session y arranca el pairing si no existe). **200** `{ "org_id", "connected": false, "qr": "<data-url png>" }` · o `{ ..., "qr": null, "error": "aun no hay QR; reintenta" }` · o `{ "org_id", "connected": true, "number": "<digitos>" }` |
+| `POST`   | `/sessions/{org_id}/send` | `{ "to": "<digitos E.164 sin +, 8-15>", "text": "<string, multilinea ok>" }` → **200** `{ "ok": true, "message_id": "<id>" }` o **200** `{ "ok": false, "error": "<msg>" }` |
+| `DELETE` | `/sessions/{org_id}` | desvincular (logout + cerrar socket + `rm -rf` del auth-state + quitar del Map). **200** `{ "org_id", "ok": true }` (**idempotente**: sin sesion previa, igual 200) |
 
-> **Nunca 5xx por errores de negocio** (no conectado, numero invalido, numero no esta en
-> WhatsApp): se reportan como **200 `{ ok:false, error }`** para que el adaptador los mapee.
+> **Nunca 5xx por errores de negocio** (sesion no conectada para esa org, numero invalido,
+> numero no esta en WhatsApp): se reportan como **200 `{ ok:false, error }`** para que el
+> adaptador los mapee.
 
-**Entrante:** al recibir un mensaje de texto, hace `POST {INBOUND_CALLBACK_URL}` con header
-`X-Gateway-Token` y body `{ "from", "text", "message_id", "timestamp" }`. Si el callback falla,
-**loguea y sigue** (no crashea).
+**Entrante:** al recibir un mensaje de texto en la Session de un org, hace
+`POST {INBOUND_CALLBACK_URL}` con header `X-Gateway-Token` y body
+`{ "org_id", "from", "text", "message_id", "timestamp" }` (el `org_id` es el de la sesion que
+recibio el mensaje). Si el callback falla, **loguea y sigue** (no crashea).
 
 ## Variables de entorno
 
@@ -30,17 +38,24 @@ Todas las rutas (salvo `/healthz`) requieren el header `X-Gateway-Token: <token>
 |-----|---------|----------|
 | `GATEWAY_TOKEN` | (requerido) | Token compartido en ambas direcciones. Sin el, el proceso aborta. |
 | `GATEWAY_PORT` | `3000` | Puerto HTTP. |
-| `INBOUND_CALLBACK_URL` | (vacio) | URL del webhook del backend (`http://api:8000/api/v1/webhooks/whatsapp-inbound`). |
-| `SESSION_DIR` | `/data/session` | Ruta del auth-state de Baileys (montada en un **volumen** → no re-escanear QR). |
+| `INBOUND_CALLBACK_URL` | (vacio) | URL del webhook del backend (`http://api:8000/api/v1/webhooks/whatsapp-inbound`). El body lleva `org_id`. |
+| `SESSIONS_ROOT` | `/data/sessions` | Raiz del auth-state **multi-sesion**: un subdir por org (`${SESSIONS_ROOT}/${org_id}`), montada en un **volumen** → no re-escanear QR. Al arranque lista estos subdirs y reconecta cada org. (Reemplaza al antiguo `SESSION_DIR`.) |
 
-## Pairing (operador)
+## Pairing (operador, por escuela)
+
+El pairing es **por org**. Normalmente lo dispara el ADMIN desde la UI de Ajustes (el backend
+llama a `GET /sessions/{org}/qr`); a mano, para una org `<org_id>`:
 
 1. `docker compose -f infra/docker-compose.yml up -d whatsapp-gateway`
-2. Mira los logs: `docker compose -f infra/docker-compose.yml logs -f whatsapp-gateway`
-   → aparece el **QR ASCII**. Escanealo desde el WhatsApp del **numero de prueba**
-   (Dispositivos vinculados → Vincular dispositivo). Alternativa: `GET /qr` (data-url png).
-3. Verifica: `GET /status` → `{ "connected": true, "number": "<jid>" }`.
-4. La sesion se persiste en el volumen → **sobrevive a reinicios** del contenedor sin re-parear.
+2. `GET /sessions/<org_id>/qr` (con `X-Gateway-Token`) → arranca el pairing (lazy) y devuelve el
+   data-url del QR; o mira los logs
+   (`docker compose -f infra/docker-compose.yml logs -f whatsapp-gateway`) para el **QR ASCII**.
+   Escanealo desde el WhatsApp **de esa escuela** (Dispositivos vinculados → Vincular dispositivo).
+3. Verifica: `GET /sessions/<org_id>/status` → `{ "org_id": "<org_id>", "connected": true, "number": "<digitos>" }`.
+4. La sesion se persiste en `${SESSIONS_ROOT}/<org_id>` (volumen) → **sobrevive a reinicios** sin
+   re-parear; al arrancar, el sidecar reconecta todas las orgs ya pareadas.
+5. Desvincular: `DELETE /sessions/<org_id>` (o el boton "Desvincular" de la UI) → borra el
+   auth-state de esa org y la quita del proceso.
 
 ## Notas
 

@@ -3,7 +3,9 @@
 Ruta NUEVA y DISTINTA del webhook de estados de Meta (`/webhooks/whatsapp`, no se
 toca). El sidecar Node, al recibir un mensaje de WhatsApp, hace `POST` a esta ruta con
 el header compartido `X-Gateway-Token` y un body
-`{"from": "<dígitos>", "text": "<string>", "message_id": "<id>", "timestamp": <epoch>}`.
+`{"org_id": "<uuid>", "from": "<dígitos>", "text": "<string>", "message_id": "<id>",
+"timestamp": <epoch>}`. El `org_id` lo añade el sidecar **multi-sesión** (epic
+whatsapp-multitenant): identifica la escuela cuya sesión recibió el mensaje.
 
 Alcance MVP (sección "Entrante" de la spec): **validar token → loguear → 200**. Canal
 bidireccional ABIERTO y demostrado, SIN lógica de auto-respuesta/chatbot todavía. Por
@@ -36,9 +38,11 @@ async def whatsapp_inbound(
 ) -> JSONResponse:
     """Recibe un mensaje entrante del sidecar: valida token, loguea y responde 200.
 
-    NO escribe en BD (solo loguea `from`/`message_id`/`text`). Token ausente o
-    incorrecto ⇒ 401 (fail-closed). Body no-JSON ⇒ se loguea y se ACK con 200 (no se
-    rompe el pipe del sidecar).
+    NO escribe en BD (solo loguea `org_id`/`from`/`message_id`/`text`). El `org_id`
+    (escuela cuya sesión multi-tenant recibió el mensaje) se loguea pero NO se usa como
+    contexto de RLS (este webhook no toca BD). Token ausente o incorrecto ⇒ 401
+    (fail-closed). Body no-JSON ⇒ se loguea y se ACK con 200 (no se rompe el pipe del
+    sidecar).
     """
     esperado = settings.whatsapp_gateway_token
     if not esperado or x_gateway_token != esperado:
@@ -58,7 +62,8 @@ async def whatsapp_inbound(
         payload = {}
 
     logger.info(
-        "webhook whatsapp-inbound: from=%s message_id=%s text=%s",
+        "webhook whatsapp-inbound: org_id=%s from=%s message_id=%s text=%s",
+        payload.get("org_id"),
         payload.get("from"),
         payload.get("message_id"),
         payload.get("text"),

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, ApiError } from '@/api/client';
 import { useAuth } from '@/auth/useAuth';
 import { Button, Card, Field, Monogram } from '@/components/ui';
+import { WhatsAppVinculacion } from './WhatsAppVinculacion';
 import './AjustesEscuela.css';
 
 // Paleta acotada de colores del monograma (chips). Hex #RRGGBB (el backend valida
@@ -283,6 +284,12 @@ export function AjustesEscuela() {
           )}
         </Card>
       )}
+
+      {/* WhatsApp de la escuela (epic whatsapp-multitenant): vincular por QR,
+          estado y desvincular. SOLO ADMIN (la ruta /ajustes ya gatea ADMIN y el
+          backend impone require_role("ADMIN")). Carga su propio estado de forma
+          independiente del editor de nombre/color. */}
+      <WhatsAppVinculacion />
     </div>
   );
 }

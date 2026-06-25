@@ -1,12 +1,21 @@
 """Tests del adaptador WhatsApp Gateway no-oficial (`GatewayWhatsAppAdapter`) + fábrica.
 
-Sin BD ni red real: se mockea `httpx.post`. Cubre los criterios de aceptación de la
-Fase 1 del epic whatsapp-gateway:
+Sin BD ni red real: se mockea `httpx.post`. Cubre los criterios de aceptación del epic
+whatsapp-gateway y la multi-tenencia de whatsapp-multitenant:
 - C1: la fábrica `get_whatsapp_port()` con `provider=gateway` + url/token ⇒
   `GatewayWhatsAppAdapter`; sin/incompletas ⇒ degrada a mock.
 - C2: `send_text` con número NO normalizable ⇒ `ok=False` SIN llamar al sidecar.
 - C3: cada una de las 5 plantillas renderiza el texto esperado con sus params en orden.
 - C4: el sidecar reporta `ok:false` (200) ⇒ se mapea a `WhatsAppSendResult(ok=False)`.
+
+Multi-tenant (whatsapp-multitenant):
+- el adaptador lee el `ContextVar` `app.core.org_context` y pega a `/sessions/{org}/send`;
+- sin contexto de org ⇒ `ok=False` SIN pegar al sidecar (fail-closed);
+- **C2 anti-fuga**: dos orgs consecutivas en el mismo proceso ⇒ cada una va a SU
+  `/sessions/{org}` (el `ContextVar` no se "pega" entre orgs).
+
+Un `ContextVar` por test: la fixture autouse fija una org por defecto para los tests de
+envío "feliz" y **resetea** el token al terminar para no fugar contexto entre tests.
 """
 
 from __future__ import annotations
@@ -17,6 +26,7 @@ import pytest
 from app.adapters.whatsapp import gateway as gateway_mod
 from app.adapters.whatsapp.gateway import GatewayWhatsAppAdapter
 from app.adapters.whatsapp.mock import MockWhatsAppAdapter
+from app.core import org_context
 from app.domain.ports.whatsapp import WhatsAppTemplateMessage, WhatsAppTextMessage
 
 
@@ -29,6 +39,21 @@ class _FakeResponse:
 
     def json(self) -> dict[str, Any]:
         return self._payload
+
+
+@pytest.fixture(autouse=True)
+def _org_context() -> Any:
+    """Fija una org por defecto en el `ContextVar` y la resetea al terminar el test.
+
+    Los tests de envío "feliz" necesitan contexto de org (si no, el adaptador es
+    fail-closed). Cada test que quiera otro contexto (None o varias orgs) lo re-setea;
+    el reset evita que el valor fugue al siguiente test (mismo invariante que el cron).
+    """
+    token = org_context._current_org_id.set("org-default-test")
+    try:
+        yield
+    finally:
+        org_context._current_org_id.reset(token)
 
 
 # --------------------------------------------------------------------------- #
@@ -141,7 +166,8 @@ def test_send_text_ok_normaliza_y_envia(monkeypatch: pytest.MonkeyPatch) -> None
 
     assert result.ok is True
     assert result.provider_message_id == "gw.ABC"
-    assert captured["url"] == "http://gw:3000/send"
+    # Multi-tenant: la URL incluye la org del ContextVar (fijada por la fixture autouse).
+    assert captured["url"] == "http://gw:3000/sessions/org-default-test/send"
     assert captured["headers"]["X-Gateway-Token"] == "tok123"
     assert captured["json"] == {"to": "59176123456", "text": "hola\nmundo"}
 
@@ -293,3 +319,68 @@ def test_cada_plantilla_renderiza_texto_esperado(
     assert result.ok is True
     assert captured["json"]["text"] == esperado
     assert captured["json"]["to"] == "59176123456"
+
+
+# --------------------------------------------------------------------------- #
+# Multi-tenant (whatsapp-multitenant): contexto de org en la URL
+# --------------------------------------------------------------------------- #
+def test_sin_contexto_de_org_es_ok_false_sin_pegar(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Sin `org` en el `ContextVar` ⇒ ok=False SIN llamar al sidecar (fail-closed)."""
+    called = {"n": 0}
+
+    def _boom(*args: Any, **kwargs: Any) -> Any:
+        called["n"] += 1
+        raise AssertionError("no debe llamarse al sidecar sin contexto de org")
+
+    monkeypatch.setattr(gateway_mod.httpx, "post", _boom)
+    # Limpia el contexto que fijó la fixture autouse.
+    org_context.set_current_org_id(None)
+
+    adapter = GatewayWhatsAppAdapter()
+    result = adapter.send_text(WhatsAppTextMessage(to="76123456", body="hola"))
+
+    assert result.ok is False
+    assert result.provider_message_id is None
+    assert result.error is not None
+    assert "organización" in result.error
+    assert called["n"] == 0
+
+
+def test_dos_orgs_consecutivas_no_fuga_el_contextvar(monkeypatch: pytest.MonkeyPatch) -> None:
+    """C2 (invariante anti-fuga): A envía a /sessions/A, B a /sessions/B; sin fuga.
+
+    Simula el cron procesando dos escuelas en el MISMO proceso: tras fijar A y enviar,
+    se fija B y se envía; cada request debe ir a SU `/sessions/{org}/send` (el contexto
+    de A no queda "pegado" al procesar B).
+    """
+    urls: list[str] = []
+
+    def _fake_post(
+        url: str,
+        *,
+        headers: dict[str, str],
+        json: dict[str, Any],
+        timeout: float,
+    ) -> Any:
+        urls.append(url)
+        return _FakeResponse({"ok": True, "message_id": "gw.X"})
+
+    monkeypatch.setattr(gateway_mod.httpx, "post", _fake_post)
+    monkeypatch.setattr(
+        gateway_mod.settings, "whatsapp_gateway_url", "http://gw:3000", raising=False
+    )
+
+    adapter = GatewayWhatsAppAdapter()
+
+    org_context.set_current_org_id("org-AAA")
+    res_a = adapter.send_text(WhatsAppTextMessage(to="76123456", body="hola A"))
+
+    org_context.set_current_org_id("org-BBB")
+    res_b = adapter.send_text(WhatsAppTextMessage(to="76123456", body="hola B"))
+
+    assert res_a.ok is True
+    assert res_b.ok is True
+    assert urls == [
+        "http://gw:3000/sessions/org-AAA/send",
+        "http://gw:3000/sessions/org-BBB/send",
+    ]

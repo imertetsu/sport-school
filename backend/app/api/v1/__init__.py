@@ -22,6 +22,7 @@ from app.api.v1 import (
     solicitudes,
     sucursales,
     tutores,
+    whatsapp_sesion,
 )
 from app.api.v1.webhooks import openbcb as openbcb_webhook
 from app.api.v1.webhooks import whatsapp as whatsapp_webhook
@@ -42,6 +43,7 @@ api_router.include_router(avisos.router)
 api_router.include_router(entrenadores.router)
 api_router.include_router(horarios.router)
 api_router.include_router(mi_escuela.router)
+api_router.include_router(whatsapp_sesion.router)
 api_router.include_router(recibos.router)
 api_router.include_router(solicitudes.router)
 api_router.include_router(plataforma.router)

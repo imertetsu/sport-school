@@ -27,6 +27,7 @@ from sqlalchemy import select, text, update
 
 from app.core.config import settings
 from app.core.db import SessionLocal
+from app.core.org_context import set_current_org_id
 from app.models.aviso import Aviso
 from app.models.cuota import Cuota
 from app.models.organizacion import Organizacion
@@ -43,6 +44,7 @@ logger = logging.getLogger(__name__)
 
 def _set_org(db, org_id: uuid.UUID) -> None:
     db.execute(text("SELECT set_config('app.current_org', :org, true)"), {"org": str(org_id)})
+    set_current_org_id(str(org_id))
 
 
 def _procesar_org(db, *, org_id: uuid.UUID, hoy: date) -> int:

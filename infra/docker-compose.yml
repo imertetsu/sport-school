@@ -117,9 +117,13 @@ services:
 
   whatsapp-gateway:
     # Sidecar Baileys (WhatsApp NO-OFICIAL, WebSocket multidevice — NO Puppeteer).
-    # Expone la HTTP API del contrato (/send, /status, /qr) que consume el adaptador
-    # Python `GatewayWhatsAppAdapter`. NO es lógica de negocio: solo orquesta la sesión
-    # de UN número de prueba y reenvía el entrante al webhook del backend.
+    # MULTI-SESION: un solo proceso mantiene Map<org_id, Session>, un número por escuela.
+    # Expone la HTTP API POR-ORG del contrato que consume el adaptador Python
+    # `GatewayWhatsAppAdapter`:
+    #   /sessions/{org_id}/status · /sessions/{org_id}/qr · /sessions/{org_id}/send ·
+    #   DELETE /sessions/{org_id}  (más /healthz sin token). La vieja ruta global /send YA NO
+    #   existe. NO es lógica de negocio: orquesta la sesión de cada org y reenvía el entrante
+    #   (con su org_id) al webhook del backend.
     build:
       context: whatsapp-gateway
       dockerfile: Dockerfile
@@ -140,8 +144,10 @@ services:
       # opcional (solo para ver /qr o /status desde la máquina del operador).
       - "${GATEWAY_PORT:-3000}:${GATEWAY_PORT:-3000}"
     volumes:
-      # Persiste el auth-state de Baileys → sobrevive a reinicios sin re-escanear QR.
-      - whatsapp_session:/data/session
+      # Persiste el auth-state multi-sesion de Baileys (un subdir por org bajo SESSIONS_ROOT
+      # = /data/sessions) → sobrevive a reinicios sin re-escanear QR. El sidecar lista estos
+      # subdirectorios al arranque y reconecta cada org.
+      - whatsapp_sessions:/data/sessions
     # NO `depends_on: api`: el saliente tolera el gateway caído (ok:false) y el gateway
     # tolera que el callback entrante falle. Alcanza a `api` por la red interna cuando
     # ambos están arriba. Sin acoplamiento de arranque en ninguna dirección.
@@ -165,6 +171,8 @@ services:
 
 volumes:
   db_data:
-  # Auth-state de Baileys del sidecar whatsapp-gateway (sesión del número de prueba).
-  # OJO: contiene credenciales de la sesión de WhatsApp → acceso restringido a nivel infra.
-  whatsapp_session:
+  # Auth-state multi-sesion de Baileys del sidecar whatsapp-gateway: un subdirectorio por
+  # org (${SESSIONS_ROOT}/${org_id}) bajo /data/sessions. OJO: contiene credenciales de las
+  # sesiones de WhatsApp de CADA escuela → cifrado en reposo + acceso restringido a nivel
+  # infra (RNF-02).
+  whatsapp_sessions:

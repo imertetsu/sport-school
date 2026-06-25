@@ -63,6 +63,9 @@ import type {
   TokenOut,
   TutorByCi,
   UserOut,
+  WhatsAppDesvincularOut,
+  WhatsAppEstadoOut,
+  WhatsAppQrOut,
 } from './types';
 
 // ---- Token storage ----
@@ -678,6 +681,36 @@ export const api = {
   // PUT /mi-escuela -> actualiza nombre + color del monograma y devuelve el recurso.
   actualizarMiEscuela(body: MiEscuela, signal?: AbortSignal): Promise<MiEscuela> {
     return request<MiEscuela>('/mi-escuela', { method: 'PUT', body, signal });
+  },
+
+  // ---- WhatsApp de la escuela (epic whatsapp-multitenant) — SOLO ADMIN ----
+  // Un número por org, vinculado por QR. El backend scopea SIEMPRE a user.org_id
+  // (el cliente NUNCA manda org_id) y es el ÚNICO que habla con el sidecar: el
+  // browser nunca ve el X-Gateway-Token ni la URL del sidecar; el QR (data-url)
+  // viaja browser<-backend<-sidecar.
+  // GET /mi-escuela/whatsapp/estado -> estado reconciliado de la sesión.
+  whatsappEstado(signal?: AbortSignal): Promise<WhatsAppEstadoOut> {
+    return request<WhatsAppEstadoOut>('/mi-escuela/whatsapp/estado', { signal });
+  },
+  // POST /mi-escuela/whatsapp/vincular -> arranca el pairing (lazy en el sidecar)
+  // y devuelve el QR (data-url) o, si ya estaba conectada, el número.
+  whatsappVincular(signal?: AbortSignal): Promise<WhatsAppQrOut> {
+    return request<WhatsAppQrOut>('/mi-escuela/whatsapp/vincular', {
+      method: 'POST',
+      signal,
+    });
+  },
+  // GET /mi-escuela/whatsapp/qr -> polling del QR mientras PENDIENTE_QR (mismo
+  // shape que vincular). qr:null => el sidecar aún no lo generó; reintentar.
+  whatsappQr(signal?: AbortSignal): Promise<WhatsAppQrOut> {
+    return request<WhatsAppQrOut>('/mi-escuela/whatsapp/qr', { signal });
+  },
+  // DELETE /mi-escuela/whatsapp -> desvincula (idempotente); estado DESVINCULADA.
+  whatsappDesvincular(signal?: AbortSignal): Promise<WhatsAppDesvincularOut> {
+    return request<WhatsAppDesvincularOut>('/mi-escuela/whatsapp', {
+      method: 'DELETE',
+      signal,
+    });
   },
 
   // GET /reportes/asistencia?desde=&hasta=&sucursal_id=&categoria_id=

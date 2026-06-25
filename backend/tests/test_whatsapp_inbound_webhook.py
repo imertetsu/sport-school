@@ -16,7 +16,10 @@ from fastapi.testclient import TestClient
 
 _TOKEN = "gateway-secreto-de-test"
 
+# whatsapp-multitenant: el sidecar multi-sesión ahora incluye `org_id` en el body.
+_ORG_ID = "11111111-1111-1111-1111-111111111111"
 _PAYLOAD = {
+    "org_id": _ORG_ID,
     "from": "59176123456",
     "text": "hola escuela",
     "message_id": "wamid.IN123",
@@ -38,6 +41,21 @@ def test_token_valido_responde_200(client: TestClient) -> None:
     )
     assert resp.status_code == 200
     assert resp.json() == {"status": "ok"}
+
+
+def test_token_valido_con_org_id_loguea_org(
+    client: TestClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    """whatsapp-multitenant: el body trae `org_id` y el webhook lo incluye en el log."""
+    with caplog.at_level("INFO", logger="app.api.v1.webhooks.whatsapp_inbound"):
+        resp = client.post(
+            "/api/v1/webhooks/whatsapp-inbound",
+            json=_PAYLOAD,
+            headers={"X-Gateway-Token": _TOKEN},
+        )
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "ok"}
+    assert _ORG_ID in caplog.text
 
 
 def test_token_ausente_responde_401(client: TestClient) -> None:
