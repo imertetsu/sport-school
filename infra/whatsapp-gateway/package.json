@@ -1,0 +1,20 @@
+{
+  "name": "latinosport-whatsapp-gateway",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Sidecar Node (Baileys, WebSocket multidevice) que expone una HTTP API para enviar/recibir WhatsApp a traves de UN numero de prueba. Adaptador no-oficial detras de WhatsAppPort. NO usa Puppeteer/Chrome.",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "^6.7.9",
+    "express": "^4.21.2",
+    "pino": "^9.5.0",
+    "qrcode": "^1.5.4"
+  }
+}

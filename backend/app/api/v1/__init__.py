@@ -25,6 +25,7 @@ from app.api.v1 import (
 )
 from app.api.v1.webhooks import openbcb as openbcb_webhook
 from app.api.v1.webhooks import whatsapp as whatsapp_webhook
+from app.api.v1.webhooks import whatsapp_inbound as whatsapp_inbound_webhook
 
 api_router = APIRouter()
 api_router.include_router(auth.router)
@@ -46,3 +47,4 @@ api_router.include_router(solicitudes.router)
 api_router.include_router(plataforma.router)
 api_router.include_router(openbcb_webhook.router)
 api_router.include_router(whatsapp_webhook.router)
+api_router.include_router(whatsapp_inbound_webhook.router)
