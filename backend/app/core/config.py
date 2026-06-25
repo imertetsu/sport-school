@@ -67,6 +67,10 @@ class Settings(BaseSettings):
     openbcb_sandbox: bool = True
     openbcb_base_url: str | None = None
     openbcb_api_key: str | None = None
+    # Proveedor de WhatsApp seleccionado por la fábrica (`get_whatsapp_port`).
+    # Valores permitidos: `noop` | `mock` | `meta` | `gateway`. `meta` usa la Cloud
+    # API de Meta (plantillas aprobadas); `gateway` usa el sidecar no-oficial Baileys
+    # (epic whatsapp-gateway). Cualquier otro / sin credenciales ⇒ degrada a mock.
     whatsapp_provider: str = "noop"
 
     # WhatsApp Cloud API (Meta) — epic WhatsApp Cobro. Credenciales y verificación
@@ -80,6 +84,15 @@ class Settings(BaseSettings):
     whatsapp_graph_version: str = "v21.0"
     # Días antes del vencimiento en que el recordatorio adjunta el QR de cobro.
     recordatorio_qr_dias_antes: int = 3
+
+    # WhatsApp Gateway no-oficial (Baileys sidecar) — epic whatsapp-gateway. El
+    # adaptador `GatewayWhatsAppAdapter` hace `POST {url}/send` con el header
+    # `X-Gateway-Token: {token}`; el mismo token autentica el webhook entrante
+    # (`/webhooks/whatsapp-inbound`). En dev/CI quedan en None ⇒ la fábrica degrada
+    # al mock aunque `whatsapp_provider=gateway`. infra-dev define `WHATSAPP_GATEWAY_URL`
+    # y `WHATSAPP_GATEWAY_TOKEN` (== `GATEWAY_TOKEN` del sidecar) en `.env.example`.
+    whatsapp_gateway_url: str | None = None
+    whatsapp_gateway_token: str | None = None
 
     # Bootstrap del primer super admin de plataforma (Epic Super Admin). Las consume
     # `python -m app.seed_plataforma` (idempotente por email). En prod se inyectan vía

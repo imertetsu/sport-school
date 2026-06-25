@@ -1,0 +1,7 @@
+# Mantener el contexto del build liviano: nada de deps locales ni auth-state.
+node_modules
+npm-debug.log
+# El auth-state de Baileys NUNCA va a la imagen (vive en el volumen del compose).
+data
+session
+.env

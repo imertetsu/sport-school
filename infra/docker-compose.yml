@@ -115,6 +115,37 @@ services:
     # Un único beat (no replicar) para no programar cron doble.
     command: ["celery", "-A", "app.workers.celery_app", "beat", "--loglevel=info"]
 
+  whatsapp-gateway:
+    # Sidecar Baileys (WhatsApp NO-OFICIAL, WebSocket multidevice — NO Puppeteer).
+    # Expone la HTTP API del contrato (/send, /status, /qr) que consume el adaptador
+    # Python `GatewayWhatsAppAdapter`. NO es lógica de negocio: solo orquesta la sesión
+    # de UN número de prueba y reenvía el entrante al webhook del backend.
+    build:
+      context: whatsapp-gateway
+      dockerfile: Dockerfile
+      args:
+        # Solo para BUILD detrás del proxy TLS del equipo (gotcha del HANDOFF): pon
+        # GATEWAY_BUILD_INSECURE_TLS=true en el .env para que npm/apt no fallen con
+        # UNABLE_TO_VERIFY_LEAF_SIGNATURE. Default false (CI/prod usan CA confiable).
+        INSECURE_TLS: ${GATEWAY_BUILD_INSECURE_TLS:-false}
+    image: latinosport-whatsapp-gateway
+    restart: unless-stopped
+    # Lee GATEWAY_TOKEN / GATEWAY_PORT / INBOUND_CALLBACK_URL del .env (ver ../.env.example).
+    # GATEWAY_TOKEN debe ser el MISMO valor que WHATSAPP_GATEWAY_TOKEN del backend.
+    env_file:
+      - ../.env
+    ports:
+      # Puerto host parametrizable; dentro de la red docker el backend lo alcanza por
+      # http://whatsapp-gateway:3000 (== WHATSAPP_GATEWAY_URL). Exponerlo al host es
+      # opcional (solo para ver /qr o /status desde la máquina del operador).
+      - "${GATEWAY_PORT:-3000}:${GATEWAY_PORT:-3000}"
+    volumes:
+      # Persiste el auth-state de Baileys → sobrevive a reinicios sin re-escanear QR.
+      - whatsapp_session:/data/session
+    # NO `depends_on: api`: el saliente tolera el gateway caído (ok:false) y el gateway
+    # tolera que el callback entrante falle. Alcanza a `api` por la red interna cuando
+    # ambos están arriba. Sin acoplamiento de arranque en ninguna dirección.
+
   web:
     restart: unless-stopped
     build:
@@ -134,3 +165,6 @@ services:
 
 volumes:
   db_data:
+  # Auth-state de Baileys del sidecar whatsapp-gateway (sesión del número de prueba).
+  # OJO: contiene credenciales de la sesión de WhatsApp → acceso restringido a nivel infra.
+  whatsapp_session:

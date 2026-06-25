@@ -15,6 +15,7 @@ from typing import Any
 import httpx
 
 from app.core.config import settings
+from app.core.phone import normalize_bo_phone
 from app.domain.ports.whatsapp import (
     WhatsAppPort,
     WhatsAppSendResult,
@@ -29,7 +30,23 @@ class MetaCloudWhatsAppAdapter(WhatsAppPort):
     """Cliente de la Cloud API de WhatsApp (Meta Graph)."""
 
     def _post(self, body: dict[str, Any]) -> WhatsAppSendResult:
-        """POST `/messages` con `body` ya armado. No lanza: reporta vía `ok`/`error`."""
+        """POST `/messages` con `body` ya armado. No lanza: reporta vía `ok`/`error`.
+
+        Normaliza el destinatario a E.164-sin-`+` (lo que exige Meta) en este punto
+        único: los servicios guardan el teléfono "humano" (`+591 76123456`, etc.) en
+        sus registros y solo aquí se formatea para la red. Si el número no es
+        plausible, se reporta `ok=False` **sin** llamar a la Graph API.
+        """
+        raw_to = body.get("to")
+        normalized_to = normalize_bo_phone(raw_to if isinstance(raw_to, str) else None)
+        if normalized_to is None:
+            return WhatsAppSendResult(
+                ok=False,
+                provider_message_id=None,
+                error=f"teléfono inválido: {raw_to}",
+            )
+        body = {**body, "to": normalized_to}
+
         url = (
             f"https://graph.facebook.com/{settings.whatsapp_graph_version}"
             f"/{settings.whatsapp_phone_number_id}/messages"
