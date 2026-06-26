@@ -44,8 +44,9 @@ WORKDIR /app
 # cambiar a `npm ci` para builds reproducibles.
 COPY package.json package-lock.json* ./
 RUN if [ "$INSECURE_TLS" = "true" ]; then npm config set strict-ssl false; git config --global http.sslVerify false; fi \
+    && git config --global url."https://github.com/".insteadOf "ssh://git@github.com/" \
     && npm install --omit=dev \
-    && npm config delete strict-ssl 2>/dev/null || true
+    && (npm config delete strict-ssl 2>/dev/null || true)
 
 # Codigo del sidecar.
 COPY src ./src
