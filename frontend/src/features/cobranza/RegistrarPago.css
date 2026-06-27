@@ -330,3 +330,27 @@
   font-weight: 600;
   color: var(--color-text);
 }
+
+/* Aviso de sobrepago (paga de más → saldo a favor): tono ámbar del sistema. */
+.rp-sobrepago {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md, 8px);
+  background: var(--state-pending-bg);
+  border: 1px solid var(--state-pending-border);
+  color: var(--state-pending-text);
+}
+
+.rp-sobrepago__msg {
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: 1.4;
+}
+
+.rp-sobrepago__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}

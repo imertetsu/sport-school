@@ -292,6 +292,9 @@ function PagoEfectivo({
   // "Monto recibido" en caja. Vacío => paga el total (Σ saldo). El backend
   // distribuye FIFO y guarda el sobrepago como crédito de la inscripción.
   const [montoRecibido, setMontoRecibido] = useState('');
+  // Confirmación explícita del sobrepago: al pagar de más, pedir un OK antes de
+  // generar saldo a favor (evita el error de tipear de más sin querer).
+  const [confirmarSobrepago, setConfirmarSobrepago] = useState(false);
 
   const recibidoNum = montoRecibido.trim() === '' ? null : Number(montoRecibido);
   const recibidoInvalido =
@@ -306,6 +309,11 @@ function PagoEfectivo({
 
   async function confirmar() {
     if (cuotaIds.length === 0 || recibidoInvalido) return;
+    // Sobrepago: exigir confirmación explícita antes de generar saldo a favor.
+    if (excedente > 0 && !confirmarSobrepago) {
+      setConfirmarSobrepago(true);
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
@@ -344,7 +352,10 @@ function PagoEfectivo({
         step="0.01"
         label="Monto recibido"
         value={montoRecibido}
-        onChange={(e) => setMontoRecibido(e.target.value)}
+        onChange={(e) => {
+          setMontoRecibido(e.target.value);
+          setConfirmarSobrepago(false);
+        }}
         placeholder={saldoTotal > 0 ? String(saldoTotal) : '0'}
         error={recibidoInvalido ? 'Ingresa un monto mayor a 0.' : undefined}
         hint={
@@ -362,13 +373,35 @@ function PagoEfectivo({
           {error}
         </div>
       )}
-      <Button
-        variant="primary"
-        onClick={confirmar}
-        disabled={submitting || cuotaIds.length === 0 || recibidoInvalido}
-      >
-        {submitting ? 'Registrando…' : 'Confirmar pago en efectivo'}
-      </Button>
+      {confirmarSobrepago ? (
+        <div className="rp-sobrepago" role="alert">
+          <p className="rp-sobrepago__msg">
+            ⚠️ Estás registrando <strong>{formatMoney(excedente)} de más</strong> sobre el
+            total a cobrar. Ese excedente quedará como <strong>saldo a favor</strong> del
+            deportista. Si fue un error, revisá el monto.
+          </p>
+          <div className="rp-sobrepago__actions">
+            <Button
+              variant="secondary"
+              onClick={() => setConfirmarSobrepago(false)}
+              disabled={submitting}
+            >
+              Revisar monto
+            </Button>
+            <Button variant="primary" onClick={confirmar} disabled={submitting}>
+              {submitting ? 'Registrando…' : 'Registrar de todas formas'}
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <Button
+          variant="primary"
+          onClick={confirmar}
+          disabled={submitting || cuotaIds.length === 0 || recibidoInvalido}
+        >
+          {submitting ? 'Registrando…' : 'Confirmar pago en efectivo'}
+        </Button>
+      )}
     </div>
   );
 }
