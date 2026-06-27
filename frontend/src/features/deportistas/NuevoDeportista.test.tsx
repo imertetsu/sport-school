@@ -273,6 +273,10 @@ describe('NuevoDeportista — OCR + recuperar-por-CI + disciplina (S3)', () => {
     await user.type(tutorNombres, 'Rosa');
     await user.click(screen.getByRole('checkbox', { name: /consentimiento/i }));
 
+    // Inscripción (cobro): obligatoria desde el formulario.
+    await user.type(screen.getByLabelText(/Cuota mensual/), '150');
+    await user.type(screen.getByLabelText(/Fecha de inscripción/), '2024-01-15');
+
     await user.click(screen.getByRole('button', { name: 'Crear deportista' }));
 
     await waitFor(() => expect(crearDeportistaMock).toHaveBeenCalledTimes(1));
@@ -300,6 +304,8 @@ describe('NuevoDeportista — OCR + recuperar-por-CI + disciplina (S3)', () => {
     await user.selectOptions(screen.getByLabelText(/Sucursal/), 's1');
     await user.type(screen.getAllByLabelText(/^Nombres/)[1], 'Rosa');
     await user.click(screen.getByRole('checkbox', { name: /consentimiento/i }));
+    await user.type(screen.getByLabelText(/Cuota mensual/), '150');
+    await user.type(screen.getByLabelText(/Fecha de inscripción/), '2024-01-15');
 
     await user.click(screen.getByRole('button', { name: 'Crear deportista' }));
 
@@ -346,6 +352,8 @@ describe('NuevoDeportista — OCR + recuperar-por-CI + disciplina (S3)', () => {
     // Tutor con nombre pero SIN CI (opcional): no debe bloquear el envío.
     await user.type(screen.getAllByLabelText(/^Nombres/)[1], 'Rosa');
     await user.click(screen.getByRole('checkbox', { name: /consentimiento/i }));
+    await user.type(screen.getByLabelText(/Cuota mensual/), '150');
+    await user.type(screen.getByLabelText(/Fecha de inscripción/), '2024-01-15');
 
     await user.click(screen.getByRole('button', { name: 'Crear deportista' }));
 
@@ -396,7 +404,14 @@ const DEPORTISTA_EDIT: DeportistaDetail = {
   lugar_nacimiento: 'La Paz',
   sucursal: { id: 's1', nombre: 'Centro' },
   categoria: null,
-  inscripcion: null,
+  // Con inscripción: el form de edición precarga cuota mensual + fecha (ahora
+  // obligatorias), de modo que "Guardar cambios" pase la validación.
+  inscripcion: {
+    fecha_inscripcion: '2024-01-15',
+    monto_mensual: '150.00',
+    disciplina: '',
+    estado: 'ACTIVA',
+  },
   tutores: [
     {
       id: 't1',
