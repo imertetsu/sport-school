@@ -44,10 +44,14 @@ def _saldo(cuota: Cuota) -> Decimal:
 
 
 def _estado_destino(cuota: Cuota, hoy: date) -> str:
-    """Estado destino tras aplicar un abono (RF-ABO-05).
+    """Estado destino de una cuota según sus datos (RF-ABO-05). **Simétrico**: vale
+    para aplicar un abono Y para revertirlo (anular pago).
 
     `saldo == 0` → PAGADO; elif `vence_el < hoy` → VENCIDO (precedencia sobre
-    parcial); elif `monto_pagado > 0` → PARCIAL; else sin cambio (estado actual).
+    parcial); elif `monto_pagado > 0` → PARCIAL; else **PENDIENTE** (sin pagos y no
+    vencida). Se computa desde los datos (no eco del estado actual): al revertir un
+    pago, una cuota que vuelve a `monto_pagado == 0` debe quedar PENDIENTE, no
+    conservar el PAGADO viejo.
     """
     if _saldo(cuota) <= Decimal("0"):
         return "PAGADO"
@@ -55,11 +59,20 @@ def _estado_destino(cuota: Cuota, hoy: date) -> str:
         return "VENCIDO"
     if cuota.monto_pagado > Decimal("0"):
         return "PARCIAL"
-    return cuota.estado
+    return "PENDIENTE"
 
 
 class PagoError(Exception):
-    """Error de negocio en el flujo de pagos (lo traduce el router a HTTP)."""
+    """Error de negocio en el flujo de pagos (lo traduce el router a HTTP).
+
+    `code` es un identificador estable y discriminable que el router mapea a un
+    status HTTP (p. ej. ``no_encontrado`` → 404). Para errores históricos sin código
+    explícito (mensaje libre, p. ej. cuotas no encontradas) queda en ``"error"``.
+    """
+
+    def __init__(self, message: str, *, code: str | None = None) -> None:
+        super().__init__(message)
+        self.code = code or message
 
 
 # --------------------------------------------------------------------------- #
@@ -431,7 +444,10 @@ def registrar_pago_efectivo(
         hoy=hoy,
     )
 
-    # Remanente (sobrepago) → crédito de la inscripción (RF-ABO-06).
+    # Remanente (sobrepago) → crédito de la inscripción (RF-ABO-06). Persistimos el
+    # remanente generado por ESTE pago para poder revertir el crédito con exactitud al
+    # anular (epic anular-pago); no cambia el flujo de cobro.
+    pago.credito_generado = resultado.remanente
     _upsert_credito(db, org_id=org_id, inscripcion_id=inscripcion_id, saldo=resultado.remanente)
 
     pago.comprobante_url = f"/api/v1/cobranza/comprobantes/{pago.id}.pdf"
@@ -447,6 +463,92 @@ def registrar_pago_efectivo(
     # Recibo PDF al tutor por WhatsApp (epic Sucursales/Recibo). Aditivo: el efectivo
     # se confirma una sola vez en este flujo, así que el recibo se envía una vez.
     _enviar_recibo_por_whatsapp(db, pago=pago)
+    return pago
+
+
+# --------------------------------------------------------------------------- #
+# Anulación de pago efectivo (epic anular-pago) — INVERSO de _aplicar_pago_a_cuotas
+# --------------------------------------------------------------------------- #
+def anular_pago(
+    db: Session,
+    *,
+    org_id: uuid.UUID,
+    pago_id: uuid.UUID,
+    anulado_por: uuid.UUID,
+    motivo: str,
+    hoy: date | None = None,
+) -> Pago:
+    """Anula un pago EFECTIVO CONFIRMADO: reversa atómica CON rastro (RNF-02/03).
+
+    Es el **inverso** de la aplicación FIFO (`_aplicar_pago_a_cuotas`): por cada fila
+    puente `pago_cuota` resta lo aplicado a `cuota.monto_pagado`, recomputa el estado
+    de la cuota (→ cobrable de nuevo) y borra la fila puente; revierte con exactitud el
+    crédito que ESTE pago generó/consumió (`credito_generado`/`credito_aplicado`
+    persistidos por pago). Reusa los helpers existentes (`_cuotas_de_pago`,
+    `_estado_destino`, `saldo_credito_inscripcion`, `_upsert_credito`); NO duplica
+    FIFO/estado/crédito. Toda la reversa ocurre en la transacción del request.
+
+    Idempotente: anular un pago **ya ANULADO** es no-op (devuelve el pago tal cual, sin
+    doble reversa). Solo `metodo == 'EFECTIVO'` es anulable; el QR/conciliado rechaza
+    (no se toca la conciliación OpenBCB). Si el crédito generado ya fue consumido por un
+    pago posterior, BLOQUEA (no cascada). NO toca `numero_recibo`, NO envía WhatsApp ni
+    genera PDF.
+    """
+    hoy = hoy or datetime.now(UTC).date()
+
+    # Cargar el pago bajo RLS con FOR UPDATE (anti-carrera: dos anulaciones concurrentes
+    # del mismo pago se serializan; la segunda relee ANULADO y es no-op).
+    pago = db.execute(select(Pago).where(Pago.id == pago_id).with_for_update()).scalar_one_or_none()
+    if pago is None:
+        raise PagoError("Pago no encontrado", code="no_encontrado")
+    if pago.metodo != "EFECTIVO":
+        raise PagoError("Solo se anulan pagos en efectivo", code="no_anulable_qr")
+    if pago.estado == "ANULADO":
+        # No-op idempotente: ya revertido, devolver tal cual (sin doble reversa).
+        return pago
+    if pago.estado != "CONFIRMADO":
+        raise PagoError("El pago no está en un estado anulable", code="estado_no_anulable")
+
+    # Resolver la inscripción vía las cuotas del pago (cuotas homogéneas en inscripción).
+    cuotas = _cuotas_de_pago(db, pago.id)
+    inscripcion_id = cuotas[0].inscripcion_id if cuotas else None
+
+    # Guard de crédito consumido: si el crédito que este pago generó ya fue consumido por
+    # un pago posterior, no se puede revertir sin dejar el saldo negativo → BLOQUEA (409,
+    # "anulá primero el posterior"). NO cascada.
+    if inscripcion_id is not None and pago.credito_generado > Decimal("0"):
+        saldo_actual = saldo_credito_inscripcion(db, inscripcion_id)
+        if saldo_actual < pago.credito_generado:
+            raise PagoError("El crédito generado ya fue consumido", code="credito_consumido")
+
+    # Revertir cuotas: por cada fila puente, restar lo aplicado y recomputar el estado;
+    # borrar la fila puente (inverso de _aplicar_pago_a_cuotas). Σ aplicado de pagos VIVOS
+    # vuelve a cuadrar con monto_pagado de cada cuota.
+    puentes = db.execute(select(PagoCuota).where(PagoCuota.pago_id == pago.id)).scalars().all()
+    cuota_por_id = {c.id: c for c in cuotas}
+    for pc in puentes:
+        cuota = cuota_por_id.get(pc.cuota_id)
+        if cuota is not None:
+            cuota.monto_pagado = cuota.monto_pagado - pc.monto_aplicado
+            cuota.estado = _estado_destino(cuota, hoy)
+        db.delete(pc)
+
+    # Revertir crédito: deshacer lo que ESTE pago generó y reponer lo que consumió.
+    if inscripcion_id is not None:
+        nuevo_saldo = (
+            saldo_credito_inscripcion(db, inscripcion_id)
+            - pago.credito_generado
+            + pago.credito_aplicado
+        )
+        _upsert_credito(db, org_id=org_id, inscripcion_id=inscripcion_id, saldo=nuevo_saldo)
+
+    # Marcar el pago ANULADO con rastro (motivo + quién + cuándo). NO tocar numero_recibo
+    # (el PDF ya gatea estado != 'CONFIRMADO' → 404). NO notificar.
+    pago.estado = "ANULADO"
+    pago.motivo_anulacion = motivo
+    pago.anulado_por = anulado_por
+    pago.anulado_en = datetime.now(UTC)
+    db.flush()
     return pago
 
 

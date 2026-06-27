@@ -42,7 +42,10 @@ import type {
   HorarioOut,
   IngresosReporte,
   LoginRequest,
+  AnularPagoBody,
+  PagoAnuladoOut,
   PagoOut,
+  PagosListResponse,
   PanelCobranza,
   PreviewNotificacionIn,
   PreviewNotificacionOut,
@@ -467,6 +470,28 @@ export const api = {
     return request<RecordatorioOut>(`/cobranza/cuotas/${cuotaId}/recordatorio`, {
       method: 'POST',
       body: { forzar },
+      signal,
+    });
+  },
+  // ---- Pagos (epic anular-pago, C4) — SOLO ADMIN (el backend impone require_role) ----
+  // GET /cobranza/pagos?page=&page_size= -> lista paginada scoped por RLS, orden
+  // created_at DESC. Punto de acceso a "Anular": cada item trae `anulable`
+  // (efectivo+CONFIRMADO) y, si ya anulado, motivo_anulacion/anulado_en.
+  listarPagos(page = 1, pageSize = 20, signal?: AbortSignal): Promise<PagosListResponse> {
+    return request<PagosListResponse>('/cobranza/pagos', {
+      query: { page, page_size: pageSize },
+      signal,
+    });
+  },
+  // POST /cobranza/pagos/{id}/anular {motivo} -> reversa CON rastro (estado ANULADO
+  // + motivo/quién/cuándo). Solo efectivo CONFIRMADO. Mapeo de errores del backend:
+  // 404 inexistente/otra org, 422 no anulable (QR/estado), 409 crédito ya consumido,
+  // 422 motivo vacío. Anular un pago ya ANULADO es idempotente (200).
+  anularPago(pagoId: string, motivo: string, signal?: AbortSignal): Promise<PagoAnuladoOut> {
+    const body: AnularPagoBody = { motivo };
+    return request<PagoAnuladoOut>(`/cobranza/pagos/${pagoId}/anular`, {
+      method: 'POST',
+      body,
       signal,
     });
   },

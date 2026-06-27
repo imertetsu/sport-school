@@ -29,6 +29,16 @@ export const NAV_GROUPS: NavGroup[] = [
       // (sin `roles`). El backend filtra la cola por rol; aprobar/rechazar es solo ADMIN.
       { id: 'solicitudes', label: 'Solicitudes', icon: '✎', to: '/solicitudes', enabled: true },
       { id: 'pagos', label: 'Pagos', icon: '＄', to: '/pagos', enabled: true },
+      // Lista de pagos + anular pago efectivo (epic anular-pago): punto de acceso
+      // al botón "Anular". SOLO ADMIN (el item no aparece para ENTRENADOR).
+      {
+        id: 'pagos-lista',
+        label: 'Anular pagos',
+        icon: '↺',
+        to: '/pagos-lista',
+        enabled: true,
+        roles: ['ADMIN'],
+      },
       // Pagos por verificar (epic pagos-qr-comprobante): cola de comprobantes
       // entrantes por WhatsApp. SOLO ADMIN (el item no aparece para ENTRENADOR).
       {

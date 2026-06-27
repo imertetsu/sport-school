@@ -35,9 +35,11 @@ from app.models.pago import Pago
 from app.models.pago_cuota import PagoCuota
 from app.models.sucursal import Sucursal
 from app.schemas.cobranza import (
+    AnularPagoIn,
     CategoriaNombre,
     CuotaAplicada,
     CuotaItem,
+    CuotaRevertida,
     CuotasAgg,
     CuotasPage,
     DeportistaRef,
@@ -45,9 +47,12 @@ from app.schemas.cobranza import (
     GenerarOut,
     IngresosMes,
     MorosidadItem,
+    PagoAnuladoOut,
     PagoEfectivoIn,
+    PagoListItem,
     PagoOut,
     PagoQrIn,
+    PagosListOut,
     PanelOut,
     QrOut,
     RecordatorioIn,
@@ -339,6 +344,120 @@ def _pago_out_enriquecido(db: Session, pago: Pago) -> PagoOut:
         credito_generado=credito_generado,
         cuotas_aplicadas=cuotas_aplicadas,
     )
+
+
+# --------------------------------------------------------------------------- #
+# POST /cobranza/pagos/{pago_id}/anular  (anula un pago efectivo CONFIRMADO)
+# --------------------------------------------------------------------------- #
+_ANULAR_PAGO_STATUS: dict[str, int] = {
+    "no_encontrado": status.HTTP_404_NOT_FOUND,
+    "no_anulable_qr": status.HTTP_422_UNPROCESSABLE_ENTITY,
+    "estado_no_anulable": status.HTTP_422_UNPROCESSABLE_ENTITY,
+    "credito_consumido": status.HTTP_409_CONFLICT,
+}
+
+
+@router.post("/pagos/{pago_id}/anular", response_model=PagoAnuladoOut)
+def anular_pago(
+    pago_id: uuid.UUID,
+    body: AnularPagoIn,
+    user: CurrentUser = Depends(require_role("ADMIN")),
+    db: Session = Depends(get_db),
+) -> PagoAnuladoOut:
+    """Anula un pago en efectivo CONFIRMADO (reversa con rastro) (C4, RNF-02/03).
+
+    Solo ADMIN. Las cuotas del pago vuelven a cobrable y el crédito se revierte exacto.
+    Idempotente: anular un pago ya ANULADO devuelve 200 sin doble reversa. Errores de
+    negocio (`PagoError`) se mapean a HTTP por su `code`.
+    """
+    try:
+        pago = pagos_svc.anular_pago(
+            db,
+            org_id=uuid.UUID(user.org_id),
+            pago_id=pago_id,
+            anulado_por=uuid.UUID(user.user_id),
+            motivo=body.motivo,
+        )
+    except pagos_svc.PagoError as exc:
+        http_status = _ANULAR_PAGO_STATUS.get(exc.code, status.HTTP_422_UNPROCESSABLE_ENTITY)
+        raise HTTPException(status_code=http_status, detail=str(exc)) from exc
+
+    # Las filas puente ya se borraron en el servicio; recomputamos las cuotas revertidas
+    # leyendo su estado/saldo actual (cobrable de nuevo).
+    cuotas = pagos_svc._cuotas_de_pago(db, pago.id)
+    if not cuotas:
+        # Pago ya ANULADO de antes (no-op idempotente): sin puente → sin cuotas.
+        # Reconstruimos la lista desde el estado actual; el saldo a favor revertido = 0.
+        cuotas_revertidas: list[CuotaRevertida] = []
+    else:
+        cuotas_revertidas = [
+            CuotaRevertida(
+                cuota_id=c.id,
+                saldo_restante=c.monto - c.monto_pagado,
+                estado=c.estado,
+            )
+            for c in cuotas
+        ]
+
+    credito_revertido = pago.credito_generado - pago.credito_aplicado
+
+    return PagoAnuladoOut(
+        id=pago.id,
+        estado=pago.estado,
+        motivo_anulacion=pago.motivo_anulacion or body.motivo,
+        anulado_en=pago.anulado_en or datetime.now(UTC),
+        credito_revertido=credito_revertido,
+        cuotas_revertidas=cuotas_revertidas,
+    )
+
+
+# --------------------------------------------------------------------------- #
+# GET /cobranza/pagos  (lista buscable, punto de acceso a "Anular")
+# --------------------------------------------------------------------------- #
+@router.get("/pagos", response_model=PagosListOut)
+def listar_pagos(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    _user: CurrentUser = Depends(require_role("ADMIN")),
+    db: Session = Depends(get_db),
+) -> PagosListOut:
+    """Lista los pagos del org (RLS), `created_at DESC`, paginada (C4).
+
+    Cada item lleva `anulable = (metodo == 'EFECTIVO' and estado == 'CONFIRMADO')` y el
+    nombre del deportista (en MAYÚSCULAS) resuelto vía las cuotas del pago.
+    """
+    total = db.execute(select(func.count()).select_from(Pago)).scalar_one()
+    pagos = (
+        db.execute(
+            select(Pago)
+            .order_by(Pago.created_at.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+        .scalars()
+        .all()
+    )
+
+    items: list[PagoListItem] = []
+    for pago in pagos:
+        cuotas = pagos_svc._cuotas_de_pago(db, pago.id)
+        deportista = pagos_svc._deportista_de_cuotas(db, cuotas)
+        items.append(
+            PagoListItem(
+                id=pago.id,
+                fecha=pago.created_at,
+                metodo=pago.metodo,
+                estado=pago.estado,
+                monto=pago.monto,
+                deportista_nombre=_nombre_completo(deportista) if deportista else None,
+                numero_recibo=pago.numero_recibo,
+                anulable=(pago.metodo == "EFECTIVO" and pago.estado == "CONFIRMADO"),
+                motivo_anulacion=pago.motivo_anulacion,
+                anulado_en=pago.anulado_en,
+            )
+        )
+
+    return PagosListOut(items=items, total=total, page=page, page_size=page_size)
 
 
 # --------------------------------------------------------------------------- #

@@ -294,8 +294,9 @@ export interface MiEscuela {
 // PARCIAL = saldo > 0 y < monto, sin vencer (epic Abonos). El backend manda el estado.
 export type EstadoCuota = 'PENDIENTE' | 'PARCIAL' | 'PAGADO' | 'VENCIDO';
 export type MetodoPago = 'EFECTIVO' | 'QR';
-// estado del PAGO (distinto del estado de la CUOTA)
-export type EstadoPago = 'PENDIENTE' | 'CONFIRMADO' | 'FALLIDO';
+// estado del PAGO (distinto del estado de la CUOTA). ANULADO (epic anular-pago):
+// reversa CON rastro de un pago efectivo CONFIRMADO (nunca borrado físico).
+export type EstadoPago = 'PENDIENTE' | 'CONFIRMADO' | 'FALLIDO' | 'ANULADO';
 
 // --- GET /cobranza/cuotas -> item de lista ---
 // {id, deportista:{id,nombre_completo}, sucursal:{nombre}, categoria:{nombre},
@@ -446,6 +447,59 @@ export interface RecordatorioOut {
   provider_message_id: string | null;
   motivo: MotivoRecordatorio | null;
 }
+
+// ============================================================
+// Epic anular-pago · Lista de pagos buscable + anular pago efectivo registrado
+// por error (reversa CON rastro, nunca borrado). Espejo EXACTO de los shapes
+// CONGELADOS (C4/C5): solo `metodo=='EFECTIVO'` es anulable; SOLO ADMIN. No
+// inventar campos: si falta algo, es hand-off a backend-dev.
+// ============================================================
+
+// --- POST /cobranza/pagos/{id}/anular (body) ---
+// motivo OBLIGATORIO (min_length=1; vacío => 422 en el backend).
+export interface AnularPagoBody {
+  motivo: string;
+}
+
+// Detalle de una cuota revertida por la anulación (devuelta en PagoAnuladoOut).
+// saldo_restante = monto - monto_pagado tras deshacer la aplicación del pago.
+export interface CuotaRevertida {
+  cuota_id: string;
+  saldo_restante: string; // numeric(10,2) serializado como string
+  estado: EstadoCuota; // estado recomputado de la cuota (cobrable de nuevo)
+}
+
+// --- POST /cobranza/pagos/{id}/anular -> respuesta ---
+// estado siempre 'ANULADO'. credito_revertido = saldo a favor deshecho exacto.
+export interface PagoAnuladoOut {
+  id: string;
+  estado: 'ANULADO';
+  motivo_anulacion: string;
+  anulado_en: string; // timestamptz
+  credito_revertido: string; // numeric(10,2) serializado como string
+  cuotas_revertidas: CuotaRevertida[];
+}
+
+// --- GET /cobranza/pagos?page=&page_size= -> item de la lista ---
+// fecha = created_at del pago. anulable = (metodo=='EFECTIVO' && estado=='CONFIRMADO').
+// deportista_nombre va en MAYÚSCULAS (lo da el backend); null si no resuelve.
+// motivo_anulacion/anulado_en sólo poblados cuando estado=='ANULADO'.
+export interface PagoListItem {
+  id: string;
+  fecha: string; // timestamptz (= created_at)
+  metodo: MetodoPago;
+  estado: EstadoPago;
+  monto: string; // numeric(10,2) serializado como string
+  deportista_nombre: string | null;
+  numero_recibo: string | null;
+  anulable: boolean;
+  motivo_anulacion: string | null;
+  anulado_en: string | null; // timestamptz
+}
+
+export type PagosListResponse = Paginated<PagoListItem>;
+// Nombre del contrato congelado C4 ({items, total, page, page_size}).
+export type PagosListOut = PagosListResponse;
 
 // ============================================================
 // C2: Asistencia (espejo EXACTO de los contratos del epic Asistencia)

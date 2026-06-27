@@ -7,7 +7,7 @@ ellas. Dinero como `Decimal`; fechas como `date`/`datetime`.
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -175,6 +175,66 @@ class WebhookIn(BaseModel):
     transaccion_id: str
     referencia: str
     monto: Decimal
+
+
+# --------------------------------------------------------------------------- #
+# Anulación de pago + lista de pagos (epic anular-pago, C4/C5)
+# --------------------------------------------------------------------------- #
+class AnularPagoIn(BaseModel):
+    """Body de `POST /cobranza/pagos/{pago_id}/anular`. Motivo obligatorio."""
+
+    motivo: str = Field(..., min_length=1)
+
+
+class CuotaRevertida(BaseModel):
+    """Cuota cuyo abono se deshizo al anular: saldo y estado recomputado."""
+
+    cuota_id: uuid.UUID
+    saldo_restante: Decimal
+    estado: str
+
+
+class PagoAnuladoOut(BaseModel):
+    """Respuesta de `POST /cobranza/pagos/{pago_id}/anular`.
+
+    `credito_revertido` = crédito que la anulación deshizo (lo que el pago generó
+    menos lo que consumió). `cuotas_revertidas` lista cada cuota vuelta a cobrable.
+    """
+
+    id: uuid.UUID
+    estado: str
+    motivo_anulacion: str
+    anulado_en: datetime
+    credito_revertido: Decimal
+    cuotas_revertidas: list[CuotaRevertida]
+
+
+class PagoListItem(BaseModel):
+    """Item de `GET /cobranza/pagos` (lista buscable, punto de acceso a "Anular").
+
+    `anulable = (metodo == 'EFECTIVO' and estado == 'CONFIRMADO')`. `fecha` = created_at.
+    `deportista_nombre` va en MAYÚSCULAS (datos de deportista ya almacenados así).
+    """
+
+    id: uuid.UUID
+    fecha: datetime
+    metodo: str
+    estado: str
+    monto: Decimal
+    deportista_nombre: str | None = None
+    numero_recibo: str | None = None
+    anulable: bool
+    motivo_anulacion: str | None = None
+    anulado_en: datetime | None = None
+
+
+class PagosListOut(BaseModel):
+    """`GET /cobranza/pagos` -> `{items, total, page, page_size}`."""
+
+    items: list[PagoListItem]
+    total: int
+    page: int
+    page_size: int
 
 
 # --------------------------------------------------------------------------- #

@@ -15,7 +15,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import DateTime, ForeignKey, Numeric, String, UniqueConstraint, func
+from sqlalchemy import DateTime, ForeignKey, Numeric, String, Text, UniqueConstraint, func, text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -35,7 +35,7 @@ class Pago(UUIDPkMixin, OrgScoped, Base):
     metodo: Mapped[str] = mapped_column(String, nullable=False)  # EFECTIVO | QR
     estado: Mapped[str] = mapped_column(
         String, nullable=False, default="PENDIENTE"
-    )  # PENDIENTE | CONFIRMADO | FALLIDO
+    )  # PENDIENTE | CONFIRMADO | FALLIDO | ANULADO
     monto: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)  # solo efectivo/caja
     # Abonos (0009): crédito previo de la inscripción consumido en este pago. Invariante:
     # Σ pago_cuota.monto_aplicado = pago.monto + pago.credito_aplicado. EXACTO a 0009.
@@ -58,4 +58,17 @@ class Pago(UUIDPkMixin, OrgScoped, Base):
     )  # REC-NNNNNN, NULL hasta CONFIRMADO (epic Recibo)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    # Anulación (epic anular-pago) — reversa CON rastro (RNF-02/03), nunca borrado
+    # físico. Columnas EXACTAS a `migrations/versions/0025_anular_pago.py` (autoridad).
+    # `credito_generado` persiste el sobrepago→crédito de ESTE pago para revertir el
+    # saldo a favor con exactitud al anular.
+    motivo_anulacion: Mapped[str | None] = mapped_column(Text, nullable=True)
+    anulado_por: Mapped[uuid.UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("usuario.id", ondelete="SET NULL"), nullable=True
+    )
+    anulado_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    credito_generado: Mapped[Decimal] = mapped_column(
+        Numeric(10, 2), nullable=False, server_default=text("'0'"), default=Decimal("0")
     )

@@ -1,0 +1,99 @@
+.pagos-lista {
+  display: flex;
+  flex-direction: column;
+}
+
+.pagos-cell__name {
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.pagos-cell__estado {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.pagos-cell__motivo {
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+  max-width: 18ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pagos-lista__pager {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  font-size: var(--fs-sm);
+  color: var(--color-text-muted);
+}
+
+/* --- Modal de anulación --- */
+.pagos-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: var(--space-6) var(--space-4);
+  overflow-y: auto;
+  z-index: 50;
+}
+
+.pagos-modal {
+  width: 100%;
+  max-width: 440px;
+  margin-top: var(--space-6);
+}
+
+.pagos-modal__lead {
+  margin: 0 0 var(--space-4);
+  color: var(--color-text-muted);
+  font-size: var(--fs-sm);
+}
+
+.pagos-modal__resumen {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin: 0 0 var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-2);
+}
+
+.pagos-modal__resumen dt {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-subtle);
+  margin: 0;
+}
+
+.pagos-modal__resumen dd {
+  margin: 2px 0 0;
+  font-size: var(--fs-md);
+  color: var(--color-text);
+}
+
+.pagos-modal__textarea {
+  resize: vertical;
+  min-height: 72px;
+  font-family: inherit;
+}
+
+.pagos-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+}
