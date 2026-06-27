@@ -52,6 +52,12 @@ class DisciplinaInvalida(DeportistaError):
     """
 
 
+# CI "placeholder" para deportistas que aún no presentan su documento: se teclea "0"
+# y significa "lo presentará luego". NO identifica a un deportista → puede repetirse
+# (el índice único parcial lo excluye, migración 0024) y NUNCA se recupera-por-CI.
+CI_PENDIENTE = "0"
+
+
 class TutorInvarianteViolado(DeportistaError):
     """La reconciliación de tutores rompería el invariante de menores -> 422.
 
@@ -92,9 +98,15 @@ def buscar_deportista_por_ci(db: Session, ci: str) -> Deportista | None:
     """Devuelve el deportista de la org del contexto con ese CI, o None.
 
     Scoped por org vía RLS (no se filtra por `org_id` en Python; la barrera real es
-    RLS). El índice único parcial `(org_id, ci) WHERE ci IS NOT NULL` garantiza a lo
-    sumo una fila por CI dentro de la org.
+    RLS). El índice único parcial `(org_id, ci) WHERE ci IS NOT NULL AND ci <> '0'`
+    garantiza a lo sumo una fila por CI no-placeholder dentro de la org.
+
+    `"0"` es el CI placeholder ("presentará luego"): puede repetirse, así que NO
+    identifica a un deportista → se devuelve `None` (no se recupera-por-CI y se evita
+    `MultipleResultsFound` si hubiera varios "0").
     """
+    if not ci or ci.strip() == CI_PENDIENTE:
+        return None
     return db.execute(select(Deportista).where(Deportista.ci == ci)).scalar_one_or_none()
 
 

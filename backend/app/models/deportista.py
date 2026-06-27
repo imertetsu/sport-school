@@ -9,7 +9,7 @@ from typing import Any
 from sqlalchemy import Boolean, Date, ForeignKey, String, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, validates
 
 from app.models.base import Base, OrgScoped, TimestampMixin, UUIDPkMixin
 
@@ -49,3 +49,14 @@ class Deportista(UUIDPkMixin, OrgScoped, TimestampMixin, Base):
     activo: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=func.true(), default=True
     )
+
+    @validates("nombres", "ap_paterno", "ap_materno")
+    def _nombre_en_mayusculas(self, _key: str, value: str | None) -> str | None:
+        """El nombre del deportista SIEMPRE se guarda en MAYÚSCULAS (regla de negocio).
+
+        Se aplica a cualquier asignación por ORM (alta, edición completa, aprobación de
+        auto-registro), así que no hay un punto que pueda olvidarse. `None`/vacío se
+        dejan tal cual. Solo afecta a `deportista` (tutores/entrenadores no se tocan).
+        NO se dispara al cargar desde la BD (datos previos los normaliza la migración 0024).
+        """
+        return value.upper() if value else value

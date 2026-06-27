@@ -347,6 +347,59 @@ def test_tutor_sin_ci_se_crea_normal(app_engine: Engine, ci_fixture: dict) -> No
 
 
 # --------------------------------------------------------------------------- #
+# (g) Nombre del deportista SIEMPRE en MAYÚSCULAS (modelo `@validates`, sin BD)
+# --------------------------------------------------------------------------- #
+def test_nombre_deportista_se_guarda_en_mayusculas() -> None:
+    from app.models.deportista import Deportista
+
+    d = Deportista(nombres="ana maría", ap_paterno="pérez", ap_materno=None)
+    assert d.nombres == "ANA MARÍA"  # respeta acentos
+    assert d.ap_paterno == "PÉREZ"
+    assert d.ap_materno is None  # None se conserva (no se fuerza string vacío)
+
+
+# --------------------------------------------------------------------------- #
+# (h) CI "0" = placeholder "presentará luego": no identifica (buscar -> None, sin BD)
+# --------------------------------------------------------------------------- #
+def test_buscar_por_ci_cero_no_identifica_sin_bd() -> None:
+    # El guard de "0" retorna None ANTES de tocar la BD (db no se usa); también vacío.
+    assert svc.buscar_deportista_por_ci(None, "0") is None  # type: ignore[arg-type]
+    assert svc.buscar_deportista_por_ci(None, " 0 ") is None  # type: ignore[arg-type]
+    assert svc.buscar_deportista_por_ci(None, "") is None  # type: ignore[arg-type]
+
+
+# --------------------------------------------------------------------------- #
+# (i) CI "0" permite VARIOS deportistas (placeholder, índice parcial lo excluye)
+# --------------------------------------------------------------------------- #
+@pytest.mark.db
+def test_ci_cero_placeholder_permite_varios(app_engine: Engine, ci_fixture: dict) -> None:
+    org_a, suc_a = ci_fixture["org_a"], ci_fixture["suc_a"]
+    with Session(app_engine, expire_on_commit=False) as db:
+        _set_org(db, org_a)
+        # Dos deportistas con CI "0" ("presentará luego") -> ambos OK, SIN CIDuplicado.
+        d1 = svc.crear_deportista(
+            db,
+            _body(suc_id=suc_a, nombres="sin doc uno", ci="0", tutores=[_tutor("T1")]),
+            org_id=org_a,
+        )
+        svc.crear_deportista(
+            db,
+            _body(suc_id=suc_a, nombres="sin doc dos", ci="0", tutores=[_tutor("T2")]),
+            org_id=org_a,
+        )
+        db.commit()
+        assert d1.nombres == "SIN DOC UNO", "el nombre se guarda en mayúsculas"
+        _set_org(db, org_a)
+        # "0" no identifica -> no se recupera-por-CI (evita MultipleResultsFound).
+        assert svc.buscar_deportista_por_ci(db, "0") is None
+        n = db.execute(
+            text("SELECT count(*) FROM deportista WHERE org_id = :o AND ci = '0'"),
+            {"o": str(org_a)},
+        ).scalar_one()
+    assert n == 2
+
+
+# --------------------------------------------------------------------------- #
 # disciplina_id (S3): FK canónica al catálogo GLOBAL en el alta de deportista
 # --------------------------------------------------------------------------- #
 @pytest.fixture()

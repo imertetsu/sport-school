@@ -569,7 +569,7 @@ def test_put_edita_datos_ficha_y_anade_tutor() -> None:
     )
     assert upd.status_code == 200, upd.text
     j = upd.json()
-    assert j["nombres"] == "Nombre Editado"
+    assert j["nombres"] == "NOMBRE EDITADO"  # el nombre del deportista se guarda en MAYÚSCULAS
     assert j["ficha_medica"]["tipo_sangre"] == "O+"
     nombres = {t["nombres"] for t in j["tutores"]}
     assert nombres == {"Papá", "Tía Nueva"}
