@@ -8,6 +8,7 @@ import { DeportistaPerfil } from '@/features/deportistas/DeportistaPerfil';
 import { NuevoDeportista } from '@/features/deportistas/NuevoDeportista';
 import { Solicitudes } from '@/features/solicitudes/Solicitudes';
 import { PanelCobranza } from '@/features/cobranza/PanelCobranza';
+import { PagosHistorial } from '@/features/cobranza/PagosHistorial';
 import { Pagos } from '@/features/cobranza/Pagos';
 import { PagosPorVerificar } from '@/features/cobranza/PagosPorVerificar';
 import { TomarAsistencia } from '@/features/asistencia/TomarAsistencia';
@@ -46,11 +47,12 @@ export default function App() {
           >
             <Route index element={<Navigate to="/panel" replace />} />
             <Route path="/panel" element={<PanelCobranza />} />
-            {/* Pagos: lista de pagos reales + anular pago efectivo (consolidado;
-                antes existía una vista aparte "Anular pagos" en /pagos-lista). SOLO
-                ADMIN (el backend impone require_role("ADMIN") y scopea por RLS). */}
+            <Route path="/pagos" element={<PagosHistorial />} />
+            {/* Lista de pagos buscable + anular pago efectivo (epic anular-pago):
+                punto de acceso al botón "Anular". SOLO ADMIN (gate de rol; el
+                backend impone require_role("ADMIN") y scopea por RLS). */}
             <Route
-              path="/pagos"
+              path="/pagos-lista"
               element={
                 <RoleRoute allow={['ADMIN']}>
                   <Pagos />
