@@ -68,6 +68,12 @@ export function NuevoDeportista() {
   const [domicilio, setDomicilio] = useState('');
   const [lugarNacimiento, setLugarNacimiento] = useState('');
 
+  // Inscripción / cobro (motor de cuotas). Cuota mensual + fecha de inscripción; el
+  // modo de cobro hereda el default de la escuela. Sin esto el deportista no genera
+  // cuotas (no se le puede cobrar).
+  const [montoMensual, setMontoMensual] = useState('');
+  const [fechaInscripcion, setFechaInscripcion] = useState('');
+
   // Ficha médica (OPCIONAL). Grupo sanguíneo = ficha_medica.tipo_sangre.
   const [tipoSangre, setTipoSangre] = useState('');
   const [alergias, setAlergias] = useState('');
@@ -200,6 +206,9 @@ export function NuevoDeportista() {
     setContactoEmergencia(d.contacto_emergencia ?? '');
     setDomicilio(d.domicilio ?? '');
     setLugarNacimiento(d.lugar_nacimiento ?? '');
+    // Inscripción (cobro): precarga si el deportista ya tiene una.
+    setMontoMensual(d.inscripcion ? String(d.inscripcion.monto_mensual) : '');
+    setFechaInscripcion(d.inscripcion?.fecha_inscripcion ?? '');
     // Ficha médica: puede venir null si el rol no tiene acceso (RNF-02).
     if (d.ficha_medica) {
       setTipoSangre(d.ficha_medica.tipo_sangre ?? '');
@@ -326,6 +335,11 @@ export function NuevoDeportista() {
     if (!fechaNac) errs.fecha_nac = 'Requerido';
     if (!disciplinaId) errs.disciplina_id = 'Requerido';
     if (!sucursalId) errs.sucursal_id = 'Selecciona una sucursal';
+    // Inscripción (cobro): obligatoria. Cuota mensual > 0 y fecha de inscripción.
+    if (!fechaInscripcion) errs.fecha_inscripcion = 'Requerido';
+    const monto = Number(montoMensual);
+    if (!montoMensual.trim() || Number.isNaN(monto) || monto <= 0)
+      errs.monto_mensual = 'Ingresa una cuota mensual válida';
 
     const tutoresValidos = tutores.filter((t) => t.nombres.trim());
     if (tutoresValidos.length === 0) {
@@ -419,6 +433,10 @@ export function NuevoDeportista() {
           lugar_nacimiento: lugarNacimiento.trim() || null,
           tutores: tutoresPayload(),
           ficha_medica: fichaMedicaPayload(),
+          inscripcion: {
+            fecha_inscripcion: fechaInscripcion,
+            monto_mensual: montoMensual.trim(),
+          },
         };
         const updated = await api.actualizarDeportista(id, updatePayload);
         navigate(`/deportistas/${updated.id}`);
@@ -442,6 +460,10 @@ export function NuevoDeportista() {
         lugar_nacimiento: lugarNacimiento.trim() || null,
         tutores: tutoresPayload(),
         consentimiento: { version_terminos: CONSENT_VERSION, canal: 'WEB' },
+        inscripcion: {
+          fecha_inscripcion: fechaInscripcion,
+          monto_mensual: montoMensual.trim(),
+        },
       };
 
       const ficha = fichaMedicaPayload();
@@ -677,6 +699,33 @@ export function NuevoDeportista() {
               value={contactoEmergencia}
               onChange={(e) => setContactoEmergencia(e.target.value)}
               placeholder="Nombre y teléfono"
+            />
+          </div>
+        </Card>
+
+        <Card title="Inscripción y cobro">
+          <p className="page-head__subtitle">
+            Define la cuota mensual del deportista. Sin esto no se generan cuotas y no se le
+            puede registrar pago. El modo de cobro hereda el de la escuela.
+          </p>
+          <div className="form-grid">
+            <Field
+              label="Cuota mensual (Bs)"
+              type="number"
+              value={montoMensual}
+              onChange={(e) => setMontoMensual(e.target.value)}
+              error={fieldErrors.monto_mensual}
+              placeholder="150.00"
+              required
+            />
+            <Field
+              label="Fecha de inscripción"
+              type="date"
+              value={fechaInscripcion}
+              onChange={(e) => setFechaInscripcion(e.target.value)}
+              error={fieldErrors.fecha_inscripcion}
+              hint="Desde cuándo se cobra; define su ciclo mensual"
+              required
             />
           </div>
         </Card>

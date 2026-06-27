@@ -203,6 +203,10 @@ class DeportistaUpdate(BaseModel):
     lugar_nacimiento: str | None = None
     ficha_medica: FichaMedica | None = None
     tutores: list[TutorUpsert] | None = None
+    # Inscripción (cobro) — epic motor de cuotas. Si viene, se hace UPSERT: crea la
+    # inscripción si el deportista no tenía (caso de los registrados sin cobro, p. ej.
+    # auto-registro) o actualiza la existente. Si NO viene (None / ausente), no se toca.
+    inscripcion: InscripcionIn | None = None
 
 
 # --------------------------------------------------------------------------- #

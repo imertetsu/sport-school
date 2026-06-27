@@ -187,7 +187,7 @@ export interface ConsentimientoCreate {
 }
 
 export interface InscripcionCreate {
-  disciplina: string;
+  disciplina?: string | null;
   fecha_inscripcion: string;
   monto_mensual: string;
   modo_cobro?: ModoCobro | null;
@@ -272,6 +272,9 @@ export interface DeportistaUpdate {
   // Lista reconciliable por id. null/omitido => no tocar los tutores.
   tutores?: TutorUpsert[];
   ficha_medica?: FichaMedicaCreate | null;
+  // Inscripción (cobro): si viene, el backend hace UPSERT (crea o actualiza). Permite
+  // dar de alta el cobro a un deportista que se registró sin él.
+  inscripcion?: InscripcionCreate | null;
 }
 
 // ---- escuela-y-bajas C2: GET/PUT /mi-escuela (gated ADMIN) ----

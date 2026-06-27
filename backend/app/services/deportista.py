@@ -24,7 +24,13 @@ from app.models.deportista_tutor import DeportistaTutor
 from app.models.disciplina import Disciplina
 from app.models.inscripcion import Inscripcion
 from app.models.tutor import Tutor
-from app.schemas.deportista import DeportistaCreate, DeportistaUpdate, TutorIn, TutorUpsert
+from app.schemas.deportista import (
+    DeportistaCreate,
+    DeportistaUpdate,
+    InscripcionIn,
+    TutorIn,
+    TutorUpsert,
+)
 
 
 # --------------------------------------------------------------------------- #
@@ -335,6 +341,46 @@ def _reconciliar_tutores(
     db.flush()
 
 
+def _upsert_inscripcion(
+    db: Session, deportista: Deportista, ins: InscripcionIn, *, org_id: uuid.UUID
+) -> None:
+    """Crea o actualiza la inscripción (cobro) del deportista.
+
+    Sin inscripción previa -> la crea. Con una existente -> actualiza los campos
+    obligatorios (monto, fecha, estado) y los opcionales SOLO si vienen no nulos
+    (preserva `modo_cobro`/`dia_corte`/`disciplina` cuando el formulario simple no los
+    envía). No genera cuotas: eso lo hace el motor de cuotas (cron / "Generar cuotas").
+    """
+    existente = (
+        db.execute(select(Inscripcion).where(Inscripcion.deportista_id == deportista.id))
+        .scalars()
+        .first()
+    )
+    if existente is None:
+        db.add(
+            Inscripcion(
+                org_id=org_id,
+                deportista_id=deportista.id,
+                disciplina=ins.disciplina,
+                fecha_inscripcion=ins.fecha_inscripcion,
+                monto_mensual=ins.monto_mensual,
+                modo_cobro=ins.modo_cobro,
+                dia_corte=ins.dia_corte,
+                estado=ins.estado,
+            )
+        )
+        return
+    existente.fecha_inscripcion = ins.fecha_inscripcion
+    existente.monto_mensual = ins.monto_mensual
+    existente.estado = ins.estado
+    if ins.disciplina is not None:
+        existente.disciplina = ins.disciplina
+    if ins.modo_cobro is not None:
+        existente.modo_cobro = ins.modo_cobro
+    if ins.dia_corte is not None:
+        existente.dia_corte = ins.dia_corte
+
+
 def actualizar_deportista(
     db: Session, deportista: Deportista, body: DeportistaUpdate, *, org_id: uuid.UUID
 ) -> Deportista:
@@ -369,6 +415,13 @@ def actualizar_deportista(
     if reconciliar:
         assert body.tutores is not None
         _reconciliar_tutores(db, deportista, body.tutores, org_id=org_id)
+
+    # Inscripción (cobro): UPSERT solo si vino en el body. Se descarta de `data` para
+    # que el bucle de setattr no la trate como columna del deportista.
+    inscribir = "inscripcion" in data
+    data.pop("inscripcion", None)
+    if inscribir and body.inscripcion is not None:
+        _upsert_inscripcion(db, deportista, body.inscripcion, org_id=org_id)
 
     if "ficha_medica" in data:
         deportista.ficha_medica = data.pop("ficha_medica")  # dict (model_dump) o None
