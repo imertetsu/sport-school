@@ -19,15 +19,43 @@ export interface NavGroup {
   items: NavItem[];
 }
 
+// Menú agrupado por propósito: lo de uso diario arriba, la configuración al
+// fondo. Los grupos sin items para el rol activo se ocultan solos (ver
+// `navGroupsForRole`), así el ENTRENADOR ve un menú más corto sin huecos.
 export const NAV_GROUPS: NavGroup[] = [
   {
-    title: 'Gestión',
+    title: 'Resumen',
     items: [
-      { id: 'panel', label: 'Panel', icon: '◧', to: '/panel', enabled: true }, // Panel de cobranza
+      { id: 'panel', label: 'Panel', icon: '◧', to: '/panel', enabled: true }, // Panel de cobranza (KPIs + morosidad)
+    ],
+  },
+  {
+    title: 'Personas',
+    items: [
       { id: 'deportistas', label: 'Deportistas', icon: '◉', to: '/deportistas', enabled: true },
       // Solicitudes (auto-registro EN SISTEMA): visible a ADMIN y ENTRENADOR
       // (sin `roles`). El backend filtra la cola por rol; aprobar/rechazar es solo ADMIN.
       { id: 'solicitudes', label: 'Solicitudes', icon: '✎', to: '/solicitudes', enabled: true },
+      // Entrenadores (Epic B): gestión SOLO ADMIN (el item no aparece para ENTRENADOR).
+      { id: 'entrenadores', label: 'Entrenadores', icon: '♟', to: '/entrenadores', enabled: true, roles: ['ADMIN'] },
+    ],
+  },
+  {
+    title: 'Clases',
+    items: [
+      { id: 'asistencia', label: 'Asistencia', icon: '✓', to: '/asistencia', enabled: true },
+      // Horarios / programación de clases: visible a ADMIN y ENTRENADOR (sin `roles`).
+      // El backend filtra la vista por rol; la escritura es solo ADMIN.
+      { id: 'horarios', label: 'Horarios', icon: '◷', to: '/horarios', enabled: true },
+      // Muro de avisos (RF-COM-01): visible a ADMIN y ENTRENADOR (sin `roles`).
+      // El feed ya viene filtrado por el backend; la escritura es solo ADMIN.
+      { id: 'avisos', label: 'Avisos', icon: '✸', to: '/avisos', enabled: true },
+    ],
+  },
+  {
+    title: 'Cobranza',
+    items: [
+      // Pagos: lista de los que pagaron (cuotas pagadas). Visible a ADMIN y ENTRENADOR.
       { id: 'pagos', label: 'Pagos', icon: '＄', to: '/pagos', enabled: true },
       // Lista de pagos + anular pago efectivo (epic anular-pago): punto de acceso
       // al botón "Anular". SOLO ADMIN (el item no aparece para ENTRENADOR).
@@ -51,15 +79,6 @@ export const NAV_GROUPS: NavGroup[] = [
       },
       // Egresos (financiero): SOLO ADMIN (RF-FIN-07).
       { id: 'egresos', label: 'Egresos', icon: '▽', to: '/egresos', enabled: true, roles: ['ADMIN'] },
-      // Entrenadores (Epic B): gestión SOLO ADMIN (el item no aparece para ENTRENADOR).
-      { id: 'entrenadores', label: 'Entrenadores', icon: '♟', to: '/entrenadores', enabled: true, roles: ['ADMIN'] },
-      { id: 'asistencia', label: 'Asistencia', icon: '✓', to: '/asistencia', enabled: true },
-      // Horarios / programación de clases: visible a ADMIN y ENTRENADOR (sin `roles`).
-      // El backend filtra la vista por rol; la escritura es solo ADMIN.
-      { id: 'horarios', label: 'Horarios', icon: '◷', to: '/horarios', enabled: true },
-      // Muro de avisos (RF-COM-01): visible a ADMIN y ENTRENADOR (sin `roles`).
-      // El feed ya viene filtrado por el backend; la escritura es solo ADMIN.
-      { id: 'avisos', label: 'Avisos', icon: '✸', to: '/avisos', enabled: true },
       {
         id: 'reportes',
         label: 'Reportes',
@@ -68,6 +87,11 @@ export const NAV_GROUPS: NavGroup[] = [
         enabled: true,
         roles: ['ADMIN'],
       },
+    ],
+  },
+  {
+    title: 'Configuración',
+    items: [
       // Sucursales/Categorías (catálogo): SOLO ADMIN (CRUD del catálogo).
       {
         id: 'sucursales',
