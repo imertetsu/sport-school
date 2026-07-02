@@ -36,7 +36,15 @@ export function formatDate(
   org: OrgLocale = {},
 ): string {
   if (!iso) return '—';
-  const d = new Date(iso);
+  // Una fecha "solo día" (YYYY-MM-DD) se debe interpretar como medianoche LOCAL,
+  // no UTC: `new Date("2016-07-04")` es UTC y en zonas negativas (Bolivia, UTC−4)
+  // retrocede un día al mostrarse (mostraba "3 jul"). Construir con componentes
+  // (año, mes, día) la ancla al día local correcto. Los datetime con hora/offset
+  // (ISO completo) siguen parseándose tal cual.
+  const soloDia = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  const d = soloDia
+    ? new Date(Number(soloDia[1]), Number(soloDia[2]) - 1, Number(soloDia[3]))
+    : new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
   const locale = org.locale ?? DEFAULT_LOCALE;
   return new Intl.DateTimeFormat(locale, {
