@@ -485,6 +485,13 @@ export interface PagoAnuladoOut {
 // fecha = created_at del pago. anulable = (metodo=='EFECTIVO' && estado=='CONFIRMADO').
 // deportista_nombre va en MAYÚSCULAS (lo da el backend); null si no resuelve.
 // motivo_anulacion/anulado_en sólo poblados cuando estado=='ANULADO'.
+// Cuota cubierta por un pago (para el historial por deportista): su período y la
+// fecha en que vencía. Acompaña a la fecha de pago en el "Historial de pagos".
+export interface CuotaCubierta {
+  periodo_inicio: string; // date YYYY-MM-DD
+  vence_el: string; // date YYYY-MM-DD
+}
+
 export interface PagoListItem {
   id: string;
   fecha: string; // timestamptz (= created_at)
@@ -496,6 +503,7 @@ export interface PagoListItem {
   anulable: boolean;
   motivo_anulacion: string | null;
   anulado_en: string | null; // timestamptz
+  cuotas: CuotaCubierta[];
 }
 
 export type PagosListResponse = Paginated<PagoListItem>;

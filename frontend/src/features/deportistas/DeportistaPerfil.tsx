@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, ApiError } from '@/api/client';
 import { useAuth } from '@/auth/useAuth';
-import type { DeportistaDetail } from '@/api/types';
+import type { DeportistaDetail, PagoListItem } from '@/api/types';
 import { Avatar, Badge, Button, Card, Tabs, type TabItem } from '@/components/ui';
 import { formatDate, formatMoney, nivelLabel } from '@/lib/format';
 import './DeportistaPerfil.css';
@@ -13,6 +13,143 @@ function DataRow({ label, value }: { label: string; value: React.ReactNode }) {
       <dt className="datarow__label">{label}</dt>
       <dd className="datarow__value">{value || '—'}</dd>
     </div>
+  );
+}
+
+// Tono del badge según el estado del PAGO (no de la cuota): confirmado=verde,
+// pendiente=ámbar, fallido=rojo, anulado=neutro.
+const PAGO_TONE: Record<string, 'paid' | 'pending' | 'overdue' | 'neutral'> = {
+  CONFIRMADO: 'paid',
+  PENDIENTE: 'pending',
+  FALLIDO: 'overdue',
+  ANULADO: 'neutral',
+};
+
+// Historial de pagos de UN deportista: recibo, fecha de pago, las cuotas que cubrió
+// (con su vencimiento), monto/método/estado y "Ver recibo" (abre el PDF imprimible).
+function HistorialPagos({ deportistaId }: { deportistaId: string }) {
+  const [pagos, setPagos] = useState<PagoListItem[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [reciboEnVuelo, setReciboEnVuelo] = useState<string | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+    setError(null);
+    api
+      .pagosDeportista(deportistaId, 1, 50, controller.signal)
+      .then((res) => {
+        if (active) setPagos(res.items);
+      })
+      .catch((err) => {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        if (active) setError('No se pudo cargar el historial de pagos.');
+      });
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [deportistaId]);
+
+  // Descarga el recibo (blob autenticado) y lo abre en otra pestaña para ver/imprimir.
+  async function verRecibo(pagoId: string) {
+    setReciboEnVuelo(pagoId);
+    setError(null);
+    try {
+      const url = await api.comprobantePdfUrl(pagoId);
+      window.open(url, '_blank', 'noopener');
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch {
+      setError('No se pudo abrir el recibo.');
+    } finally {
+      setReciboEnVuelo(null);
+    }
+  }
+
+  if (error && pagos === null) {
+    return (
+      <Card>
+        <div className="page-error" role="alert">
+          {error}
+        </div>
+      </Card>
+    );
+  }
+  if (pagos === null) {
+    return (
+      <Card>
+        <p className="perfil__empty">Cargando pagos…</p>
+      </Card>
+    );
+  }
+  if (pagos.length === 0) {
+    return (
+      <Card>
+        <p className="perfil__empty">Sin pagos aún.</p>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      {error && (
+        <div className="page-error" role="alert">
+          {error}
+        </div>
+      )}
+      <div className="perfil-pagos__wrap">
+        <table className="perfil-pagos">
+          <thead>
+            <tr>
+              <th>Recibo</th>
+              <th>Fecha de pago</th>
+              <th>Cuotas cubiertas (mes · vencimiento)</th>
+              <th className="perfil-pagos__num">Monto</th>
+              <th>Método</th>
+              <th>Estado</th>
+              <th aria-label="Recibo" />
+            </tr>
+          </thead>
+          <tbody>
+            {pagos.map((p) => (
+              <tr
+                key={p.id}
+                className={p.estado === 'ANULADO' ? 'perfil-pagos__anulado' : undefined}
+              >
+                <td>{p.numero_recibo ?? '—'}</td>
+                <td>{formatDate(p.fecha)}</td>
+                <td>
+                  {p.cuotas.length === 0
+                    ? '—'
+                    : p.cuotas
+                        .map((c) => `${formatDate(c.periodo_inicio)} · vence ${formatDate(c.vence_el)}`)
+                        .join('  |  ')}
+                </td>
+                <td className="perfil-pagos__num tabular">{formatMoney(p.monto)}</td>
+                <td>{p.metodo}</td>
+                <td>
+                  <Badge tone={PAGO_TONE[p.estado] ?? 'neutral'}>{p.estado}</Badge>
+                </td>
+                <td className="perfil-pagos__num">
+                  {p.estado === 'CONFIRMADO' ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => verRecibo(p.id)}
+                      disabled={reciboEnVuelo === p.id}
+                    >
+                      {reciboEnVuelo === p.id ? 'Abriendo…' : 'Ver recibo'}
+                    </Button>
+                  ) : (
+                    '—'
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Card>
   );
 }
 
@@ -244,12 +381,7 @@ export function DeportistaPerfil() {
     {
       id: 'pagos',
       label: 'Historial de pagos',
-      content: (
-        <Card>
-          {/* Cobranza es otro epic. */}
-          <p className="perfil__empty">Sin pagos aún.</p>
-        </Card>
-      ),
+      content: <HistorialPagos deportistaId={deportista.id} />,
     },
   ];
 

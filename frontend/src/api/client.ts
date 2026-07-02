@@ -483,6 +483,39 @@ export const api = {
       signal,
     });
   },
+  // GET /cobranza/pagos?deportista_id=... -> historial de pagos de UN deportista
+  // (mismo item + las cuotas que cubrió, con su vencimiento). Para el perfil.
+  pagosDeportista(
+    deportistaId: string,
+    page = 1,
+    pageSize = 50,
+    signal?: AbortSignal,
+  ): Promise<PagosListResponse> {
+    return request<PagosListResponse>('/cobranza/pagos', {
+      query: { deportista_id: deportistaId, page, page_size: pageSize },
+      signal,
+    });
+  },
+  // GET /cobranza/comprobantes/{id}.pdf (requiere Bearer) -> descarga el recibo PDF
+  // como blob y devuelve un objectURL para abrir/imprimir. El caller debe llamar
+  // URL.revokeObjectURL cuando termine. Se usa fetch directo (no `request`) porque la
+  // respuesta es binaria, no JSON.
+  async comprobantePdfUrl(pagoId: string, signal?: AbortSignal): Promise<string> {
+    const url = new URL(
+      `${API_BASE_URL}${API_PREFIX}/cobranza/comprobantes/${pagoId}.pdf`,
+      window.location.origin,
+    );
+    const token = getToken();
+    const res = await fetch(url.toString(), {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      signal,
+    });
+    if (!res.ok) {
+      throw new ApiError(res.status, 'No se pudo cargar el recibo', null);
+    }
+    const blob = await res.blob();
+    return URL.createObjectURL(blob);
+  },
   // POST /cobranza/pagos/{id}/anular {motivo} -> reversa CON rastro (estado ANULADO
   // + motivo/quién/cuándo). Solo efectivo CONFIRMADO. Mapeo de errores del backend:
   // 404 inexistente/otra org, 422 no anulable (QR/estado), 409 crédito ya consumido,

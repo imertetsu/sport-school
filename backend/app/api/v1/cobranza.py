@@ -38,6 +38,7 @@ from app.schemas.cobranza import (
     AnularPagoIn,
     CategoriaNombre,
     CuotaAplicada,
+    CuotaCubierta,
     CuotaItem,
     CuotaRevertida,
     CuotasAgg,
@@ -432,18 +433,37 @@ def anular_pago(
 def listar_pagos(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
+    deportista_id: uuid.UUID | None = Query(default=None),
     _user: CurrentUser = Depends(require_role("ADMIN")),
     db: Session = Depends(get_db),
 ) -> PagosListOut:
     """Lista los pagos del org (RLS), `created_at DESC`, paginada (C4).
 
-    Cada item lleva `anulable = (metodo == 'EFECTIVO' and estado == 'CONFIRMADO')` y el
-    nombre del deportista (en MAYÚSCULAS) resuelto vía las cuotas del pago.
+    Cada item lleva `anulable = (metodo == 'EFECTIVO' and estado == 'CONFIRMADO')`, el
+    nombre del deportista (en MAYÚSCULAS) y las cuotas que cubrió (con su vencimiento),
+    todo resuelto vía las cuotas del pago.
+
+    `deportista_id` (opcional): filtra a los pagos que cubren alguna cuota de ESE
+    deportista (pago → pago_cuota → cuota → inscripción). Es el "Historial de pagos"
+    del perfil del deportista.
     """
-    total = db.execute(select(func.count()).select_from(Pago)).scalar_one()
+    filtros = []
+    if deportista_id is not None:
+        pagos_del_deportista = (
+            select(PagoCuota.pago_id)
+            .join(Cuota, Cuota.id == PagoCuota.cuota_id)
+            .join(Inscripcion, Inscripcion.id == Cuota.inscripcion_id)
+            .where(Inscripcion.deportista_id == deportista_id)
+        )
+        filtros.append(Pago.id.in_(pagos_del_deportista))
+
+    total = db.execute(
+        select(func.count()).select_from(Pago).where(*filtros)
+    ).scalar_one()
     pagos = (
         db.execute(
             select(Pago)
+            .where(*filtros)
             .order_by(Pago.created_at.desc())
             .offset((page - 1) * page_size)
             .limit(page_size)
@@ -468,6 +488,10 @@ def listar_pagos(
                 anulable=(pago.metodo == "EFECTIVO" and pago.estado == "CONFIRMADO"),
                 motivo_anulacion=pago.motivo_anulacion,
                 anulado_en=pago.anulado_en,
+                cuotas=[
+                    CuotaCubierta(periodo_inicio=c.periodo_inicio, vence_el=c.vence_el)
+                    for c in cuotas
+                ],
             )
         )
 

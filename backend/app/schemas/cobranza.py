@@ -209,11 +209,22 @@ class PagoAnuladoOut(BaseModel):
     cuotas_revertidas: list[CuotaRevertida]
 
 
+class CuotaCubierta(BaseModel):
+    """Cuota que un pago cubrió (para el historial por deportista): su período y la
+    fecha en que vencía. Permite ver, junto a la fecha de pago, "qué mes se pagó y
+    cuándo vencía"."""
+
+    periodo_inicio: date
+    vence_el: date
+
+
 class PagoListItem(BaseModel):
     """Item de `GET /cobranza/pagos` (lista buscable, punto de acceso a "Anular").
 
     `anulable = (metodo == 'EFECTIVO' and estado == 'CONFIRMADO')`. `fecha` = created_at.
     `deportista_nombre` va en MAYÚSCULAS (datos de deportista ya almacenados así).
+    `cuotas` = las cuotas que este pago cubrió (con su vencimiento), para el historial
+    por deportista.
     """
 
     id: uuid.UUID
@@ -226,6 +237,7 @@ class PagoListItem(BaseModel):
     anulable: bool
     motivo_anulacion: str | None = None
     anulado_en: datetime | None = None
+    cuotas: list[CuotaCubierta] = Field(default_factory=list)
 
 
 class PagosListOut(BaseModel):
