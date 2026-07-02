@@ -84,15 +84,16 @@ def test_comprobante_data_emisor_default_es_marca() -> None:
     assert data.numero_recibo == "—"
 
 
-def test_pdf_incluye_emisor_numero_y_leyenda() -> None:
+def test_pdf_incluye_numero_recibo_y_escuela() -> None:
     pdf_bytes = PdfComprobanteService().render_pdf(_comprobante_data("REC-000007"))
     assert pdf_bytes[:4] == b"%PDF"
     texto = _pdf_text(pdf_bytes)
-    # Cabecera de marca + N° de recibo + leyenda legal en el contenido del PDF.
-    assert "SnapCoding - LatinoSport" in texto
+    # El recibo lleva el N° correlativo y el nombre de la escuela en la cabecera.
     assert "REC-000007" in texto
-    # _ascii() degrada la "á" de "válido" a "?"; aceptamos esa forma latin-1.
-    assert "Documento no v" in texto and "lido como factura" in texto
+    assert "Escuela de Prueba" in texto
+    # Se quitaron (por decisión de producto): la marca del emisor y la leyenda legal.
+    assert "SnapCoding" not in texto
+    assert "factura" not in texto
 
 
 def test_pdf_conserva_aplicado_saldo_y_credito_de_abonos() -> None:

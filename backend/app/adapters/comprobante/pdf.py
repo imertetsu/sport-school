@@ -1,121 +1,283 @@
 """Adaptador de comprobante PDF con **fpdf2** — implementa `ComprobanteService` (C5).
 
-Renderiza un PDF con: nombre de la org, deportista, cuota(s) cubiertas, monto,
-método, fecha y número de comprobante. Sin I/O de BD: recibe `ComprobanteData`
-(dominio) y devuelve bytes; el router lo sirve on-the-fly en
-`GET …/comprobantes/{id}.pdf`.
+Renderiza un recibo de pago **con marca**: banda de cabecera, emblema con las
+iniciales de la escuela, título "RECIBO DE PAGO", datos del deportista, detalle de
+cuotas cubiertas, total destacado y pie de agradecimiento + leyenda legal.
+
+Sin I/O de BD: recibe `ComprobanteData` (dominio) y devuelve bytes; el router lo
+sirve on-the-fly en `GET …/comprobantes/{id}.pdf` y en el recibo público tokenizado.
+
+Tipografía: fuentes *core* de fpdf2 (Helvetica) en codificación **latin-1**, que sí
+cubre acentos y ñ del español — así el recibo muestra "MÉTODO", "Categoría", etc.
+No embebemos TTF (evita un binario en el repo y que el runtime Linux tenga la fuente).
+`_latin1` degrada solo lo que latin-1 no cubre (em-dash, comillas tipográficas…).
 """
 
 from __future__ import annotations
 
+from datetime import datetime
 from decimal import Decimal
 
 from fpdf import FPDF
 
 from app.domain.ports.invoice import ComprobanteData, ComprobanteService
 
+# --------------------------------------------------------------------------- #
+# Paleta de marca (navy + verde, como el recibo de referencia)
+# --------------------------------------------------------------------------- #
+_NAVY = (26, 54, 93)  # #1A365D — banda de cabecera / encabezados de tabla
+_GREEN = (124, 179, 66)  # #7CB342 — emblema, badge, total pagado
+_INK = (33, 37, 41)  # texto principal
+_MUTED = (108, 117, 125)  # etiquetas / texto secundario
+_LIGHT = (247, 249, 251)  # relleno de filas alternas
+_WHITE = (255, 255, 255)
+_HEADER_TXT = (219, 228, 240)  # texto tenue sobre la banda navy
+
+_HEADER_H = 46.0  # alto de la banda de cabecera (mm)
+_ML = 15.0  # margen izquierdo (mm)
+_CONTENT_W = 180.0  # ancho de contenido (210 - 2*15)
+
+_MESES = (
+    "",
+    "enero",
+    "febrero",
+    "marzo",
+    "abril",
+    "mayo",
+    "junio",
+    "julio",
+    "agosto",
+    "septiembre",
+    "octubre",
+    "noviembre",
+    "diciembre",
+)
+_METODO_LABEL = {"EFECTIVO": "Efectivo", "QR": "QR"}
+
 
 class PdfComprobanteService(ComprobanteService):
-    """Genera el comprobante como PDF A4 en memoria."""
+    """Genera el recibo como PDF A4 en memoria, con la marca de la escuela."""
 
     def render_pdf(self, data: ComprobanteData) -> bytes:
         pdf = FPDF(orientation="P", unit="mm", format="A4")
+        pdf.set_margins(_ML, 12, _ML)
         pdf.set_auto_page_break(auto=True, margin=15)
         pdf.add_page()
 
-        # Encabezado: emisor (marca) + organización + título.
-        pdf.set_font("Helvetica", "B", 16)
-        pdf.cell(0, 10, _ascii(data.emisor), new_x="LMARGIN", new_y="NEXT")
-        pdf.set_font("Helvetica", "B", 13)
-        pdf.cell(0, 8, _ascii(data.org_nombre), new_x="LMARGIN", new_y="NEXT")
-        pdf.set_font("Helvetica", "B", 12)
-        pdf.cell(0, 8, "Recibo de pago", new_x="LMARGIN", new_y="NEXT")
-        pdf.set_font("Helvetica", "", 10)
-        pdf.cell(0, 6, f"N de recibo: {_ascii(data.numero_recibo)}", new_x="LMARGIN", new_y="NEXT")
-        pdf.cell(
-            0, 6, f"Fecha: {data.fecha.strftime('%Y-%m-%d %H:%M')}", new_x="LMARGIN", new_y="NEXT"
-        )
-        pdf.cell(0, 6, f"Metodo: {_ascii(data.metodo)}", new_x="LMARGIN", new_y="NEXT")
-        pdf.ln(4)
+        self._cabecera(pdf, data)
+        self._datos_deportista(pdf, data)
+        self._detalle_pago(pdf, data)
+        self._pie(pdf)
 
-        # Datos del deportista.
-        pdf.set_font("Helvetica", "B", 11)
-        pdf.cell(0, 7, "Deportista", new_x="LMARGIN", new_y="NEXT")
-        pdf.set_font("Helvetica", "", 10)
-        pdf.cell(0, 6, _ascii(data.deportista_nombre), new_x="LMARGIN", new_y="NEXT")
-        pdf.ln(4)
+        return bytes(pdf.output())
 
-        # Tabla de cuotas cubiertas (con Aplicado / Saldo — abonos parciales).
-        pdf.set_font("Helvetica", "B", 11)
-        pdf.cell(0, 7, "Cuotas cubiertas", new_x="LMARGIN", new_y="NEXT")
-        pdf.set_font("Helvetica", "B", 9)
-        pdf.cell(40, 7, "Periodo (inicio)", border=1)
-        pdf.cell(35, 7, "Vence", border=1)
-        pdf.cell(30, 7, f"Monto ({_ascii(data.moneda)})", border=1)
-        pdf.cell(30, 7, "Aplicado", border=1)
-        pdf.cell(30, 7, "Saldo", border=1, new_x="LMARGIN", new_y="NEXT")
+    # ------------------------------------------------------------------ #
+    # Banda de cabecera: emblema + escuela + título + folio/fecha
+    # ------------------------------------------------------------------ #
+    def _cabecera(self, pdf: FPDF, data: ComprobanteData) -> None:
+        pdf.set_fill_color(*_NAVY)
+        pdf.rect(0, 0, 210, _HEADER_H, "F")
+
+        # Emblema circular con las iniciales de la escuela (sin logo de archivo).
+        pdf.set_fill_color(*_GREEN)
+        pdf.ellipse(19, 13, 20, 20, "F")
+        pdf.set_text_color(*_WHITE)
+        pdf.set_font("Helvetica", "B", 15)
+        pdf.set_xy(19, 13)
+        pdf.cell(20, 20, _latin1(_iniciales(data.org_nombre)), align="C")
+
+        # Nombre de la escuela, centrado verticalmente junto al emblema.
+        pdf.set_font("Helvetica", "B", 15)
+        pdf.set_xy(43, 17)
+        pdf.cell(62, 9, _latin1(_encoge(data.org_nombre, 24)))
+
+        # Título "RECIBO DE PAGO" + badge de concepto (derecha).
+        pdf.set_text_color(*_WHITE)
+        pdf.set_font("Helvetica", "B", 21)
+        pdf.set_xy(105, 9)
+        pdf.cell(90, 12, "RECIBO DE PAGO", align="R")
+
+        pdf.set_fill_color(*_GREEN)
+        pdf.rect(150, 23, 45, 6.5, "F")
+        pdf.set_font("Helvetica", "B", 8)
+        pdf.set_xy(150, 23)
+        pdf.cell(45, 6.5, "MENSUALIDAD", align="C")
+
+        # Folio (N° de recibo) + fecha, alineados a la derecha.
         pdf.set_font("Helvetica", "", 9)
-        for linea in data.cuotas:
+        pdf.set_text_color(*_HEADER_TXT)
+        pdf.set_xy(105, 32)
+        pdf.cell(45, 5, "N° RECIBO", align="L")
+        pdf.set_text_color(*_WHITE)
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.cell(45, 5, _latin1(data.numero_recibo), align="R")
+
+        pdf.set_font("Helvetica", "", 9)
+        pdf.set_text_color(*_HEADER_TXT)
+        pdf.set_xy(105, 38)
+        pdf.cell(45, 5, "FECHA", align="L")
+        pdf.set_text_color(*_WHITE)
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.cell(45, 5, _latin1(_fecha_larga(data.fecha)), align="R")
+
+        pdf.set_text_color(*_INK)
+        pdf.set_y(_HEADER_H + 8)
+
+    # ------------------------------------------------------------------ #
+    # Datos del deportista + método de pago
+    # ------------------------------------------------------------------ #
+    def _datos_deportista(self, pdf: FPDF, data: ComprobanteData) -> None:
+        self._titulo_seccion(pdf, "DATOS DEL DEPORTISTA")
+        self._fila_dato(pdf, "Deportista", data.deportista_nombre)
+        metodo = _METODO_LABEL.get(data.metodo, data.metodo)
+        self._fila_dato(pdf, "Método de pago", metodo)
+        pdf.ln(4)
+
+    # ------------------------------------------------------------------ #
+    # Detalle de pago: tabla de cuotas + total + crédito
+    # ------------------------------------------------------------------ #
+    def _detalle_pago(self, pdf: FPDF, data: ComprobanteData) -> None:
+        self._titulo_seccion(pdf, "DETALLE DE PAGO")
+        moneda = _latin1(data.moneda)
+
+        # Encabezado de tabla (navy, texto blanco).
+        cols = (
+            ("Período", 45, "L"),
+            ("Vence", 33, "L"),
+            (f"Monto ({moneda})", 34, "R"),
+            ("Aplicado", 34, "R"),
+            ("Saldo", 34, "R"),
+        )
+        pdf.set_x(_ML)
+        pdf.set_fill_color(*_NAVY)
+        pdf.set_text_color(*_WHITE)
+        pdf.set_font("Helvetica", "B", 9)
+        for titulo, w, align in cols:
+            pdf.cell(w, 8, _latin1(titulo), align=align, fill=True)
+        pdf.ln(8)
+
+        # Filas de cuotas (relleno alterno para legibilidad).
+        pdf.set_font("Helvetica", "", 9)
+        for i, linea in enumerate(data.cuotas):
             aplicado = linea.monto_aplicado if linea.monto_aplicado is not None else linea.monto
-            pdf.cell(40, 7, _ascii(linea.periodo_inicio), border=1)
-            pdf.cell(35, 7, _ascii(linea.vence_el), border=1)
-            pdf.cell(30, 7, f"{linea.monto:.2f}", border=1)
-            pdf.cell(30, 7, f"{aplicado:.2f}", border=1)
-            pdf.cell(30, 7, f"{linea.saldo_restante:.2f}", border=1, new_x="LMARGIN", new_y="NEXT")
+            fill = i % 2 == 1
+            if fill:
+                pdf.set_fill_color(*_LIGHT)
+            pdf.set_x(_ML)
+            pdf.set_text_color(*_INK)
+            pdf.cell(45, 7.5, _latin1(linea.periodo_inicio), align="L", fill=fill)
+            pdf.set_text_color(*_MUTED)
+            pdf.cell(33, 7.5, _latin1(linea.vence_el), align="L", fill=fill)
+            pdf.set_text_color(*_INK)
+            pdf.cell(34, 7.5, f"{linea.monto:.2f}", align="R", fill=fill)
+            pdf.cell(34, 7.5, f"{aplicado:.2f}", align="R", fill=fill)
+            pdf.cell(34, 7.5, f"{linea.saldo_restante:.2f}", align="R", fill=fill)
+            pdf.ln(7.5)
 
-        # Total.
-        pdf.ln(2)
+        # Total pagado (banda verde destacada).
+        pdf.set_x(_ML)
+        pdf.set_fill_color(*_GREEN)
+        pdf.set_text_color(*_WHITE)
         pdf.set_font("Helvetica", "B", 11)
-        pdf.cell(120, 8, "Total", border=0)
-        pdf.cell(
-            45,
-            8,
-            f"{data.monto_total:.2f} {_ascii(data.moneda)}",
-            border=0,
-            new_x="LMARGIN",
-            new_y="NEXT",
-        )
+        pdf.cell(112, 10, "  TOTAL PAGADO", align="L", fill=True)
+        pdf.cell(68, 10, f"{data.monto_total:.2f} {moneda}  ", align="R", fill=True)
+        pdf.ln(10)
 
-        # Pie: crédito aplicado / saldo a favor generado (defaults 0 ⇒ QR igual que hoy).
+        # Crédito aplicado / saldo a favor generado (Abonos). Defaults 0 ⇒ no aparece.
         if data.credito_aplicado > Decimal("0") or data.credito_generado > Decimal("0"):
+            pdf.ln(2)
             pdf.set_font("Helvetica", "", 9)
+            pdf.set_text_color(*_MUTED)
             if data.credito_aplicado > Decimal("0"):
-                pdf.cell(120, 6, "Credito aplicado", border=0)
-                pdf.cell(
-                    45,
-                    6,
-                    f"-{data.credito_aplicado:.2f} {_ascii(data.moneda)}",
-                    border=0,
-                    new_x="LMARGIN",
-                    new_y="NEXT",
-                )
+                pdf.set_x(_ML)
+                pdf.cell(112, 6, "Crédito aplicado", align="L")
+                pdf.cell(68, 6, f"-{data.credito_aplicado:.2f} {moneda}", align="R")
+                pdf.ln(6)
             if data.credito_generado > Decimal("0"):
-                pdf.cell(120, 6, "Saldo a favor generado", border=0)
-                pdf.cell(
-                    45,
-                    6,
-                    f"{data.credito_generado:.2f} {_ascii(data.moneda)}",
-                    border=0,
-                    new_x="LMARGIN",
-                    new_y="NEXT",
-                )
+                pdf.set_x(_ML)
+                pdf.cell(112, 6, "Saldo a favor generado", align="L")
+                pdf.cell(68, 6, f"{data.credito_generado:.2f} {moneda}", align="R")
+                pdf.ln(6)
 
-        # Pie legal: este recibo no reemplaza a una factura SIN (fase 2).
-        pdf.ln(6)
-        pdf.set_font("Helvetica", "I", 9)
-        pdf.cell(
-            0,
-            6,
-            _ascii("Documento no válido como factura"),
-            new_x="LMARGIN",
-            new_y="NEXT",
-        )
+    # ------------------------------------------------------------------ #
+    # Pie: agradecimiento
+    # ------------------------------------------------------------------ #
+    def _pie(self, pdf: FPDF) -> None:
+        pdf.ln(14)
+        pdf.set_text_color(*_NAVY)
+        pdf.set_font("Helvetica", "I", 13)
+        pdf.set_x(_ML)
+        pdf.cell(_CONTENT_W, 8, "Gracias por confiar en nuestro equipo", align="C")
 
-        out = pdf.output()
-        return bytes(out)
+    # ------------------------------------------------------------------ #
+    # Helpers de layout
+    # ------------------------------------------------------------------ #
+    def _titulo_seccion(self, pdf: FPDF, titulo: str) -> None:
+        """Encabezado de sección con barra de acento verde a la izquierda."""
+        y = pdf.get_y()
+        pdf.set_fill_color(*_GREEN)
+        pdf.rect(_ML, y + 0.5, 2.6, 5, "F")
+        pdf.set_text_color(*_NAVY)
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.set_xy(_ML + 5, y)
+        pdf.cell(_CONTENT_W - 5, 6, _latin1(titulo))
+        pdf.ln(9)
+
+    def _fila_dato(self, pdf: FPDF, etiqueta: str, valor: str) -> None:
+        """Fila etiqueta (muted) + valor (ink) del bloque de datos."""
+        pdf.set_x(_ML)
+        pdf.set_text_color(*_MUTED)
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.cell(40, 6.5, _latin1(etiqueta.upper()))
+        pdf.set_text_color(*_INK)
+        pdf.set_font("Helvetica", "", 10)
+        pdf.cell(_CONTENT_W - 40, 6.5, _latin1(valor))
+        pdf.ln(6.5)
 
 
-def _ascii(text: str) -> str:
-    """fpdf2 con fuentes core (Helvetica) usa latin-1; degradamos a ASCII seguro
-    para no romper con tildes/ñ (suficiente para el comprobante de dev)."""
-    return text.encode("ascii", "replace").decode("ascii")
+# --------------------------------------------------------------------------- #
+# Utilidades de texto
+# --------------------------------------------------------------------------- #
+_LATIN1_MAP = {
+    "—": "-",  # em dash
+    "–": "-",  # en dash
+    "‘": "'",  # comilla simple izq.
+    "’": "'",  # comilla simple der.
+    "“": '"',  # comilla doble izq.
+    "”": '"',  # comilla doble der.
+    "…": "...",  # puntos suspensivos
+    " ": " ",  # espacio duro
+}
+
+
+def _latin1(text: str) -> str:
+    """Sanitiza a latin-1 (cubre acentos/ñ del español); degrada lo que no cabe.
+
+    Las fuentes core de fpdf2 usan latin-1, que SÍ incluye á/é/í/ó/ú/ñ/¿/¡. Solo
+    reemplazamos caracteres fuera de latin-1 (guiones largos, comillas tipográficas)
+    por equivalentes ASCII; cualquier otro cae a "?" en vez de romper el render.
+    """
+    for uni, ascii_ in _LATIN1_MAP.items():
+        text = text.replace(uni, ascii_)
+    return text.encode("latin-1", "replace").decode("latin-1")
+
+
+def _encoge(text: str, largo: int) -> str:
+    """Recorta a `largo` caracteres con puntos suspensivos si se pasa (una sola línea)."""
+    text = text.strip()
+    return text if len(text) <= largo else text[: largo - 1].rstrip() + "…"
+
+
+def _iniciales(nombre: str) -> str:
+    """Iniciales de la escuela para el emblema (1-2 letras)."""
+    palabras = [p for p in nombre.split() if p]
+    if not palabras:
+        return "?"
+    if len(palabras) == 1:
+        return palabras[0][:2].upper()
+    return (palabras[0][0] + palabras[1][0]).upper()
+
+
+def _fecha_larga(dt: datetime) -> str:
+    """Fecha en español largo: `25 de mayo de 2026`."""
+    return f"{dt.day} de {_MESES[dt.month]} de {dt.year}"
