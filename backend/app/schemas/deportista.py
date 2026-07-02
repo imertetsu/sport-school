@@ -10,8 +10,22 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, field_validator
+
+
+# CI opcional normalizado: vacío/solo-espacios -> None (NUNCA cadena vacía '', que el
+# índice único parcial `WHERE ci IS NOT NULL` SÍ indexaría y haría colisionar a dos
+# registros "en blanco"). Se recorta y se conserva "0" (placeholder "presentará
+# luego", no-único por diseño). Aplica a deportista y tutor en alta/edición.
+def _ci_a_none_si_vacio(v: object) -> object:
+    if isinstance(v, str):
+        return v.strip() or None
+    return v
+
+
+CiOpcional = Annotated[str | None, BeforeValidator(_ci_a_none_si_vacio)]
 
 
 # --------------------------------------------------------------------------- #
@@ -45,7 +59,7 @@ class TutorIn(BaseModel):
 
     nombres: str
     telefono: str | None = None
-    ci: str | None = None
+    ci: CiOpcional = None
     parentesco: str | None = None
     responsable_pago: bool = False
 
@@ -63,7 +77,7 @@ class TutorUpsert(BaseModel):
     id: uuid.UUID | None = None
     nombres: str
     telefono: str | None = None
-    ci: str | None = None
+    ci: CiOpcional = None
     parentesco: str | None = None
     responsable_pago: bool = False
 
@@ -146,11 +160,11 @@ class DeportistaCreate(BaseModel):
     ap_paterno: str | None = None
     ap_materno: str | None = None
     nombres: str
-    # CI del DEPORTISTA: OBLIGATORIO en el alta (regla de negocio). La columna en BD
-    # queda nullable (datos viejos) y el índice único parcial `(org_id, ci) WHERE ci
-    # IS NOT NULL` no cambia; el enforcement es a nivel API. El CI del TUTOR y del
-    # ENTRENADOR siguen siendo opcionales.
-    ci: str
+    # CI del DEPORTISTA: OPCIONAL (se puede dejar vacío -> null cuando aún no se tiene
+    # el documento). Vacío se normaliza a None (no ''), y "0" sigue admitido como
+    # placeholder "presentará luego". El índice único parcial excluye NULL y '0', así
+    # que varios deportistas sin CI no colisionan.
+    ci: CiOpcional = None
     fecha_nac: date | None = None
     # Texto LEGACY (se conserva, S2): disciplina escrita a mano.
     disciplina: str | None = None
@@ -165,13 +179,6 @@ class DeportistaCreate(BaseModel):
     tutores: list[TutorIn] = Field(..., min_length=1)
     consentimiento: ConsentimientoIn
     inscripcion: InscripcionIn | None = None
-
-    @field_validator("ci")
-    @classmethod
-    def _ci_no_vacio(cls, v: str) -> str:
-        if not v or not v.strip():
-            raise ValueError("El CI del deportista es obligatorio")
-        return v.strip()
 
     @field_validator("tutores")
     @classmethod
@@ -194,7 +201,7 @@ class DeportistaUpdate(BaseModel):
     ap_paterno: str | None = None
     ap_materno: str | None = None
     nombres: str | None = None
-    ci: str | None = None
+    ci: CiOpcional = None
     fecha_nac: date | None = None
     disciplina: str | None = None
     disciplina_id: uuid.UUID | None = None

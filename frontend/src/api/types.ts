@@ -204,9 +204,10 @@ export interface DeportistaCreate {
   ap_paterno: string;
   ap_materno: string;
   nombres: string;
-  // CI del DEPORTISTA: OBLIGATORIO (regla de negocio; el backend lo exige -> 422
-  // si falta/vacío). El CI del tutor sí es opcional (ver TutorCreate.ci).
-  ci: string;
+  // CI del DEPORTISTA: OPCIONAL. "" en el cliente => null (aún no se tiene el
+  // documento); el backend normaliza vacío a null. "0" sigue admitido como
+  // placeholder. El índice único parcial excluye NULL/'0', así que no colisionan.
+  ci?: string | null;
   fecha_nac: string; // date
   // Texto LEGACY (S2): opcional. El backend lo deriva del FK si no se envía.
   disciplina?: string | null;
@@ -257,7 +258,7 @@ export interface DeportistaUpdate {
   ap_paterno?: string;
   ap_materno?: string;
   nombres?: string;
-  ci?: string;
+  ci?: string | null;
   fecha_nac?: string; // date
   // Texto LEGACY (S2): opcional; el backend lo deriva del FK si no se envía.
   disciplina?: string | null;

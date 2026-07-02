@@ -16,6 +16,7 @@ from datetime import UTC, date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, or_, select
+from sqlalchemy.exc import IntegrityError, MultipleResultsFound
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
@@ -362,6 +363,17 @@ def create_deportista(
     except deportista_svc.DisciplinaInvalida as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
+    except (IntegrityError, MultipleResultsFound) as exc:
+        # Backstop: una colisión de CI (deportista o tutor) que el dedup proactivo no
+        # atrapó NUNCA debe ser un 500. Se traduce a 409 con una guía accionable.
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "No se pudo registrar por un CI duplicado. Revisá el CI del deportista "
+                "y de sus tutores (podés dejarlo vacío si aún no lo tienes)."
+            ),
         ) from exc
     return get_deportista(deportista_id=deportista.id, user=user, db=db)
 

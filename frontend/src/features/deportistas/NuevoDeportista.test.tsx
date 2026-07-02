@@ -315,12 +315,13 @@ describe('NuevoDeportista — OCR + recuperar-por-CI + disciplina (S3)', () => {
     ).toBeInTheDocument();
   });
 
-  it('no envía si falta el CI del deportista (obligatorio) y muestra el error', async () => {
+  it('envía sin CI del deportista (opcional -> se manda null)', async () => {
     const user = userEvent.setup();
+    crearDeportistaMock.mockResolvedValue({ id: 'dep-8' });
     renderForm();
     await screen.findByText('Centro');
 
-    // Todo lo demás válido, pero SIN CI del deportista.
+    // Todo lo requerido válido, pero SIN CI del deportista (ahora es opcional).
     await user.type(screen.getByLabelText(/Apellido paterno/), 'Quispe');
     await user.type(screen.getAllByLabelText(/^Nombres/)[0], 'Mateo');
     await user.type(screen.getByLabelText(/Fecha de nacimiento/), '2014-03-10');
@@ -328,13 +329,14 @@ describe('NuevoDeportista — OCR + recuperar-por-CI + disciplina (S3)', () => {
     await user.selectOptions(screen.getByLabelText(/Sucursal/), 's1');
     await user.type(screen.getAllByLabelText(/^Nombres/)[1], 'Rosa');
     await user.click(screen.getByRole('checkbox', { name: /consentimiento/i }));
+    await user.type(screen.getByLabelText(/Cuota mensual/), '150');
+    await user.type(screen.getByLabelText(/Fecha de inscripción/), '2024-01-15');
 
     await user.click(screen.getByRole('button', { name: 'Crear deportista' }));
 
-    expect(crearDeportistaMock).not.toHaveBeenCalled();
-    expect(
-      screen.getByText('El CI del deportista es obligatorio.'),
-    ).toBeInTheDocument();
+    await waitFor(() => expect(crearDeportistaMock).toHaveBeenCalledTimes(1));
+    // El CI vacío viaja como null (no cadena vacía).
+    expect(crearDeportistaMock.mock.calls[0][0]).toMatchObject({ ci: null });
   });
 
   it('envía cuando el CI del deportista está presente (CI de tutor opcional)', async () => {

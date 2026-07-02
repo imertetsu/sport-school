@@ -105,7 +105,7 @@ def _body(
     tutores: list[TutorIn],
     disciplina_id: uuid.UUID | None = None,
 ) -> DeportistaCreate:
-    # El CI del DEPORTISTA es OBLIGATORIO (str, no nullable a nivel schema).
+    # El CI del deportista es OPCIONAL; este helper siempre pasa uno explícito.
     return DeportistaCreate(
         sucursal_id=suc_id,
         nombres=nombres,
@@ -149,10 +149,9 @@ def test_dedup_deportista_mismo_ci_misma_org(app_engine: Engine, ci_fixture: dic
 # --------------------------------------------------------------------------- #
 # (b) múltiples TUTORES con ci=NULL permitidos (índice único PARCIAL)
 #
-# El "múltiples NULL conviven" aplica a TUTORES: el CI del deportista es ahora
-# OBLIGATORIO a nivel schema, así que los deportistas llevan CIs únicos. Lo que se
-# prueba aquí es que dos tutores con `ci=None` no chocan con el índice parcial
-# `(org_id, ci) WHERE ci IS NOT NULL`.
+# El "múltiples NULL conviven" aplica tanto a TUTORES como a DEPORTISTAS (el CI del
+# deportista es opcional). Aquí los deportistas llevan CI propio y se prueba que dos
+# tutores con `ci=None` no chocan con el índice parcial `(org_id, ci) WHERE ci IS NOT NULL`.
 # --------------------------------------------------------------------------- #
 @pytest.mark.db
 def test_multiples_ci_null_permitidos(app_engine: Engine, ci_fixture: dict) -> None:

@@ -24,7 +24,7 @@ from pydantic import ValidationError
 _BASE_BODY: dict[str, Any] = {
     "sucursal_id": "11111111-1111-1111-1111-111111111111",
     "nombres": "Test Deportista",
-    # El CI del DEPORTISTA es OBLIGATORIO a nivel schema (regla de negocio).
+    # El CI del DEPORTISTA es OPCIONAL; aquí damos uno explícito para los casos base.
     "ci": "CI-12345678",
     "consentimiento": {"version_terminos": "v1", "canal": "PRESENCIAL"},
 }
@@ -58,27 +58,25 @@ def test_deportista_create_schema_sin_consentimiento_falla() -> None:
         DeportistaCreate(**body)  # type: ignore[arg-type]
 
 
-def test_deportista_create_schema_sin_ci_falla() -> None:
-    """CI del DEPORTISTA OBLIGATORIO: sin `ci` (o vacío) -> ValidationError (=> 422).
-
-    Refuerza la asimetría: el deportista DEBE llevar CI; el TUTOR no.
+def test_deportista_create_schema_ci_opcional_normaliza_vacio() -> None:
+    """CI del DEPORTISTA OPCIONAL: ausente o vacío/espacios -> None (nunca ''), se
+    recorta y "0" se conserva como placeholder. Así varios deportistas sin CI no
+    colisionan con el índice único parcial (que sí indexaría la cadena vacía).
     """
-    # Sin `ci` en absoluto.
-    body = {
+    base = {
         "sucursal_id": _BASE_BODY["sucursal_id"],
         "nombres": "Sin CI",
         "tutores": [{"nombres": "Tutor 1"}],
         "consentimiento": {"version_terminos": "v1"},
     }
-    with pytest.raises(ValidationError):
-        DeportistaCreate(**body)  # type: ignore[arg-type]
-
-    # CI presente pero vacío / solo espacios -> también rechazado (validador strip).
+    # Sin `ci` en absoluto -> None (no bloquea el alta).
+    assert DeportistaCreate(**base).ci is None  # type: ignore[arg-type]
+    # Vacío / solo espacios -> None (no cadena vacía).
     for ci_vacio in ("", "   "):
-        body_vacio = dict(body)
-        body_vacio["ci"] = ci_vacio
-        with pytest.raises(ValidationError):
-            DeportistaCreate(**body_vacio)  # type: ignore[arg-type]
+        assert DeportistaCreate(**{**base, "ci": ci_vacio}).ci is None  # type: ignore[arg-type]
+    # Con espacios alrededor -> recortado; "0" -> conservado (placeholder).
+    assert DeportistaCreate(**{**base, "ci": "  12345  "}).ci == "12345"  # type: ignore[arg-type]
+    assert DeportistaCreate(**{**base, "ci": "0"}).ci == "0"  # type: ignore[arg-type]
 
 
 def test_deportista_create_tutor_sin_ci_ok() -> None:
@@ -89,6 +87,20 @@ def test_deportista_create_tutor_sin_ci_ok() -> None:
     obj = DeportistaCreate(**body)  # type: ignore[arg-type]
     assert obj.ci == "CI-12345678"
     assert obj.tutores[0].ci is None
+
+
+def test_tutor_ci_vacio_se_normaliza_a_none() -> None:
+    """CI del TUTOR vacío/espacios -> None (nunca ''): evita el 500 por colisión del
+    índice único parcial `(org_id, ci) WHERE ci IS NOT NULL` al registrar dos tutores
+    sin CI (dos '' chocarían; dos NULL conviven)."""
+    body = dict(_BASE_BODY)
+    body["tutores"] = [
+        {"nombres": "Tutor A", "ci": ""},
+        {"nombres": "Tutor B", "ci": "   "},
+    ]
+    obj = DeportistaCreate(**body)  # type: ignore[arg-type]
+    assert obj.tutores[0].ci is None
+    assert obj.tutores[1].ci is None
 
 
 def test_deportista_create_disciplina_id_opcional() -> None:

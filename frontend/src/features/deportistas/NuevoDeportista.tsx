@@ -341,8 +341,8 @@ export function NuevoDeportista() {
     const errs: Record<string, string> = {};
     if (!apPaterno.trim()) errs.ap_paterno = 'Requerido';
     if (!nombres.trim()) errs.nombres = 'Requerido';
-    // CI del deportista: OBLIGATORIO. Bloquea el submit si está vacío.
-    if (!ci.trim()) errs.ci = 'El CI del deportista es obligatorio.';
+    // CI del deportista: OPCIONAL (se puede dejar vacío -> null cuando aún no se tiene
+    // el documento). No bloquea el submit.
     if (!fechaNac) errs.fecha_nac = 'Requerido';
     if (!disciplinaId) errs.disciplina_id = 'Requerido';
     if (!sucursalId) errs.sucursal_id = 'Selecciona una sucursal';
@@ -434,7 +434,7 @@ export function NuevoDeportista() {
           ap_paterno: apPaterno.trim(),
           ap_materno: apMaterno.trim(),
           nombres: nombres.trim(),
-          ci: ci.trim(),
+          ci: ci.trim() || null,
           fecha_nac: fechaNac,
           disciplina_id: disciplinaId || null,
           sucursal_id: sucursalId,
@@ -459,7 +459,7 @@ export function NuevoDeportista() {
         ap_paterno: apPaterno.trim(),
         ap_materno: apMaterno.trim(),
         nombres: nombres.trim(),
-        ci: ci.trim(),
+        ci: ci.trim() || null,
         fecha_nac: fechaNac,
         // FK canónico (S3): "" => null. El backend valida y deriva el nombre legacy.
         disciplina_id: disciplinaId || null,
@@ -615,7 +615,7 @@ export function NuevoDeportista() {
               required
             />
             <Field
-              label="CI del deportista"
+              label="CI del deportista (opcional)"
               value={ci}
               onChange={(e) => {
                 setCi(e.target.value);
