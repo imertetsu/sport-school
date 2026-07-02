@@ -62,6 +62,7 @@ const EFECTIVO_CONFIRMADO: PagoListItem = {
   anulable: true,
   motivo_anulacion: null,
   anulado_en: null,
+  cuotas: [],
 };
 
 const QR_CONFIRMADO: PagoListItem = {
@@ -75,6 +76,7 @@ const QR_CONFIRMADO: PagoListItem = {
   anulable: false,
   motivo_anulacion: null,
   anulado_en: null,
+  cuotas: [],
 };
 
 const YA_ANULADO: PagoListItem = {
@@ -88,6 +90,7 @@ const YA_ANULADO: PagoListItem = {
   anulable: false,
   motivo_anulacion: 'Monto equivocado',
   anulado_en: '2026-06-18T12:00:00Z',
+  cuotas: [],
 };
 
 function pagina(items: PagoListItem[]): PagosListResponse {
