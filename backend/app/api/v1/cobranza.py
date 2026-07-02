@@ -114,7 +114,12 @@ def listar_cuotas(
     if estado:
         base = base.where(Cuota.estado == estado)
     if deportista_id is not None:
+        # Vista dirigida (perfil de un deportista): muestra su historial completo,
+        # incluso si está dado de baja.
         base = base.where(Deportista.id == deportista_id)
+    else:
+        # Listado general (Panel): oculta las cuotas de deportistas dados de baja.
+        base = base.where(Deportista.activo.is_(True))
     if sucursal_id is not None:
         base = base.where(Deportista.sucursal_id == sucursal_id)
 
@@ -201,14 +206,23 @@ def panel(
     # Cuotas pendientes / vencidas (count + SALDO, no monto nominal — abonos).
     # Saldo = monto - monto_pagado. PARCIAL cuenta como pendiente (saldo > 0).
     saldo_expr = Cuota.monto - Cuota.monto_pagado
+    # Solo cuotas de deportistas ACTIVOS: los dados de baja no cuentan en los KPIs
+    # (su deuda queda en el historial, no en "por cobrar" / "en mora").
+    cuotas_activas = (
+        select(Cuota.estado.label("estado"), saldo_expr.label("saldo"))
+        .join(Inscripcion, Inscripcion.id == Cuota.inscripcion_id)
+        .join(Deportista, Deportista.id == Inscripcion.deportista_id)
+        .where(Deportista.activo.is_(True))
+        .subquery()
+    )
     pend = db.execute(
-        select(func.count(), func.coalesce(func.sum(saldo_expr), 0)).where(
-            Cuota.estado.in_(("PENDIENTE", "PARCIAL"))
+        select(func.count(), func.coalesce(func.sum(cuotas_activas.c.saldo), 0)).where(
+            cuotas_activas.c.estado.in_(("PENDIENTE", "PARCIAL"))
         )
     ).one()
     venc = db.execute(
-        select(func.count(), func.coalesce(func.sum(saldo_expr), 0)).where(
-            Cuota.estado == "VENCIDO"
+        select(func.count(), func.coalesce(func.sum(cuotas_activas.c.saldo), 0)).where(
+            cuotas_activas.c.estado == "VENCIDO"
         )
     ).one()
 
@@ -230,7 +244,7 @@ def panel(
         .join(Inscripcion, Inscripcion.id == Cuota.inscripcion_id)
         .join(Deportista, Deportista.id == Inscripcion.deportista_id)
         .outerjoin(Categoria, Categoria.id == Deportista.categoria_id)
-        .where(Cuota.estado == "VENCIDO")
+        .where(Cuota.estado == "VENCIDO", Deportista.activo.is_(True))
         .group_by(
             Deportista.id,
             Deportista.ap_paterno,

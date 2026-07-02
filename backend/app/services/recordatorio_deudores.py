@@ -112,7 +112,11 @@ def deudores_de_sucursal(db: Session, *, sucursal_id: uuid.UUID) -> list[Deudor]
         .select_from(Cuota)
         .join(Inscripcion, Inscripcion.id == Cuota.inscripcion_id)
         .join(Deportista, Deportista.id == Inscripcion.deportista_id)
-        .where(Cuota.estado == "VENCIDO", Deportista.sucursal_id == sucursal_id)
+        .where(
+            Cuota.estado == "VENCIDO",
+            Deportista.sucursal_id == sucursal_id,
+            Deportista.activo.is_(True),
+        )
         .group_by(Deportista.id, Deportista.ap_paterno, Deportista.ap_materno, Deportista.nombres)
         .order_by(monto_adeudado.desc())
     )

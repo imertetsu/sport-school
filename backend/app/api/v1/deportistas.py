@@ -15,7 +15,7 @@ import uuid
 from datetime import UTC, date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import IntegrityError, MultipleResultsFound
 from sqlalchemy.orm import Session
 
@@ -436,6 +436,16 @@ def baja_deportista(
             status_code=status.HTTP_404_NOT_FOUND, detail="Deportista no encontrado"
         )
     deportista.activo = False
+    # Desactiva la(s) inscripción(es): frena la generación de cuotas nuevas (el
+    # generador solo itera inscripciones ACTIVA) y saca al deportista del conteo de
+    # "activos". Las cuotas YA generadas se conservan (historial), pero dejan de
+    # aparecer en cobranza (Panel / por cobrar / morosidad filtran por
+    # `deportista.activo`). Reversible en `/reactivar`.
+    db.execute(
+        update(Inscripcion)
+        .where(Inscripcion.deportista_id == deportista.id)
+        .values(estado="INACTIVA")
+    )
     db.flush()
     return get_deportista(deportista_id=deportista.id, user=user, db=db)
 
@@ -462,5 +472,12 @@ def reactivar_deportista(
             status_code=status.HTTP_404_NOT_FOUND, detail="Deportista no encontrado"
         )
     deportista.activo = True
+    # Reactiva la(s) inscripción(es): reanuda la generación de cuotas y vuelve a
+    # contarlo como activo (espejo exacto de la baja).
+    db.execute(
+        update(Inscripcion)
+        .where(Inscripcion.deportista_id == deportista.id)
+        .values(estado="ACTIVA")
+    )
     db.flush()
     return get_deportista(deportista_id=deportista.id, user=user, db=db)
