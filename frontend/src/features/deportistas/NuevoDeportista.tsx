@@ -143,9 +143,20 @@ export function NuevoDeportista() {
     const controller = new AbortController();
     api
       .categorias(sucursalId, controller.signal)
-      .then(setCategorias)
-      .catch(() => setCategorias([]));
-    setCategoriaId('');
+      .then((cats) => {
+        setCategorias(cats);
+        // Limpia la categoría SOLO si no pertenece a esta sucursal. Así la precarga
+        // en edición (que fija sucursal y categoría juntas) sobrevive —antes este
+        // efecto la borraba al dispararse por el cambio de sucursal—, pero al
+        // cambiar de sucursal manualmente sí se limpia (su categoría no está en la
+        // nueva lista). Sin esto, editar y guardar mandaba categoria_id=null y
+        // borraba la categoría real del deportista.
+        setCategoriaId((prev) => (prev && cats.some((c) => c.id === prev) ? prev : ''));
+      })
+      .catch(() => {
+        setCategorias([]);
+        setCategoriaId('');
+      });
     return () => controller.abort();
   }, [sucursalId]);
 
