@@ -31,6 +31,7 @@ from app.schemas.deportista import (
     TutorIn,
     TutorUpsert,
 )
+from app.services import generacion
 
 
 # --------------------------------------------------------------------------- #
@@ -356,12 +357,21 @@ def _reconciliar_tutores(
 def _upsert_inscripcion(
     db: Session, deportista: Deportista, ins: InscripcionIn, *, org_id: uuid.UUID
 ) -> None:
-    """Crea o actualiza la inscripción (cobro) del deportista.
+    """Crea o actualiza la inscripción (cobro) del deportista y sincroniza sus cuotas.
 
     Sin inscripción previa -> la crea. Con una existente -> actualiza los campos
     obligatorios (monto, fecha, estado) y los opcionales SOLO si vienen no nulos
     (preserva `modo_cobro`/`dia_corte`/`disciplina` cuando el formulario simple no los
-    envía). No genera cuotas: eso lo hace el motor de cuotas (cron / "Generar cuotas").
+    envía).
+
+    Cuotas (alta retroactiva + cambio de cuota "hacia adelante"): tras persistir la
+    inscripción se **rellenan las cuotas** desde `fecha_inscripcion` hasta el período
+    corriente (`generar_cuotas_historicas`, idempotente) — así un alumno inscrito en el
+    pasado tiene sus cuotas mes a mes y se pueden cobrar. Además, las cuotas futuras sin
+    pago se **reajustan** al monto vigente (`reajustar_monto_cuotas_futuras`, no-op salvo
+    las que difieran); las pagadas/parciales y los períodos ya vencidos conservan su
+    monto. Esto corre en la edición (ADMIN); el alta por `POST /deportistas` sigue
+    delegando la generación al motor/cron.
     """
     existente = (
         db.execute(select(Inscripcion).where(Inscripcion.deportista_id == deportista.id))
@@ -369,19 +379,21 @@ def _upsert_inscripcion(
         .first()
     )
     if existente is None:
-        db.add(
-            Inscripcion(
-                org_id=org_id,
-                deportista_id=deportista.id,
-                disciplina=ins.disciplina,
-                fecha_inscripcion=ins.fecha_inscripcion,
-                monto_mensual=ins.monto_mensual,
-                modo_cobro=ins.modo_cobro,
-                dia_corte=ins.dia_corte,
-                estado=ins.estado,
-            )
+        nueva = Inscripcion(
+            org_id=org_id,
+            deportista_id=deportista.id,
+            disciplina=ins.disciplina,
+            fecha_inscripcion=ins.fecha_inscripcion,
+            monto_mensual=ins.monto_mensual,
+            modo_cobro=ins.modo_cobro,
+            dia_corte=ins.dia_corte,
+            estado=ins.estado,
         )
+        db.add(nueva)
+        db.flush()  # necesita id + estar persistida para generar cuotas
+        generacion.generar_cuotas_historicas(db, inscripcion_id=nueva.id)
         return
+
     existente.fecha_inscripcion = ins.fecha_inscripcion
     existente.monto_mensual = ins.monto_mensual
     existente.estado = ins.estado
@@ -391,6 +403,16 @@ def _upsert_inscripcion(
         existente.modo_cobro = ins.modo_cobro
     if ins.dia_corte is not None:
         existente.dia_corte = ins.dia_corte
+    db.flush()
+
+    # Las cuotas futuras SIN pago siguen la cuota mensual vigente (el cambio de cuota
+    # aplica "hacia adelante"). Es un no-op salvo para las que difieran del monto
+    # actual; NO toca pagadas/parciales ni períodos ya vencidos.
+    generacion.reajustar_monto_cuotas_futuras(
+        db, inscripcion_id=existente.id, nuevo_monto=existente.monto_mensual
+    )
+    # Alta retroactiva: rellena las cuotas desde la fecha de inscripción (idempotente).
+    generacion.generar_cuotas_historicas(db, inscripcion_id=existente.id)
 
 
 def actualizar_deportista(
