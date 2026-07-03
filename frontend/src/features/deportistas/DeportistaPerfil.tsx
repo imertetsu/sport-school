@@ -31,6 +31,7 @@ function HistorialPagos({ deportistaId }: { deportistaId: string }) {
   const [pagos, setPagos] = useState<PagoListItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reciboEnVuelo, setReciboEnVuelo] = useState<string | null>(null);
+  const [kardexEnVuelo, setKardexEnVuelo] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -66,6 +67,21 @@ function HistorialPagos({ deportistaId }: { deportistaId: string }) {
     }
   }
 
+  // Kardex (estado de cuenta): consolidado de TODOS los pagos, imprimible para el padre.
+  async function verKardex() {
+    setKardexEnVuelo(true);
+    setError(null);
+    try {
+      const url = await api.kardexPdfUrl(deportistaId);
+      window.open(url, '_blank', 'noopener');
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch {
+      setError('No se pudo generar el kardex.');
+    } finally {
+      setKardexEnVuelo(false);
+    }
+  }
+
   if (error && pagos === null) {
     return (
       <Card>
@@ -97,6 +113,14 @@ function HistorialPagos({ deportistaId }: { deportistaId: string }) {
           {error}
         </div>
       )}
+      <div className="perfil-pagos__head">
+        <p className="perfil-pagos__head-text">
+          {pagos.length} {pagos.length === 1 ? 'pago registrado' : 'pagos registrados'}
+        </p>
+        <Button variant="secondary" size="sm" onClick={verKardex} disabled={kardexEnVuelo}>
+          {kardexEnVuelo ? 'Generando kardex…' : 'Descargar kardex de pagos'}
+        </Button>
+      </div>
       <div className="perfil-pagos__wrap">
         <table className="perfil-pagos">
           <thead>

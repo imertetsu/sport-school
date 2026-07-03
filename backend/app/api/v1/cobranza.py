@@ -667,3 +667,39 @@ def comprobante_pdf(
             "Content-Disposition": f'inline; filename="comprobante_{pago_id}.pdf"',
         },
     )
+
+
+# --------------------------------------------------------------------------- #
+# GET /cobranza/kardex/{deportista_id}.pdf
+# --------------------------------------------------------------------------- #
+@router.get("/kardex/{deportista_id}.pdf")
+def kardex_pdf(
+    deportista_id: uuid.UUID,
+    _user: CurrentUser = Depends(set_tenant_context),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Kardex (estado de cuenta) del deportista: TODOS sus pagos confirmados, imprimible.
+
+    Es el consolidado que los padres pueden ver/descargar: una fila por pago (fecha de
+    pago, recibo, meses cubiertos, vencimiento y monto) + total pagado, con la marca de
+    la app. Si el deportista no tiene pagos, el PDF sale con "Sin pagos registrados aún".
+    """
+    deportista = db.execute(
+        select(Deportista).where(Deportista.id == deportista_id)
+    ).scalar_one_or_none()
+    if deportista is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Deportista no encontrado"
+        )
+    org = db.execute(
+        select(Organizacion).where(Organizacion.id == deportista.org_id)
+    ).scalar_one()
+    data = pagos_svc.construir_kardex_data(db, deportista=deportista, org=org)
+    pdf_bytes = get_comprobante_service().render_kardex_pdf(data)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'inline; filename="kardex_{deportista_id}.pdf"',
+        },
+    )

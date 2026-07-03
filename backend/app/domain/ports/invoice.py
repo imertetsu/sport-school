@@ -60,6 +60,41 @@ class ComprobanteData:
     emisor: str = "SnapCoding - LatinoSport"
 
 
+@dataclass(frozen=True)
+class KardexPagoLinea:
+    """Una fila del kardex: un pago hecho, con su fecha, concepto y vencimiento.
+
+    Los campos vienen ya formateados como texto (el constructor arma las etiquetas de
+    meses y el rango de vencimiento); el adaptador PDF solo los pinta.
+    """
+
+    fecha_pago: str
+    numero_recibo: str
+    concepto: str  # meses cubiertos, p.ej. "feb, mar 2026"
+    vence: str  # vencimiento de la(s) cuota(s): fecha o rango "12/03–12/06/2026"
+    monto: Decimal
+    metodo: str
+    estado: str
+
+
+@dataclass(frozen=True)
+class KardexData:
+    """Datos para el KARDEX de pagos de un deportista (estado de cuenta imprimible).
+
+    Es el consolidado de TODOS sus pagos confirmados: una fila por pago. Estructura de
+    dominio (sin BD/HTTP); el adaptador la convierte en PDF.
+    """
+
+    org_nombre: str
+    moneda: str
+    deportista_nombre: str
+    fecha_emision: datetime
+    total_pagado: Decimal
+    num_pagos: int
+    pagos: list[KardexPagoLinea] = field(default_factory=list)
+    emisor: str = "SnapCoding - LatinoSport"
+
+
 @runtime_checkable
 class ComprobanteService(Protocol):
     """Genera el comprobante PDF de un pago confirmado (C5)."""
@@ -70,6 +105,10 @@ class ComprobanteService(Protocol):
         Debe ser determinista respecto a `data` (mismo pago ⇒ mismo comprobante);
         el llamador garantiza no emitir dos veces para el mismo pago.
         """
+        ...
+
+    def render_kardex_pdf(self, data: KardexData) -> bytes:
+        """Renderiza el kardex de pagos de un deportista (estado de cuenta) en bytes."""
         ...
 
 

@@ -26,7 +26,13 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.domain.cobranza.abono_engine import distribuir_abono
-from app.domain.ports.invoice import ComprobanteData, ComprobanteService, CuotaLinea
+from app.domain.ports.invoice import (
+    ComprobanteData,
+    ComprobanteService,
+    CuotaLinea,
+    KardexData,
+    KardexPagoLinea,
+)
 from app.domain.ports.notification import NotificationService
 from app.models.conciliacion_pendiente import ConciliacionPendiente
 from app.models.credito import Credito
@@ -216,6 +222,111 @@ def construir_comprobante_data(db: Session, *, pago: Pago, org: Organizacion) ->
         credito_aplicado=pago.credito_aplicado,
         credito_generado=credito_generado,
         numero_recibo=pago.numero_recibo or "—",
+        emisor=settings.recibo_emisor,
+    )
+
+
+# --------------------------------------------------------------------------- #
+# KARDEX de pagos (estado de cuenta consolidado del deportista)
+# --------------------------------------------------------------------------- #
+_MESES_ABBR = (
+    "",
+    "ene",
+    "feb",
+    "mar",
+    "abr",
+    "may",
+    "jun",
+    "jul",
+    "ago",
+    "sep",
+    "oct",
+    "nov",
+    "dic",
+)
+_METODO_KARDEX = {"EFECTIVO": "Efectivo", "QR": "QR"}
+
+
+def _fmt_fecha(dt: date | datetime) -> str:
+    """`dd/mm/aaaa` (sirve para date y datetime)."""
+    return dt.strftime("%d/%m/%Y")
+
+
+def _concepto_meses(cuotas: list[Cuota]) -> str:
+    """Meses cubiertos por un pago, p.ej. `feb, mar 2026` (colapsa el año si es uno)."""
+    if not cuotas:
+        return "—"
+    anios = {c.periodo_inicio.year for c in cuotas}
+    if len(anios) == 1:
+        meses = ", ".join(_MESES_ABBR[c.periodo_inicio.month] for c in cuotas)
+        return f"{meses} {next(iter(anios))}"
+    return ", ".join(
+        f"{_MESES_ABBR[c.periodo_inicio.month]} {c.periodo_inicio.year}" for c in cuotas
+    )
+
+
+def _rango_vencimiento(cuotas: list[Cuota]) -> str:
+    """Vencimiento de la(s) cuota(s): fecha única o rango `min – max`."""
+    if not cuotas:
+        return "—"
+    venc = sorted(c.vence_el for c in cuotas)
+    if venc[0] == venc[-1]:
+        return _fmt_fecha(venc[0])
+    return f"{_fmt_fecha(venc[0])} - {_fmt_fecha(venc[-1])}"
+
+
+def construir_kardex_data(
+    db: Session, *, deportista: Deportista, org: Organizacion
+) -> KardexData:
+    """Consolida TODOS los pagos CONFIRMADO del deportista en un `KardexData`.
+
+    Una fila por pago, en orden cronológico (más antiguo primero): fecha de pago,
+    recibo, meses cubiertos, vencimiento y monto. `total_pagado` = suma de esos pagos.
+    Corre bajo el `app.current_org` del llamador (RLS).
+    """
+    pagos = (
+        db.execute(
+            select(Pago)
+            .where(
+                Pago.estado == "CONFIRMADO",
+                Pago.id.in_(
+                    select(PagoCuota.pago_id)
+                    .join(Cuota, Cuota.id == PagoCuota.cuota_id)
+                    .join(Inscripcion, Inscripcion.id == Cuota.inscripcion_id)
+                    .where(Inscripcion.deportista_id == deportista.id)
+                ),
+            )
+            .order_by(Pago.created_at.asc())
+        )
+        .scalars()
+        .all()
+    )
+
+    lineas: list[KardexPagoLinea] = []
+    total = Decimal("0")
+    for pago in pagos:
+        cuotas = _cuotas_de_pago(db, pago.id)
+        lineas.append(
+            KardexPagoLinea(
+                fecha_pago=_fmt_fecha(pago.pagado_en or pago.created_at),
+                numero_recibo=pago.numero_recibo or "—",
+                concepto=_concepto_meses(cuotas),
+                vence=_rango_vencimiento(cuotas),
+                monto=pago.monto,
+                metodo=_METODO_KARDEX.get(pago.metodo, pago.metodo),
+                estado="Pagado",
+            )
+        )
+        total += pago.monto
+
+    return KardexData(
+        org_nombre=org.nombre,
+        moneda=org.moneda,
+        deportista_nombre=_nombre_completo(deportista),
+        fecha_emision=datetime.now(UTC),
+        total_pagado=total,
+        num_pagos=len(lineas),
+        pagos=lineas,
         emisor=settings.recibo_emisor,
     )
 

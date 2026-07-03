@@ -230,6 +230,19 @@
 }
 
 /* Historial de pagos (tabla) */
+.perfil-pagos__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  flex-wrap: wrap;
+}
+.perfil-pagos__head-text {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--fs-sm);
+}
 .perfil-pagos__wrap {
   overflow-x: auto;
 }

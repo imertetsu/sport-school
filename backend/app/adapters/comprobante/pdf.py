@@ -17,10 +17,21 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
+from pathlib import Path
 
 from fpdf import FPDF
 
-from app.domain.ports.invoice import ComprobanteData, ComprobanteService
+from app.domain.ports.invoice import (
+    ComprobanteData,
+    ComprobanteService,
+    KardexData,
+)
+
+# Logo de la app (LATINOSPORT), recortado. Vive en app/assets/ y se empaqueta en la
+# imagen. Si faltara, el render degrada sin romper (branding opcional).
+_LOGO_PATH = Path(__file__).resolve().parents[2] / "assets" / "logo_latinosport.png"
+_LOGO_W_PX, _LOGO_H_PX = 1004, 699  # tamaño del PNG recortado (para el aspect ratio)
+_APP_NOMBRE = "LATINOSPORT"
 
 # --------------------------------------------------------------------------- #
 # Paleta de marca (navy + verde, como el recibo de referencia)
@@ -67,9 +78,120 @@ class PdfComprobanteService(ComprobanteService):
         self._cabecera(pdf, data)
         self._datos_deportista(pdf, data)
         self._detalle_pago(pdf, data)
-        self._pie(pdf)
+        self._pie(pdf, data.emisor)
 
         return bytes(pdf.output())
+
+    # ------------------------------------------------------------------ #
+    # KARDEX de pagos (estado de cuenta imprimible del deportista)
+    # ------------------------------------------------------------------ #
+    def render_kardex_pdf(self, data: KardexData) -> bytes:
+        pdf = FPDF(orientation="P", unit="mm", format="A4")
+        pdf.set_margins(_ML, 12, _ML)
+        pdf.set_auto_page_break(auto=True, margin=18)
+        pdf.add_page()
+
+        self._cabecera_kardex(pdf, data)
+        self._tabla_kardex(pdf, data)
+        self._pie(pdf, data.emisor)
+
+        return bytes(pdf.output())
+
+    def _cabecera_kardex(self, pdf: FPDF, data: KardexData) -> None:
+        pdf.set_fill_color(*_NAVY)
+        pdf.rect(0, 0, 210, _HEADER_H, "F")
+
+        # Emblema con iniciales de la escuela.
+        pdf.set_fill_color(*_GREEN)
+        pdf.ellipse(19, 13, 20, 20, "F")
+        pdf.set_text_color(*_WHITE)
+        pdf.set_font("Helvetica", "B", 15)
+        pdf.set_xy(19, 13)
+        pdf.cell(20, 20, _latin1(_iniciales(data.org_nombre)), align="C")
+
+        pdf.set_font("Helvetica", "B", 15)
+        pdf.set_xy(43, 15)
+        pdf.cell(62, 9, _latin1(_encoge(data.org_nombre, 24)))
+        pdf.set_text_color(*_HEADER_TXT)
+        pdf.set_font("Helvetica", "B", 8)
+        pdf.set_xy(43, 25)
+        pdf.cell(62, 5, _latin1(f"Gestionado con {_APP_NOMBRE}"))
+
+        # Título "KARDEX DE PAGOS" + fecha de emisión (derecha).
+        pdf.set_text_color(*_WHITE)
+        pdf.set_font("Helvetica", "B", 21)
+        pdf.set_xy(105, 11)
+        pdf.cell(90, 12, "KARDEX DE PAGOS", align="R")
+        pdf.set_font("Helvetica", "", 9)
+        pdf.set_text_color(*_HEADER_TXT)
+        pdf.set_xy(105, 30)
+        pdf.cell(90, 5, _latin1(f"Emitido el {_fecha_larga(data.fecha_emision)}"), align="R")
+
+        pdf.set_text_color(*_INK)
+        pdf.set_y(_HEADER_H + 8)
+
+        # Datos del deportista + resumen (total pagado / nº de pagos).
+        self._titulo_seccion(pdf, "ESTADO DE CUENTA DEL DEPORTISTA")
+        self._fila_dato(pdf, "Deportista", data.deportista_nombre)
+        self._fila_dato(pdf, "Pagos registrados", str(data.num_pagos))
+        self._fila_dato(
+            pdf, "Total pagado", f"{data.total_pagado:.2f} {_latin1(data.moneda)}"
+        )
+        pdf.ln(3)
+
+    def _tabla_kardex(self, pdf: FPDF, data: KardexData) -> None:
+        self._titulo_seccion(pdf, "HISTORIAL DE PAGOS")
+        moneda = _latin1(data.moneda)
+
+        if not data.pagos:
+            pdf.set_x(_ML)
+            pdf.set_font("Helvetica", "I", 10)
+            pdf.set_text_color(*_MUTED)
+            pdf.cell(_CONTENT_W, 8, "Sin pagos registrados aun.", align="C")
+            pdf.ln(8)
+            return
+
+        cols = (
+            ("Fecha de pago", 26, "L"),
+            ("Recibo", 28, "L"),
+            ("Concepto", 50, "L"),
+            ("Vence", 34, "L"),
+            ("Metodo", 18, "L"),
+            (f"Monto ({moneda})", 24, "R"),
+        )
+        pdf.set_x(_ML)
+        pdf.set_fill_color(*_NAVY)
+        pdf.set_text_color(*_WHITE)
+        pdf.set_font("Helvetica", "B", 8.5)
+        for titulo, w, align in cols:
+            pdf.cell(w, 8, _latin1(titulo), align=align, fill=True)
+        pdf.ln(8)
+
+        pdf.set_font("Helvetica", "", 8.5)
+        for i, p in enumerate(data.pagos):
+            fill = i % 2 == 1
+            if fill:
+                pdf.set_fill_color(*_LIGHT)
+            pdf.set_x(_ML)
+            pdf.set_text_color(*_INK)
+            pdf.cell(26, 7.5, _latin1(p.fecha_pago), align="L", fill=fill)
+            pdf.cell(28, 7.5, _latin1(p.numero_recibo), align="L", fill=fill)
+            pdf.cell(50, 7.5, _latin1(_encoge(p.concepto, 34)), align="L", fill=fill)
+            pdf.set_text_color(*_MUTED)
+            pdf.cell(34, 7.5, _latin1(p.vence), align="L", fill=fill)
+            pdf.cell(18, 7.5, _latin1(p.metodo), align="L", fill=fill)
+            pdf.set_text_color(*_INK)
+            pdf.cell(24, 7.5, f"{p.monto:.2f}", align="R", fill=fill)
+            pdf.ln(7.5)
+
+        # Total pagado (banda verde).
+        pdf.set_x(_ML)
+        pdf.set_fill_color(*_GREEN)
+        pdf.set_text_color(*_WHITE)
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.cell(156, 10, "  TOTAL PAGADO", align="L", fill=True)
+        pdf.cell(24, 10, f"{data.total_pagado:.2f}", align="R", fill=True)
+        pdf.ln(10)
 
     # ------------------------------------------------------------------ #
     # Banda de cabecera: emblema + escuela + título + folio/fecha
@@ -88,8 +210,15 @@ class PdfComprobanteService(ComprobanteService):
 
         # Nombre de la escuela, centrado verticalmente junto al emblema.
         pdf.set_font("Helvetica", "B", 15)
-        pdf.set_xy(43, 17)
+        pdf.set_xy(43, 15)
         pdf.cell(62, 9, _latin1(_encoge(data.org_nombre, 24)))
+
+        # Nombre de la app (marca de la plataforma) debajo del nombre de la escuela.
+        pdf.set_text_color(*_HEADER_TXT)
+        pdf.set_font("Helvetica", "B", 8)
+        pdf.set_xy(43, 25)
+        pdf.cell(62, 5, _latin1(f"Gestionado con {_APP_NOMBRE}"))
+        pdf.set_text_color(*_WHITE)
 
         # Título "RECIBO DE PAGO" + badge de concepto (derecha).
         pdf.set_text_color(*_WHITE)
@@ -202,12 +331,18 @@ class PdfComprobanteService(ComprobanteService):
     # ------------------------------------------------------------------ #
     # Pie: agradecimiento
     # ------------------------------------------------------------------ #
-    def _pie(self, pdf: FPDF) -> None:
-        pdf.ln(14)
+    def _pie(self, pdf: FPDF, emisor: str) -> None:
+        pdf.ln(12)
         pdf.set_text_color(*_NAVY)
         pdf.set_font("Helvetica", "I", 13)
         pdf.set_x(_ML)
         pdf.cell(_CONTENT_W, 8, "Gracias por confiar en nuestro equipo", align="C")
+        pdf.ln(10)
+        _logo_centrado(pdf, w=42.0)
+        pdf.set_text_color(*_MUTED)
+        pdf.set_font("Helvetica", "", 8)
+        pdf.set_x(_ML)
+        pdf.cell(_CONTENT_W, 5, _latin1(emisor), align="C")
 
     # ------------------------------------------------------------------ #
     # Helpers de layout
@@ -281,3 +416,15 @@ def _iniciales(nombre: str) -> str:
 def _fecha_larga(dt: datetime) -> str:
     """Fecha en español largo: `25 de mayo de 2026`."""
     return f"{dt.day} de {_MESES[dt.month]} de {dt.year}"
+
+
+def _logo_centrado(pdf: FPDF, *, w: float) -> None:
+    """Dibuja el logo de la app centrado en la Y actual (no-op si falta el archivo).
+
+    El logo tiene fondo claro; se pinta sobre el área blanca del pie (se integra).
+    """
+    if not _LOGO_PATH.exists():
+        return
+    h = w * _LOGO_H_PX / _LOGO_W_PX
+    pdf.image(str(_LOGO_PATH), x=(210 - w) / 2, y=pdf.get_y(), w=w)
+    pdf.set_y(pdf.get_y() + h + 2)

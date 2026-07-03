@@ -516,6 +516,24 @@ export const api = {
     const blob = await res.blob();
     return URL.createObjectURL(blob);
   },
+  // GET /cobranza/kardex/{deportista_id}.pdf (requiere Bearer) -> kardex (estado de
+  // cuenta) del deportista como blob; devuelve un objectURL para abrir/imprimir.
+  async kardexPdfUrl(deportistaId: string, signal?: AbortSignal): Promise<string> {
+    const url = new URL(
+      `${API_BASE_URL}${API_PREFIX}/cobranza/kardex/${deportistaId}.pdf`,
+      window.location.origin,
+    );
+    const token = getToken();
+    const res = await fetch(url.toString(), {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      signal,
+    });
+    if (!res.ok) {
+      throw new ApiError(res.status, 'No se pudo generar el kardex', null);
+    }
+    const blob = await res.blob();
+    return URL.createObjectURL(blob);
+  },
   // POST /cobranza/pagos/{id}/anular {motivo} -> reversa CON rastro (estado ANULADO
   // + motivo/quién/cuándo). Solo efectivo CONFIRMADO. Mapeo de errores del backend:
   // 404 inexistente/otra org, 422 no anulable (QR/estado), 409 crédito ya consumido,
