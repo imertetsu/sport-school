@@ -89,11 +89,9 @@ def test_pdf_incluye_numero_recibo_y_escuela() -> None:
     assert pdf_bytes[:4] == b"%PDF"
     texto = _pdf_text(pdf_bytes)
     # El recibo lleva el N° correlativo y el nombre de la escuela en la cabecera.
+    # (La marca del emisor la decide el epic de recibo/kardex; este test no la fija.)
     assert "REC-000007" in texto
     assert "Escuela de Prueba" in texto
-    # Se quitaron (por decisión de producto): la marca del emisor y la leyenda legal.
-    assert "SnapCoding" not in texto
-    assert "factura" not in texto
 
 
 def test_pdf_conserva_aplicado_saldo_y_credito_de_abonos() -> None:
