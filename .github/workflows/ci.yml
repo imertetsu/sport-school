@@ -125,10 +125,15 @@ jobs:
     name: Deploy (SSH → servidor)
     runs-on: ubuntu-latest
     needs: [backend, frontend]
+    # ⛔ AUTO-DEPLOY PAUSADO (a pedido, 2026-07-03). El deploy por push queda
+    # deshabilitado por el `&& false` de abajo. Para REACTIVARLO: elimina esa línea
+    # `&& false` (y mantén la variable de repo DEPLOY_ENABLED=true). Mientras tanto se
+    # despliega a mano en el servidor con `bash infra/deploy.sh`.
     if: >-
       github.ref == 'refs/heads/main'
       && github.event_name == 'push'
       && vars.DEPLOY_ENABLED == 'true'
+      && false
     steps:
       - name: Instalar sshpass
         run: sudo apt-get update && sudo apt-get install -y sshpass
