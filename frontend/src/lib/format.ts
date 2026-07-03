@@ -82,6 +82,18 @@ export function formatDateLarga(iso: string | null | undefined): string {
   return `${d.getDate()} ${MESES_LARGO_ES[d.getMonth()]} ${d.getFullYear()}`;
 }
 
+// Mes (en MAYÚSCULAS) de una fecha, p. ej. "JULIO". Se usa en la columna "Cuota"
+// del historial/kardex: la cuota se etiqueta por el MES en que vence el pago.
+export function mesLargo(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const soloDia = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  const d = soloDia
+    ? new Date(Number(soloDia[1]), Number(soloDia[2]) - 1, Number(soloDia[3]))
+    : new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return MESES_LARGO_ES[d.getMonth()].toUpperCase();
+}
+
 // Formato de hora a partir de un "time" del backend (HH:MM o HH:MM:SS).
 // Usa el locale de la organización (RNF-04): no hardcodear el formato. Devuelve
 // p. ej. "16:30" (es-BO usa reloj de 24h por defecto).

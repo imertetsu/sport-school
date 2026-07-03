@@ -71,8 +71,8 @@ class KardexCuotaLinea:
     """
 
     numero_recibo: str
-    cuota: str  # período de la cuota, p.ej. "12 enero 2026"
-    vence: str  # vencimiento de la cuota, p.ej. "12 febrero 2026"
+    cuota: str  # MES en que vence la cuota, en mayúsculas, p.ej. "JULIO"
+    vence: str  # vencimiento completo de la cuota, p.ej. "6 julio 2026"
     fecha_pago: str  # cuándo se pagó, p.ej. "2 julio 2026"
     metodo: str
     monto: Decimal

@@ -299,7 +299,8 @@ def construir_kardex_data(
             filas.append(
                 KardexCuotaLinea(
                     numero_recibo=pago.numero_recibo or "—",
-                    cuota=_fecha_dma(c.periodo_inicio),
+                    # "Cuota" = el MES en que vence el pago (p.ej. vence 6-jul -> "JULIO").
+                    cuota=_MESES_LARGO[c.vence_el.month].upper(),
                     vence=_fecha_dma(c.vence_el),
                     fecha_pago=fecha_pago,
                     metodo=metodo,

@@ -4,7 +4,7 @@ import { api, ApiError } from '@/api/client';
 import { useAuth } from '@/auth/useAuth';
 import type { DeportistaDetail, PagoListItem } from '@/api/types';
 import { Avatar, Badge, Button, Card, Tabs, type TabItem } from '@/components/ui';
-import { formatDate, formatDateLarga, formatMoney, nivelLabel } from '@/lib/format';
+import { formatDate, formatDateLarga, formatMoney, mesLargo, nivelLabel } from '@/lib/format';
 import './DeportistaPerfil.css';
 
 function DataRow({ label, value }: { label: string; value: React.ReactNode }) {
@@ -171,7 +171,7 @@ function HistorialPagos({ deportistaId }: { deportistaId: string }) {
                       : f.recibo
                     : ''}
                 </td>
-                <td>{f.cuota ? formatDateLarga(f.cuota) : '—'}</td>
+                <td>{f.vence ? mesLargo(f.vence) : '—'}</td>
                 <td>{f.vence ? formatDateLarga(f.vence) : '—'}</td>
                 <td>{formatDateLarga(f.fechaPago)}</td>
                 <td>{f.metodo === 'EFECTIVO' ? 'Efectivo' : 'QR'}</td>
