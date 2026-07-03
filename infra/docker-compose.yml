@@ -170,14 +170,14 @@ services:
         condition: service_started
 
   caddy:
-    # Reverse proxy público con HTTPS automático (Let's Encrypt). Termina TLS para
-    # latinosport.snapcoding.app y proxya a `web` (nginx :5173) por la red interna.
-    # Config en ./Caddyfile; certs/cuenta ACME persistidos en el volumen caddy_data.
+    # Reverse proxy de la app en este servidor. El TLS lo termina el nginx frontal de
+    # SnapCoding (cert wildcard) y reenvía aquí; por eso Caddy sirve HTTP en :80 y
+    # proxya a `web` (nginx :5173) por la red interna. Ver ./Caddyfile. Si este server
+    # pasara a ser el frente directo, se le mapea también 443 y Caddy hace HTTPS/ACME.
     image: caddy:2-alpine
     restart: unless-stopped
     ports:
       - "80:80"
-      - "443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
