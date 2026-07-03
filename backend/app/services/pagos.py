@@ -481,10 +481,12 @@ def registrar_pago_efectivo(
     cuota_ids: list[uuid.UUID],
     registrado_por: uuid.UUID,
     monto_recibido: Decimal | None = None,
+    metodo: str = "EFECTIVO",
+    fecha_pago: date | None = None,
     comprobante: ComprobanteService | None = None,
     notifier: NotificationService | None = None,
 ) -> Pago:
-    """Crea un pago EFECTIVO CONFIRMADO y lo aplica FIFO con abonos (RF-ABO).
+    """Crea un pago MANUAL CONFIRMADO (efectivo o QR) y lo aplica FIFO con abonos (RF-ABO).
 
     `monto_recibido` es el efectivo de caja. `None` ⇒ Σ saldos (paga todo, igual que
     hoy). El servicio consume primero el **crédito previo** de la inscripción (como
@@ -493,8 +495,21 @@ def registrar_pago_efectivo(
     inscripción. Invariante RF-ABO-08:
     `Σ pago_cuota.monto_aplicado = pago.monto + pago.credito_aplicado`.
 
+    `metodo`: `EFECTIVO` (default) o `QR` (transferencia) — solo la etiqueta del pago
+    registrado a mano; ambos siguen el MISMO camino (no es el QR automático de OpenBCB).
+    `fecha_pago`: fecha real del pago (permite registrar meses viejos con su fecha); `None`
+    ⇒ hoy. Se guarda como mediodía UTC de ese día para que "Ingresos del mes"/reportes
+    (que agrupan por mes de `pagado_en`) caigan en el mes correcto.
+
     Asume cuotas homogéneas en inscripción (RF-ABO-11): el form lo restringe.
     """
+    if metodo not in ("EFECTIVO", "QR"):
+        raise PagoError(f"Método de pago inválido: {metodo}")
+    pagado_en = (
+        datetime(fecha_pago.year, fecha_pago.month, fecha_pago.day, 12, 0, tzinfo=UTC)
+        if fecha_pago is not None
+        else datetime.now(UTC)
+    )
     hoy = datetime.now(UTC).date()
     cuotas = cargar_cuotas_fifo(db, cuota_ids)
     inscripcion_id = cuotas[0].inscripcion_id
@@ -521,12 +536,12 @@ def registrar_pago_efectivo(
 
     pago = Pago(
         org_id=org_id,
-        metodo="EFECTIVO",
+        metodo=metodo,
         estado="PENDIENTE",  # se confirma abajo
         monto=monto_efectivo_aplicado,  # efectivo de caja aplicado (RF-ABO-07/08)
         credito_aplicado=credito_aplicado,
         registrado_por=registrado_por,
-        pagado_en=datetime.now(UTC),
+        pagado_en=pagado_en,
     )
     db.add(pago)
     db.flush()
@@ -589,10 +604,11 @@ def anular_pago(
     FIFO/estado/crédito. Toda la reversa ocurre en la transacción del request.
 
     Idempotente: anular un pago **ya ANULADO** es no-op (devuelve el pago tal cual, sin
-    doble reversa). Solo `metodo == 'EFECTIVO'` es anulable; el QR/conciliado rechaza
-    (no se toca la conciliación OpenBCB). Si el crédito generado ya fue consumido por un
-    pago posterior, BLOQUEA (no cascada). NO toca `numero_recibo`, NO envía WhatsApp ni
-    genera PDF.
+    doble reversa). Solo los pagos **registrados a mano** (`registrado_por` no nulo:
+    efectivo o QR/transferencia) son anulables; el QR automático conciliado por webhook
+    (sin `registrado_por`) rechaza (no se toca la conciliación OpenBCB). Si el crédito
+    generado ya fue consumido por un pago posterior, BLOQUEA (no cascada). NO toca
+    `numero_recibo`, NO envía WhatsApp ni genera PDF.
     """
     hoy = hoy or datetime.now(UTC).date()
 
@@ -601,8 +617,10 @@ def anular_pago(
     pago = db.execute(select(Pago).where(Pago.id == pago_id).with_for_update()).scalar_one_or_none()
     if pago is None:
         raise PagoError("Pago no encontrado", code="no_encontrado")
-    if pago.metodo != "EFECTIVO":
-        raise PagoError("Solo se anulan pagos en efectivo", code="no_anulable_qr")
+    if pago.registrado_por is None:
+        # Solo los pagos registrados A MANO (efectivo o QR/transferencia) son anulables;
+        # el QR automático por webhook (sin `registrado_por`) no se toca (conciliación).
+        raise PagoError("Solo se anulan pagos registrados a mano", code="no_anulable_qr")
     if pago.estado == "ANULADO":
         # No-op idempotente: ya revertido, devolver tal cual (sin doble reversa).
         return pago

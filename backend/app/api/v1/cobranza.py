@@ -307,6 +307,8 @@ def pagar_efectivo(
             cuota_ids=body.cuota_ids,
             registrado_por=uuid.UUID(user.user_id),
             monto_recibido=body.monto_recibido,
+            metodo=body.metodo,
+            fecha_pago=body.fecha_pago,
             comprobante=get_comprobante_service(),
             notifier=get_notification_service(),
         )
@@ -439,9 +441,10 @@ def listar_pagos(
 ) -> PagosListOut:
     """Lista los pagos del org (RLS), `created_at DESC`, paginada (C4).
 
-    Cada item lleva `anulable = (metodo == 'EFECTIVO' and estado == 'CONFIRMADO')`, el
-    nombre del deportista (en MAYÚSCULAS) y las cuotas que cubrió (con su vencimiento),
-    todo resuelto vía las cuotas del pago.
+    Cada item lleva `anulable = (registrado_por is not None and estado == 'CONFIRMADO')`
+    —solo los pagos registrados a mano (efectivo o QR/transferencia); el QR automático
+    por webhook no—, el nombre del deportista (en MAYÚSCULAS) y las cuotas que cubrió
+    (con su vencimiento), todo resuelto vía las cuotas del pago.
 
     `deportista_id` (opcional): filtra a los pagos que cubren alguna cuota de ESE
     deportista (pago → pago_cuota → cuota → inscripción). Es el "Historial de pagos"
@@ -493,7 +496,7 @@ def listar_pagos(
                 monto=pago.monto,
                 deportista_nombre=_nombre_completo(deportista) if deportista else None,
                 numero_recibo=pago.numero_recibo,
-                anulable=(pago.metodo == "EFECTIVO" and pago.estado == "CONFIRMADO"),
+                anulable=(pago.registrado_por is not None and pago.estado == "CONFIRMADO"),
                 motivo_anulacion=pago.motivo_anulacion,
                 anulado_en=pago.anulado_en,
                 cuotas=[

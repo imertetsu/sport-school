@@ -1,17 +1,17 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, ApiError, comprobantePdfUrl } from '@/api/client';
-import type {
-  CuotaListItem,
-  EstadoPago,
-  PagoOut,
-  QrResponse,
-} from '@/api/types';
-import { Badge, Button, Card, EstadoBadge, Field, Tabs, type TabItem } from '@/components/ui';
+import type { CuotaListItem, PagoOut, RegistrarPagoEfectivoBody } from '@/api/types';
+import { Badge, Button, Card, EstadoBadge, Field } from '@/components/ui';
 import { formatDate, formatMoney } from '@/lib/format';
 import './RegistrarPago.css';
 
-// Polling del estado del pago QR (C3): GET /cobranza/pagos/{id}.
-const POLL_INTERVAL_MS = 2500;
+// Fecha de HOY en formato YYYY-MM-DD (local): default del campo "Fecha de pago".
+function hoyISO(): string {
+  const d = new Date();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
 
 export interface RegistrarPagoProps {
   // Cuota preseleccionada al abrir desde una fila; null = elegir deportista + cuota(s).
@@ -233,25 +233,6 @@ export function RegistrarPago({ cuotaInicial, onClose, onConfirmado }: Registrar
     </div>
   );
 
-  const tabs: TabItem[] = [
-    {
-      id: 'efectivo',
-      label: 'Efectivo',
-      content: (
-        <PagoEfectivo
-          cuotaIds={seleccion}
-          saldoTotal={saldoTotal}
-          onConfirmado={onConfirmado}
-        />
-      ),
-    },
-    {
-      id: 'qr',
-      label: 'QR',
-      content: <PagoQr cuotaIds={seleccion} onConfirmado={onConfirmado} />,
-    },
-  ];
-
   return (
     <div className="rp-overlay" role="dialog" aria-modal="true" aria-label="Registrar pago">
       <div className="rp-modal">
@@ -268,15 +249,15 @@ export function RegistrarPago({ cuotaInicial, onClose, onConfirmado }: Registrar
         </header>
         <div className="rp-modal__body">
           {selector}
-          <Tabs items={tabs} />
+          <PagoManual cuotaIds={seleccion} saldoTotal={saldoTotal} onConfirmado={onConfirmado} />
         </div>
       </div>
     </div>
   );
 }
 
-// --- Pago en efectivo: confirma y muestra comprobante (PDF + WhatsApp visual) ---
-function PagoEfectivo({
+// --- Pago manual: método (efectivo/QR) + fecha + monto; confirma y muestra comprobante ---
+function PagoManual({
   cuotaIds,
   saldoTotal,
   onConfirmado,
@@ -289,6 +270,10 @@ function PagoEfectivo({
   const [pago, setPago] = useState<PagoOut | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Método del pago manual: efectivo o QR/transferencia (solo etiqueta; mismo flujo).
+  const [metodo, setMetodo] = useState<'EFECTIVO' | 'QR'>('EFECTIVO');
+  // Fecha real del pago: por defecto hoy, editable (permite cargar meses viejos).
+  const [fechaPago, setFechaPago] = useState<string>(hoyISO());
   // "Monto recibido" en caja. Vacío => paga el total (Σ saldo). El backend
   // distribuye FIFO y guarda el sobrepago como crédito de la inscripción.
   const [montoRecibido, setMontoRecibido] = useState('');
@@ -308,7 +293,7 @@ function PagoEfectivo({
     recibidoNum !== null && !recibidoInvalido && recibidoNum < saldoTotal;
 
   async function confirmar() {
-    if (cuotaIds.length === 0 || recibidoInvalido) return;
+    if (cuotaIds.length === 0 || recibidoInvalido || !fechaPago) return;
     // Sobrepago: exigir confirmación explícita antes de generar saldo a favor.
     if (excedente > 0 && !confirmarSobrepago) {
       setConfirmarSobrepago(true);
@@ -317,19 +302,21 @@ function PagoEfectivo({
     setSubmitting(true);
     setError(null);
     try {
+      const body: RegistrarPagoEfectivoBody = {
+        cuota_ids: cuotaIds,
+        metodo,
+        fecha_pago: fechaPago,
+      };
       // Vacío o igual al total => omitimos monto_recibido (camino "paga todo"
       // intacto). Solo lo mandamos cuando el operador escribió un valor distinto.
-      const body =
-        recibidoNum === null || recibidoNum === saldoTotal
-          ? { cuota_ids: cuotaIds }
-          : { cuota_ids: cuotaIds, monto_recibido: montoRecibido.trim() };
+      if (recibidoNum !== null && recibidoNum !== saldoTotal) {
+        body.monto_recibido = montoRecibido.trim();
+      }
       const res = await api.pagoEfectivo(body);
       setPago(res);
       onConfirmado?.();
     } catch (err) {
-      setError(
-        err instanceof ApiError ? err.message : 'No se pudo registrar el pago en efectivo.',
-      );
+      setError(err instanceof ApiError ? err.message : 'No se pudo registrar el pago.');
     } finally {
       setSubmitting(false);
     }
@@ -342,9 +329,37 @@ function PagoEfectivo({
   return (
     <div className="rp-method">
       <p className="rp-method__hint">
-        Registra el cobro en efectivo. Se aplicará a la(s) cuota(s) seleccionada(s) y se
-        generará el comprobante.
+        Registra el cobro. Se aplicará a la(s) cuota(s) seleccionada(s) y se generará el
+        comprobante.
       </p>
+
+      <div className="rp-metodo">
+        <span className="rp-section-label">Método de pago</span>
+        <div className="rp-metodo__opts" role="radiogroup" aria-label="Método de pago">
+          {(['EFECTIVO', 'QR'] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              role="radio"
+              aria-checked={metodo === m}
+              className={`rp-metodo__opt${metodo === m ? ' is-active' : ''}`}
+              onClick={() => setMetodo(m)}
+            >
+              {m === 'EFECTIVO' ? 'Efectivo' : 'QR'}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <Field
+        type="date"
+        label="Fecha de pago"
+        value={fechaPago}
+        max={hoyISO()}
+        onChange={(e) => setFechaPago(e.target.value)}
+        hint="Por defecto hoy. Cámbiala si el pago fue en otra fecha."
+      />
+
       <Field
         type="number"
         inputMode="decimal"
@@ -397,144 +412,9 @@ function PagoEfectivo({
         <Button
           variant="primary"
           onClick={confirmar}
-          disabled={submitting || cuotaIds.length === 0 || recibidoInvalido}
+          disabled={submitting || cuotaIds.length === 0 || recibidoInvalido || !fechaPago}
         >
-          {submitting ? 'Registrando…' : 'Confirmar pago en efectivo'}
-        </Button>
-      )}
-    </div>
-  );
-}
-
-// --- Pago por QR: muestra el QR y hace polling del estado (C3) ---
-function PagoQr({
-  cuotaIds,
-  onConfirmado,
-}: {
-  cuotaIds: string[];
-  onConfirmado?: () => void;
-}) {
-  const [qr, setQr] = useState<QrResponse | null>(null);
-  const [estado, setEstado] = useState<EstadoPago | null>(null);
-  const [pago, setPago] = useState<PagoOut | null>(null);
-  const [generando, setGenerando] = useState(false);
-  const [simulando, setSimulando] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const onConfirmadoRef = useRef(onConfirmado);
-  onConfirmadoRef.current = onConfirmado;
-
-  const pagoId = qr?.pago_id ?? null;
-
-  async function generarQr() {
-    if (cuotaIds.length === 0) return;
-    setGenerando(true);
-    setError(null);
-    try {
-      const res = await api.pagoQr({ cuota_ids: cuotaIds });
-      setQr(res);
-      setEstado(res.estado);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'No se pudo generar el QR.');
-    } finally {
-      setGenerando(false);
-    }
-  }
-
-  // Polling mientras el pago siga PENDIENTE (C3).
-  useEffect(() => {
-    if (!pagoId || estado !== 'PENDIENTE') return;
-    const controller = new AbortController();
-    let active = true;
-    const timer = setInterval(() => {
-      api
-        .pago(pagoId, controller.signal)
-        .then((p) => {
-          if (!active) return;
-          setEstado(p.estado);
-          if (p.estado === 'CONFIRMADO') {
-            setPago(p);
-            onConfirmadoRef.current?.();
-          }
-        })
-        .catch(() => {
-          /* reintenta en el siguiente tick */
-        });
-    }, POLL_INTERVAL_MS);
-    return () => {
-      active = false;
-      controller.abort();
-      clearInterval(timer);
-    };
-  }, [pagoId, estado]);
-
-  async function simular() {
-    if (!pagoId) return;
-    setSimulando(true);
-    setError(null);
-    try {
-      const p = await api.simularConfirmacionQr(pagoId);
-      setEstado(p.estado);
-      if (p.estado === 'CONFIRMADO') {
-        setPago(p);
-        onConfirmadoRef.current?.();
-      }
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'No se pudo simular el pago.');
-    } finally {
-      setSimulando(false);
-    }
-  }
-
-  if (pago && estado === 'CONFIRMADO') {
-    return <Comprobante pago={pago} confirmadoQr />;
-  }
-
-  if (!qr) {
-    return (
-      <div className="rp-method">
-        <p className="rp-method__hint">
-          Genera un código QR para que el deportista pague. El estado se confirma automáticamente.
-        </p>
-        {error && (
-          <div className="page-error" role="alert">
-            {error}
-          </div>
-        )}
-        <Button
-          variant="primary"
-          onClick={generarQr}
-          disabled={generando || cuotaIds.length === 0}
-        >
-          {generando ? 'Generando…' : 'Generar QR'}
-        </Button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="rp-qr">
-      <img className="rp-qr__img" src={qr.qr_png_data_url} alt="Código QR de pago" />
-      <p className="rp-qr__monto tabular">{formatMoney(qr.monto)}</p>
-      <div className="rp-qr__estado">
-        {estado === 'CONFIRMADO' ? (
-          <Badge tone="paid">✓ Pago confirmado</Badge>
-        ) : estado === 'FALLIDO' ? (
-          <Badge tone="overdue">Pago fallido</Badge>
-        ) : (
-          <span className="rp-qr__waiting">
-            <span className="rp-qr__spinner" aria-hidden="true" />
-            Esperando pago…
-          </span>
-        )}
-      </div>
-      {error && (
-        <div className="page-error" role="alert">
-          {error}
-        </div>
-      )}
-      {estado === 'PENDIENTE' && (
-        <Button variant="secondary" onClick={simular} disabled={simulando}>
-          {simulando ? 'Simulando…' : 'Simular pago'}
+          {submitting ? 'Registrando…' : 'Confirmar pago'}
         </Button>
       )}
     </div>
@@ -542,7 +422,7 @@ function PagoQr({
 }
 
 // --- Comprobante: PDF (descarga real) + WhatsApp (visual) ---
-function Comprobante({ pago, confirmadoQr }: { pago: PagoOut; confirmadoQr?: boolean }) {
+function Comprobante({ pago }: { pago: PagoOut }) {
   const [whatsappEnviado, setWhatsappEnviado] = useState(false);
   const cuotas = pago.cuotas_aplicadas ?? [];
   const creditoAplicado = Number(pago.credito_aplicado ?? 0);
@@ -556,9 +436,7 @@ function Comprobante({ pago, confirmadoQr }: { pago: PagoOut; confirmadoQr?: boo
       <Card>
         <div className="rp-comprobante__head">
           <Badge tone={hayParcial ? 'pending' : 'paid'}>
-            {hayParcial
-              ? 'Pago parcial registrado'
-              : `✓ ${confirmadoQr ? 'Pago confirmado' : 'Pago registrado'}`}
+            {hayParcial ? 'Pago parcial registrado' : '✓ Pago registrado'}
           </Badge>
           <span className="rp-comprobante__monto tabular">{formatMoney(pago.monto)}</span>
         </div>

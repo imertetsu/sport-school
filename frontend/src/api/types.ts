@@ -373,12 +373,16 @@ export interface PanelCobranza {
 }
 
 // --- POST /cobranza/pagos/efectivo (body) ---
-// crea pago EFECTIVO CONFIRMADO aplicado a cuota_ids (FIFO en backend).
+// crea un pago MANUAL CONFIRMADO (efectivo o QR) aplicado a cuota_ids (FIFO en backend).
 export interface RegistrarPagoEfectivoBody {
   cuota_ids: string[];
   // Abonos (RF-ABO): monto recibido en caja. null/omitido => paga el total (Σ saldo).
   // El backend distribuye FIFO y guarda el sobrepago como crédito de la inscripción.
   monto_recibido?: string | null; // numeric(10,2) serializado como string
+  // Cómo pagó el tutor a mano: EFECTIVO (default) o QR (transferencia).
+  metodo?: 'EFECTIVO' | 'QR';
+  // Fecha real del pago (YYYY-MM-DD). Omitido => hoy. Cuenta en el mes de esa fecha.
+  fecha_pago?: string | null;
 }
 
 // --- POST /cobranza/pagos/qr (body) ---

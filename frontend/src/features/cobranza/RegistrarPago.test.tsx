@@ -67,7 +67,7 @@ describe('RegistrarPago — aviso de sobrepago', () => {
     await user.type(monto, '250'); // saldo total = 200 → 50 de más
 
     // 1er click: NO registra; aparece el aviso de sobrepago.
-    await user.click(screen.getByRole('button', { name: /Confirmar pago en efectivo/ }));
+    await user.click(screen.getByRole('button', { name: /Confirmar pago/ }));
     expect(pagoEfectivoMock).not.toHaveBeenCalled();
     expect(screen.getByText(/de más/)).toBeInTheDocument();
 
@@ -82,12 +82,12 @@ describe('RegistrarPago — aviso de sobrepago', () => {
     render(<RegistrarPago cuotaInicial={CUOTA} onClose={() => {}} />);
     const monto = await screen.findByLabelText(/Monto recibido/);
     await user.type(monto, '250');
-    await user.click(screen.getByRole('button', { name: /Confirmar pago en efectivo/ }));
+    await user.click(screen.getByRole('button', { name: /Confirmar pago/ }));
     await user.click(screen.getByRole('button', { name: /Revisar monto/ }));
     expect(pagoEfectivoMock).not.toHaveBeenCalled();
     // Vuelve el botón normal.
     expect(
-      screen.getByRole('button', { name: /Confirmar pago en efectivo/ }),
+      screen.getByRole('button', { name: /Confirmar pago/ }),
     ).toBeInTheDocument();
   });
 
@@ -95,8 +95,21 @@ describe('RegistrarPago — aviso de sobrepago', () => {
     const user = userEvent.setup();
     render(<RegistrarPago cuotaInicial={CUOTA} onClose={() => {}} />);
     await screen.findByLabelText(/Monto recibido/);
-    await user.click(screen.getByRole('button', { name: /Confirmar pago en efectivo/ }));
+    await user.click(screen.getByRole('button', { name: /Confirmar pago/ }));
     await waitFor(() => expect(pagoEfectivoMock).toHaveBeenCalledTimes(1));
     expect(screen.queryByText(/de más/)).not.toBeInTheDocument();
+  });
+
+  it('envía el método (QR) y la fecha de pago en el body', async () => {
+    const user = userEvent.setup();
+    render(<RegistrarPago cuotaInicial={CUOTA} onClose={() => {}} />);
+    await screen.findByLabelText(/Monto recibido/);
+    // Selector de método: cambiar a QR.
+    await user.click(screen.getByRole('radio', { name: 'QR' }));
+    await user.click(screen.getByRole('button', { name: /Confirmar pago/ }));
+    await waitFor(() => expect(pagoEfectivoMock).toHaveBeenCalledTimes(1));
+    const body = pagoEfectivoMock.mock.calls[0][0];
+    expect(body.metodo).toBe('QR');
+    expect(body.fecha_pago).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 });

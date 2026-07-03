@@ -9,6 +9,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -112,14 +113,20 @@ class PanelOut(BaseModel):
 # Pagos
 # --------------------------------------------------------------------------- #
 class PagoEfectivoIn(BaseModel):
-    """`POST /cobranza/pagos/efectivo` (C3 + abonos).
+    """`POST /cobranza/pagos/efectivo` — registro de pago MANUAL (C3 + abonos).
 
     `monto_recibido` opcional (efectivo de caja). `None` ⇒ paga el total (Σ saldos).
     Si se envía debe ser `> 0`; un excedente sobre Σ saldos queda como crédito.
+
+    `metodo` = cómo pagó el tutor a mano: `EFECTIVO` (default) o `QR` (transferencia).
+    `fecha_pago` = fecha real del pago (permite cargar meses viejos con su fecha); `None`
+    ⇒ hoy. Afecta a "Ingresos del mes"/reportes, que agrupan por `pagado_en`.
     """
 
     cuota_ids: list[uuid.UUID] = Field(..., min_length=1)
     monto_recibido: Decimal | None = Field(default=None, gt=0)
+    metodo: Literal["EFECTIVO", "QR"] = "EFECTIVO"
+    fecha_pago: date | None = None
 
 
 class PagoQrIn(BaseModel):
@@ -222,7 +229,9 @@ class CuotaCubierta(BaseModel):
 class PagoListItem(BaseModel):
     """Item de `GET /cobranza/pagos` (lista buscable, punto de acceso a "Anular").
 
-    `anulable = (metodo == 'EFECTIVO' and estado == 'CONFIRMADO')`. `fecha` = created_at.
+    `anulable = (registrado_por is not None and estado == 'CONFIRMADO')`: solo los pagos
+    registrados A MANO (efectivo o QR/transferencia) son anulables; el QR automático por
+    webhook (sin `registrado_por`) no lo es. `fecha` = created_at.
     `deportista_nombre` va en MAYÚSCULAS (datos de deportista ya almacenados así).
     `cuotas` = las cuotas que este pago cubrió (con su vencimiento), para el historial
     por deportista.

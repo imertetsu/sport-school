@@ -27,6 +27,7 @@ from app.schemas.cobranza import (
     AnularPagoIn,
     CuotaRevertida,
     PagoAnuladoOut,
+    PagoEfectivoIn,
     PagoListItem,
 )
 from app.services import pagos as pagos_svc
@@ -58,6 +59,25 @@ def test_anular_pago_in_motivo_ausente_falla() -> None:
 # =========================================================================== #
 # SIN BD — PagoError.code discriminable + mapeo a HTTP del router
 # =========================================================================== #
+# =========================================================================== #
+# SIN BD — schema PagoEfectivoIn: método (efectivo/QR) + fecha de pago manual
+# =========================================================================== #
+def test_pago_efectivo_in_metodo_y_fecha() -> None:
+    """`metodo` default EFECTIVO, acepta QR y una `fecha_pago` opcional (registro manual)."""
+    base = {"cuota_ids": [str(uuid.uuid4())]}
+    assert PagoEfectivoIn(**base).metodo == "EFECTIVO"  # type: ignore[arg-type]
+    assert PagoEfectivoIn(**base).fecha_pago is None  # type: ignore[arg-type]
+    qr = PagoEfectivoIn(**{**base, "metodo": "QR", "fecha_pago": "2026-03-05"})  # type: ignore[arg-type]
+    assert qr.metodo == "QR"
+    assert qr.fecha_pago == date(2026, 3, 5)
+
+
+def test_pago_efectivo_in_metodo_invalido_falla() -> None:
+    """Un `metodo` fuera de {EFECTIVO, QR} -> ValidationError (=> 422)."""
+    with pytest.raises(ValidationError):
+        PagoEfectivoIn(cuota_ids=[uuid.uuid4()], metodo="TARJETA")  # type: ignore[arg-type]
+
+
 def test_pago_error_code_discriminable() -> None:
     err = pagos_svc.PagoError("x", code="no_encontrado")
     assert err.code == "no_encontrado"
@@ -282,6 +302,41 @@ def test_anular_efectivo_revierte_cuota_y_credito(app_engine: Engine, anular_fix
     assert pago_row.numero_recibo is not None
 
 
+@pytest.mark.db
+def test_pago_qr_manual_guarda_fecha_y_es_anulable(
+    app_engine: Engine, anular_fixture: dict
+) -> None:
+    """Un pago QR registrado A MANO guarda `metodo=QR` + la fecha elegida en `pagado_en`
+    y ES anulable (tiene `registrado_por`). Mismo camino que el efectivo, otra etiqueta."""
+    org = anular_fixture["org"]
+    c1 = anular_fixture["c1"]
+
+    with Session(app_engine, expire_on_commit=False) as db:
+        _set_org(db, org)
+        pago = pagos_svc.registrar_pago_efectivo(
+            db,
+            org_id=org,
+            cuota_ids=[c1],
+            registrado_por=anular_fixture["usuario"],
+            metodo="QR",
+            fecha_pago=date(2026, 3, 5),
+        )
+        db.commit()
+        pago_id = pago.id
+        assert pago.metodo == "QR"
+        assert pago.pagado_en is not None
+        assert (pago.pagado_en.year, pago.pagado_en.month, pago.pagado_en.day) == (2026, 3, 5)
+
+    # Registrado a mano ⇒ anulable aunque sea QR.
+    with Session(app_engine, expire_on_commit=False) as db:
+        _set_org(db, org)
+        anulado = pagos_svc.anular_pago(
+            db, org_id=org, pago_id=pago_id, anulado_por=anular_fixture["usuario"], motivo="test"
+        )
+        db.commit()
+        assert anulado.estado == "ANULADO"
+
+
 # =========================================================================== #
 # CON BD — C-Multi-cuota: revierte TODAS las filas puente
 # =========================================================================== #
@@ -441,10 +496,12 @@ def test_anular_estado_no_anulable(app_engine: Engine, anular_fixture: dict) -> 
         conn.execute(
             text(
                 "INSERT INTO pago (id, org_id, metodo, estado, monto, credito_aplicado, "
-                "credito_generado, created_at) "
-                "VALUES (:id,:org,'EFECTIVO','PENDIENTE',100,0,0,now())"
+                "credito_generado, registrado_por, created_at) "
+                "VALUES (:id,:org,'EFECTIVO','PENDIENTE',100,0,0,:reg,now())"
             ),
-            {"id": str(pago_id), "org": str(org)},
+            # registrado_por seteado: es un pago manual (pasa la guarda de "a mano");
+            # lo que lo hace no anulable es el ESTADO PENDIENTE, no el método.
+            {"id": str(pago_id), "org": str(org), "reg": str(anular_fixture["usuario"])},
         )
 
     with Session(app_engine, expire_on_commit=False) as db:
