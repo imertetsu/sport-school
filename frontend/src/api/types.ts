@@ -490,6 +490,7 @@ export interface PagoAnuladoOut {
 export interface CuotaCubierta {
   periodo_inicio: string; // date YYYY-MM-DD
   vence_el: string; // date YYYY-MM-DD
+  monto_aplicado: string; // numeric(10,2) serializado como string
 }
 
 export interface PagoListItem {

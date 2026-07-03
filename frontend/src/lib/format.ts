@@ -54,6 +54,34 @@ export function formatDate(
   }).format(d);
 }
 
+// Meses en español para el formato largo "5 junio 2026" (día mes año, sin "de").
+const MESES_LARGO_ES = [
+  'enero',
+  'febrero',
+  'marzo',
+  'abril',
+  'mayo',
+  'junio',
+  'julio',
+  'agosto',
+  'septiembre',
+  'octubre',
+  'noviembre',
+  'diciembre',
+];
+
+// Fecha "día mes año" en español, p. ej. `5 junio 2026`. Misma ancla local que
+// `formatDate` para las fechas "solo día" (no retrocede por zona horaria).
+export function formatDateLarga(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const soloDia = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  const d = soloDia
+    ? new Date(Number(soloDia[1]), Number(soloDia[2]) - 1, Number(soloDia[3]))
+    : new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return `${d.getDate()} ${MESES_LARGO_ES[d.getMonth()]} ${d.getFullYear()}`;
+}
+
 // Formato de hora a partir de un "time" del backend (HH:MM o HH:MM:SS).
 // Usa el locale de la organización (RNF-04): no hardcodear el formato. Devuelve
 // p. ej. "16:30" (es-BO usa reloj de 24h por defecto).

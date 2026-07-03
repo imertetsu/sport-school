@@ -30,8 +30,8 @@ from app.domain.ports.invoice import (
     ComprobanteData,
     ComprobanteService,
     CuotaLinea,
+    KardexCuotaLinea,
     KardexData,
-    KardexPagoLinea,
 )
 from app.domain.ports.notification import NotificationService
 from app.models.conciliacion_pendiente import ConciliacionPendiente
@@ -229,50 +229,27 @@ def construir_comprobante_data(db: Session, *, pago: Pago, org: Organizacion) ->
 # --------------------------------------------------------------------------- #
 # KARDEX de pagos (estado de cuenta consolidado del deportista)
 # --------------------------------------------------------------------------- #
-_MESES_ABBR = (
+_MESES_LARGO = (
     "",
-    "ene",
-    "feb",
-    "mar",
-    "abr",
-    "may",
-    "jun",
-    "jul",
-    "ago",
-    "sep",
-    "oct",
-    "nov",
-    "dic",
+    "enero",
+    "febrero",
+    "marzo",
+    "abril",
+    "mayo",
+    "junio",
+    "julio",
+    "agosto",
+    "septiembre",
+    "octubre",
+    "noviembre",
+    "diciembre",
 )
 _METODO_KARDEX = {"EFECTIVO": "Efectivo", "QR": "QR"}
 
 
-def _fmt_fecha(dt: date | datetime) -> str:
-    """`dd/mm/aaaa` (sirve para date y datetime)."""
-    return dt.strftime("%d/%m/%Y")
-
-
-def _concepto_meses(cuotas: list[Cuota]) -> str:
-    """Meses cubiertos por un pago, p.ej. `feb, mar 2026` (colapsa el año si es uno)."""
-    if not cuotas:
-        return "—"
-    anios = {c.periodo_inicio.year for c in cuotas}
-    if len(anios) == 1:
-        meses = ", ".join(_MESES_ABBR[c.periodo_inicio.month] for c in cuotas)
-        return f"{meses} {next(iter(anios))}"
-    return ", ".join(
-        f"{_MESES_ABBR[c.periodo_inicio.month]} {c.periodo_inicio.year}" for c in cuotas
-    )
-
-
-def _rango_vencimiento(cuotas: list[Cuota]) -> str:
-    """Vencimiento de la(s) cuota(s): fecha única o rango `min – max`."""
-    if not cuotas:
-        return "—"
-    venc = sorted(c.vence_el for c in cuotas)
-    if venc[0] == venc[-1]:
-        return _fmt_fecha(venc[0])
-    return f"{_fmt_fecha(venc[0])} - {_fmt_fecha(venc[-1])}"
+def _fecha_dma(dt: date | datetime) -> str:
+    """Fecha "día mes año" en español, p.ej. `5 junio 2026` (sirve para date/datetime)."""
+    return f"{dt.day} {_MESES_LARGO[dt.month]} {dt.year}"
 
 
 def construir_kardex_data(
@@ -280,9 +257,10 @@ def construir_kardex_data(
 ) -> KardexData:
     """Consolida TODOS los pagos CONFIRMADO del deportista en un `KardexData`.
 
-    Una fila por pago, en orden cronológico (más antiguo primero): fecha de pago,
-    recibo, meses cubiertos, vencimiento y monto. `total_pagado` = suma de esos pagos.
-    Corre bajo el `app.current_org` del llamador (RLS).
+    Desglosado **una fila por cuota** (mes), en orden cronológico: recibo, cuota
+    (período), vencimiento, fecha de pago, método y monto aplicado a esa cuota. Un pago
+    que cubrió varios meses produce varias filas con el mismo recibo. `total_pagado` =
+    suma de lo aplicado a las cuotas. Corre bajo el `app.current_org` del llamador (RLS).
     """
     pagos = (
         db.execute(
@@ -302,22 +280,33 @@ def construir_kardex_data(
         .all()
     )
 
-    lineas: list[KardexPagoLinea] = []
+    filas: list[KardexCuotaLinea] = []
     total = Decimal("0")
     for pago in pagos:
-        cuotas = _cuotas_de_pago(db, pago.id)
-        lineas.append(
-            KardexPagoLinea(
-                fecha_pago=_fmt_fecha(pago.pagado_en or pago.created_at),
-                numero_recibo=pago.numero_recibo or "—",
-                concepto=_concepto_meses(cuotas),
-                vence=_rango_vencimiento(cuotas),
-                monto=pago.monto,
-                metodo=_METODO_KARDEX.get(pago.metodo, pago.metodo),
-                estado="Pagado",
+        cuotas = _cuotas_de_pago(db, pago.id)  # ordenadas por vence_el
+        aplicados: dict[uuid.UUID, Decimal] = {
+            row.cuota_id: row.monto_aplicado
+            for row in db.execute(
+                select(PagoCuota.cuota_id, PagoCuota.monto_aplicado).where(
+                    PagoCuota.pago_id == pago.id
+                )
+            ).all()
+        }
+        fecha_pago = _fecha_dma(pago.pagado_en or pago.created_at)
+        metodo = _METODO_KARDEX.get(pago.metodo, pago.metodo)
+        for c in cuotas:
+            monto_c = aplicados.get(c.id, c.monto)
+            filas.append(
+                KardexCuotaLinea(
+                    numero_recibo=pago.numero_recibo or "—",
+                    cuota=_fecha_dma(c.periodo_inicio),
+                    vence=_fecha_dma(c.vence_el),
+                    fecha_pago=fecha_pago,
+                    metodo=metodo,
+                    monto=monto_c,
+                )
             )
-        )
-        total += pago.monto
+            total += monto_c
 
     return KardexData(
         org_nombre=org.nombre,
@@ -325,8 +314,8 @@ def construir_kardex_data(
         deportista_nombre=_nombre_completo(deportista),
         fecha_emision=datetime.now(UTC),
         total_pagado=total,
-        num_pagos=len(lineas),
-        pagos=lineas,
+        num_pagos=len(pagos),
+        filas=filas,
         emisor=settings.recibo_emisor,
     )
 

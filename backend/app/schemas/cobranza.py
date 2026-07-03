@@ -210,12 +210,13 @@ class PagoAnuladoOut(BaseModel):
 
 
 class CuotaCubierta(BaseModel):
-    """Cuota que un pago cubrió (para el historial por deportista): su período y la
-    fecha en que vencía. Permite ver, junto a la fecha de pago, "qué mes se pagó y
-    cuándo vencía"."""
+    """Cuota que un pago cubrió (para el historial por deportista): su período, la fecha
+    en que vencía y el monto aplicado a ESA cuota. Permite mostrar una fila por cuota
+    (mes) con "qué mes se pagó, cuándo vencía y cuánto"."""
 
     periodo_inicio: date
     vence_el: date
+    monto_aplicado: Decimal
 
 
 class PagoListItem(BaseModel):

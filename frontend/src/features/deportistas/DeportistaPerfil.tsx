@@ -4,7 +4,7 @@ import { api, ApiError } from '@/api/client';
 import { useAuth } from '@/auth/useAuth';
 import type { DeportistaDetail, PagoListItem } from '@/api/types';
 import { Avatar, Badge, Button, Card, Tabs, type TabItem } from '@/components/ui';
-import { formatDate, formatMoney, nivelLabel } from '@/lib/format';
+import { formatDate, formatDateLarga, formatMoney, nivelLabel } from '@/lib/format';
 import './DeportistaPerfil.css';
 
 function DataRow({ label, value }: { label: string; value: React.ReactNode }) {
@@ -16,17 +16,8 @@ function DataRow({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-// Tono del badge según el estado del PAGO (no de la cuota): confirmado=verde,
-// pendiente=ámbar, fallido=rojo, anulado=neutro.
-const PAGO_TONE: Record<string, 'paid' | 'pending' | 'overdue' | 'neutral'> = {
-  CONFIRMADO: 'paid',
-  PENDIENTE: 'pending',
-  FALLIDO: 'overdue',
-  ANULADO: 'neutral',
-};
-
-// Historial de pagos de UN deportista: recibo, fecha de pago, las cuotas que cubrió
-// (con su vencimiento), monto/método/estado y "Ver recibo" (abre el PDF imprimible).
+// Historial de pagos de UN deportista: una fila por cuota (mes) con recibo, cuota,
+// vencimiento, fecha de pago, método, monto y "Ver recibo" (abre el PDF imprimible).
 function HistorialPagos({ deportistaId }: { deportistaId: string }) {
   const [pagos, setPagos] = useState<PagoListItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -106,6 +97,39 @@ function HistorialPagos({ deportistaId }: { deportistaId: string }) {
     );
   }
 
+  // Una fila por CUOTA (mes): un pago que cubrió varios meses se despliega en varias
+  // filas con el mismo recibo (el recibo/acción solo se muestran en la 1ª del grupo).
+  const filas = pagos.flatMap((p) => {
+    if (p.cuotas.length === 0) {
+      return [
+        {
+          key: p.id,
+          pagoId: p.id,
+          recibo: p.numero_recibo ?? '—',
+          estado: p.estado,
+          cuota: '',
+          vence: '',
+          fechaPago: p.fecha,
+          metodo: p.metodo,
+          monto: p.monto,
+          mostrarRecibo: true,
+        },
+      ];
+    }
+    return p.cuotas.map((c, j) => ({
+      key: `${p.id}-${j}`,
+      pagoId: p.id,
+      recibo: p.numero_recibo ?? '—',
+      estado: p.estado,
+      cuota: c.periodo_inicio,
+      vence: c.vence_el,
+      fechaPago: p.fecha,
+      metodo: p.metodo,
+      monto: c.monto_aplicado,
+      mostrarRecibo: j === 0,
+    }));
+  });
+
   return (
     <Card>
       {error && (
@@ -126,46 +150,44 @@ function HistorialPagos({ deportistaId }: { deportistaId: string }) {
           <thead>
             <tr>
               <th>Recibo</th>
+              <th>Cuota</th>
+              <th>Vencimiento</th>
               <th>Fecha de pago</th>
-              <th>Cuotas cubiertas (mes · vencimiento)</th>
-              <th className="perfil-pagos__num">Monto</th>
               <th>Método</th>
-              <th>Estado</th>
+              <th className="perfil-pagos__num">Monto</th>
               <th aria-label="Recibo" />
             </tr>
           </thead>
           <tbody>
-            {pagos.map((p) => (
+            {filas.map((f) => (
               <tr
-                key={p.id}
-                className={p.estado === 'ANULADO' ? 'perfil-pagos__anulado' : undefined}
+                key={f.key}
+                className={f.estado === 'ANULADO' ? 'perfil-pagos__anulado' : undefined}
               >
-                <td>{p.numero_recibo ?? '—'}</td>
-                <td>{formatDate(p.fecha)}</td>
                 <td>
-                  {p.cuotas.length === 0
-                    ? '—'
-                    : p.cuotas
-                        .map((c) => `${formatDate(c.periodo_inicio)} · vence ${formatDate(c.vence_el)}`)
-                        .join('  |  ')}
+                  {f.mostrarRecibo
+                    ? f.estado === 'ANULADO'
+                      ? `${f.recibo} (anulado)`
+                      : f.recibo
+                    : ''}
                 </td>
-                <td className="perfil-pagos__num tabular">{formatMoney(p.monto)}</td>
-                <td>{p.metodo}</td>
-                <td>
-                  <Badge tone={PAGO_TONE[p.estado] ?? 'neutral'}>{p.estado}</Badge>
-                </td>
+                <td>{f.cuota ? formatDateLarga(f.cuota) : '—'}</td>
+                <td>{f.vence ? formatDateLarga(f.vence) : '—'}</td>
+                <td>{formatDateLarga(f.fechaPago)}</td>
+                <td>{f.metodo === 'EFECTIVO' ? 'Efectivo' : 'QR'}</td>
+                <td className="perfil-pagos__num tabular">{formatMoney(f.monto)}</td>
                 <td className="perfil-pagos__num">
-                  {p.estado === 'CONFIRMADO' ? (
+                  {f.mostrarRecibo && f.estado === 'CONFIRMADO' ? (
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => verRecibo(p.id)}
-                      disabled={reciboEnVuelo === p.id}
+                      onClick={() => verRecibo(f.pagoId)}
+                      disabled={reciboEnVuelo === f.pagoId}
                     >
-                      {reciboEnVuelo === p.id ? 'Abriendo…' : 'Ver recibo'}
+                      {reciboEnVuelo === f.pagoId ? 'Abriendo…' : 'Ver recibo'}
                     </Button>
                   ) : (
-                    '—'
+                    ''
                   )}
                 </td>
               </tr>

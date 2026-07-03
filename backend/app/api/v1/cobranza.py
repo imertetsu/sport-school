@@ -476,6 +476,14 @@ def listar_pagos(
     for pago in pagos:
         cuotas = pagos_svc._cuotas_de_pago(db, pago.id)
         deportista = pagos_svc._deportista_de_cuotas(db, cuotas)
+        aplicados = {
+            row.cuota_id: row.monto_aplicado
+            for row in db.execute(
+                select(PagoCuota.cuota_id, PagoCuota.monto_aplicado).where(
+                    PagoCuota.pago_id == pago.id
+                )
+            ).all()
+        }
         items.append(
             PagoListItem(
                 id=pago.id,
@@ -489,7 +497,11 @@ def listar_pagos(
                 motivo_anulacion=pago.motivo_anulacion,
                 anulado_en=pago.anulado_en,
                 cuotas=[
-                    CuotaCubierta(periodo_inicio=c.periodo_inicio, vence_el=c.vence_el)
+                    CuotaCubierta(
+                        periodo_inicio=c.periodo_inicio,
+                        vence_el=c.vence_el,
+                        monto_aplicado=aplicados.get(c.id, c.monto),
+                    )
                     for c in cuotas
                 ],
             )

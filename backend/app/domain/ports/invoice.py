@@ -61,28 +61,29 @@ class ComprobanteData:
 
 
 @dataclass(frozen=True)
-class KardexPagoLinea:
-    """Una fila del kardex: un pago hecho, con su fecha, concepto y vencimiento.
+class KardexCuotaLinea:
+    """Una fila del kardex: UNA cuota pagada, con su vencimiento y cuándo se pagó.
 
-    Los campos vienen ya formateados como texto (el constructor arma las etiquetas de
-    meses y el rango de vencimiento); el adaptador PDF solo los pinta.
+    Un pago que cubrió varios meses produce VARIAS filas (una por cuota), todas con el
+    mismo recibo. Fechas ya formateadas como "5 junio 2026" (el constructor las arma);
+    el adaptador PDF solo las pinta. `monto` = lo aplicado a ESA cuota (no el total del
+    pago).
     """
 
-    fecha_pago: str
     numero_recibo: str
-    concepto: str  # meses cubiertos, p.ej. "feb, mar 2026"
-    vence: str  # vencimiento de la(s) cuota(s): fecha o rango "12/03–12/06/2026"
-    monto: Decimal
+    cuota: str  # período de la cuota, p.ej. "12 enero 2026"
+    vence: str  # vencimiento de la cuota, p.ej. "12 febrero 2026"
+    fecha_pago: str  # cuándo se pagó, p.ej. "2 julio 2026"
     metodo: str
-    estado: str
+    monto: Decimal
 
 
 @dataclass(frozen=True)
 class KardexData:
     """Datos para el KARDEX de pagos de un deportista (estado de cuenta imprimible).
 
-    Es el consolidado de TODOS sus pagos confirmados: una fila por pago. Estructura de
-    dominio (sin BD/HTTP); el adaptador la convierte en PDF.
+    Consolidado de TODOS sus pagos confirmados, desglosado **una fila por cuota**
+    (mes). Estructura de dominio (sin BD/HTTP); el adaptador la convierte en PDF.
     """
 
     org_nombre: str
@@ -91,7 +92,7 @@ class KardexData:
     fecha_emision: datetime
     total_pagado: Decimal
     num_pagos: int
-    pagos: list[KardexPagoLinea] = field(default_factory=list)
+    filas: list[KardexCuotaLinea] = field(default_factory=list)
     emisor: str = "SnapCoding - LatinoSport"
 
 

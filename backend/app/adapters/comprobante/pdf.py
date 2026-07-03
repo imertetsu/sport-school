@@ -143,7 +143,7 @@ class PdfComprobanteService(ComprobanteService):
         self._titulo_seccion(pdf, "HISTORIAL DE PAGOS")
         moneda = _latin1(data.moneda)
 
-        if not data.pagos:
+        if not data.filas:
             pdf.set_x(_ML)
             pdf.set_font("Helvetica", "I", 10)
             pdf.set_text_color(*_MUTED)
@@ -151,13 +151,14 @@ class PdfComprobanteService(ComprobanteService):
             pdf.ln(8)
             return
 
+        # Orden: Recibo | Cuota | Vencimiento | Fecha de pago | Metodo | Monto.
         cols = (
-            ("Fecha de pago", 26, "L"),
-            ("Recibo", 28, "L"),
-            ("Concepto", 50, "L"),
-            ("Vence", 34, "L"),
+            ("Recibo", 26, "L"),
+            ("Cuota", 35, "L"),
+            ("Vencimiento", 33, "L"),
+            ("Fecha de pago", 33, "L"),
             ("Metodo", 18, "L"),
-            (f"Monto ({moneda})", 24, "R"),
+            (f"Monto ({moneda})", 35, "R"),
         )
         pdf.set_x(_ML)
         pdf.set_fill_color(*_NAVY)
@@ -168,20 +169,22 @@ class PdfComprobanteService(ComprobanteService):
         pdf.ln(8)
 
         pdf.set_font("Helvetica", "", 8.5)
-        for i, p in enumerate(data.pagos):
+        for i, f in enumerate(data.filas):
             fill = i % 2 == 1
             if fill:
                 pdf.set_fill_color(*_LIGHT)
             pdf.set_x(_ML)
             pdf.set_text_color(*_INK)
-            pdf.cell(26, 7.5, _latin1(p.fecha_pago), align="L", fill=fill)
-            pdf.cell(28, 7.5, _latin1(p.numero_recibo), align="L", fill=fill)
-            pdf.cell(50, 7.5, _latin1(_encoge(p.concepto, 34)), align="L", fill=fill)
+            pdf.cell(26, 7.5, _latin1(f.numero_recibo), align="L", fill=fill)
+            pdf.cell(35, 7.5, _latin1(f.cuota), align="L", fill=fill)
             pdf.set_text_color(*_MUTED)
-            pdf.cell(34, 7.5, _latin1(p.vence), align="L", fill=fill)
-            pdf.cell(18, 7.5, _latin1(p.metodo), align="L", fill=fill)
+            pdf.cell(33, 7.5, _latin1(f.vence), align="L", fill=fill)
             pdf.set_text_color(*_INK)
-            pdf.cell(24, 7.5, f"{p.monto:.2f}", align="R", fill=fill)
+            pdf.cell(33, 7.5, _latin1(f.fecha_pago), align="L", fill=fill)
+            pdf.set_text_color(*_MUTED)
+            pdf.cell(18, 7.5, _latin1(f.metodo), align="L", fill=fill)
+            pdf.set_text_color(*_INK)
+            pdf.cell(35, 7.5, f"{f.monto:.2f}", align="R", fill=fill)
             pdf.ln(7.5)
 
         # Total pagado (banda verde).
@@ -189,8 +192,8 @@ class PdfComprobanteService(ComprobanteService):
         pdf.set_fill_color(*_GREEN)
         pdf.set_text_color(*_WHITE)
         pdf.set_font("Helvetica", "B", 11)
-        pdf.cell(156, 10, "  TOTAL PAGADO", align="L", fill=True)
-        pdf.cell(24, 10, f"{data.total_pagado:.2f}", align="R", fill=True)
+        pdf.cell(145, 10, "  TOTAL PAGADO", align="L", fill=True)
+        pdf.cell(35, 10, f"{data.total_pagado:.2f}", align="R", fill=True)
         pdf.ln(10)
 
     # ------------------------------------------------------------------ #
