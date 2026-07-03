@@ -89,7 +89,11 @@ function HistorialPagos({ deportistaId }: { deportistaId: string }) {
       </Card>
     );
   }
-  if (pagos.length === 0) {
+  // Solo pagos CONFIRMADOS: un QR que quedó PENDIENTE (sin confirmar) no es un pago
+  // real y no debe aparecer en el historial (los ANULADOS ya no traen cuotas). Mismo
+  // criterio que el kardex, para que ambos coincidan.
+  const confirmados = pagos.filter((p) => p.estado === 'CONFIRMADO');
+  if (confirmados.length === 0) {
     return (
       <Card>
         <p className="perfil__empty">Sin pagos aún.</p>
@@ -99,7 +103,7 @@ function HistorialPagos({ deportistaId }: { deportistaId: string }) {
 
   // Una fila por CUOTA (mes): un pago que cubrió varios meses se despliega en varias
   // filas con el mismo recibo (el recibo/acción solo se muestran en la 1ª del grupo).
-  const filas = pagos.flatMap((p) => {
+  const filas = confirmados.flatMap((p) => {
     if (p.cuotas.length === 0) {
       return [
         {
@@ -139,7 +143,8 @@ function HistorialPagos({ deportistaId }: { deportistaId: string }) {
       )}
       <div className="perfil-pagos__head">
         <p className="perfil-pagos__head-text">
-          {pagos.length} {pagos.length === 1 ? 'pago registrado' : 'pagos registrados'}
+          {confirmados.length}{' '}
+          {confirmados.length === 1 ? 'pago registrado' : 'pagos registrados'}
         </p>
         <Button variant="secondary" size="sm" onClick={verKardex} disabled={kardexEnVuelo}>
           {kardexEnVuelo ? 'Generando kardex…' : 'Descargar kardex de pagos'}
