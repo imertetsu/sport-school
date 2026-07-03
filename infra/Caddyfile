@@ -1,0 +1,13 @@
+# Caddy — reverse proxy con HTTPS automático (Let's Encrypt) para LatinoSport.
+#
+# Caddy obtiene y RENUEVA el certificado TLS del dominio automáticamente (ACME:
+# TLS-ALPN-01 por :443 y HTTP-01 por :80). Los certs y la cuenta ACME se persisten
+# en el volumen `caddy_data` (/data) → sobreviven a reinicios/recreaciones.
+#
+# El proxy apunta al servicio `web` (nginx, :5173) por la red interna de docker; ese
+# nginx sirve la SPA y a su vez proxya /api -> api:8000. Así el navegador habla solo
+# con Caddy por HTTPS y el resto queda en la red privada.
+
+latinosport.snapcoding.app {
+	reverse_proxy web:5173
+}

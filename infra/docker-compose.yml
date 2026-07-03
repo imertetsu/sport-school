@@ -169,8 +169,29 @@ services:
       api:
         condition: service_started
 
+  caddy:
+    # Reverse proxy público con HTTPS automático (Let's Encrypt). Termina TLS para
+    # latinosport.snapcoding.app y proxya a `web` (nginx :5173) por la red interna.
+    # Config en ./Caddyfile; certs/cuenta ACME persistidos en el volumen caddy_data.
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      web:
+        condition: service_started
+
 volumes:
   db_data:
+  # Certificados TLS + estado de la cuenta ACME de Caddy. CRÍTICO persistirlo: evita
+  # re-emitir el cert en cada recreación (y toparse con los rate limits de Let's Encrypt).
+  caddy_data:
+  caddy_config:
   # Auth-state multi-sesion de Baileys del sidecar whatsapp-gateway: un subdirectorio por
   # org (${SESSIONS_ROOT}/${org_id}) bajo /data/sessions. OJO: contiene credenciales de las
   # sesiones de WhatsApp de CADA escuela → cifrado en reposo + acceso restringido a nivel
