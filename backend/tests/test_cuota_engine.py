@@ -108,8 +108,8 @@ def test_aniversario_31_enero_primera_cuota():
     insc = InscripcionConfig(fecha_inscripcion=date(2025, 1, 31), monto_mensual=Decimal("300.00"))
     c = primera_cuota(insc, org)
     assert c.periodo_inicio == date(2025, 1, 31)
-    assert c.vence_el == date(2025, 2, 28)  # clamp
-    assert c.periodo_fin == date(2025, 2, 28)
+    assert c.vence_el == date(2025, 1, 31)  # pago adelantado: vence al INICIO del período
+    assert c.periodo_fin == date(2025, 2, 28)  # fin real (clamp)
     assert c.monto == Decimal("300.00")
     assert c.es_prorrateo is False
 
@@ -118,19 +118,19 @@ def test_aniversario_meses_sucesivos_con_clamp():
     org = OrgConfig(modo_cobro_default=MODO_ANIVERSARIO)
     insc = InscripcionConfig(fecha_inscripcion=date(2025, 1, 31), monto_mensual=Decimal("300.00"))
     c1 = primera_cuota(insc, org)
-    # Siguiente: k=2 -> inicio = add_months(31-ene,1)=28-feb; vence=add_months(31-ene,2)=31-mar
+    # Siguiente: k=2 -> inicio=28-feb; pago adelantado -> vence al INICIO (28-feb).
     c2 = siguiente_cuota(
         insc, org, ultimo_periodo_inicio=c1.periodo_inicio, ultimo_vence_el=c1.vence_el
     )
     assert c2.periodo_inicio == date(2025, 2, 28)
-    assert c2.vence_el == date(2025, 3, 31)
+    assert c2.vence_el == date(2025, 2, 28)
     assert c2.es_prorrateo is False
-    # Tercera: k=3 -> inicio = add_months(31-ene,2)=31-mar; vence=add_months(31-ene,3)=30-abr
+    # Tercera: k=3 -> inicio=31-mar; vence al INICIO (31-mar).
     c3 = siguiente_cuota(
         insc, org, ultimo_periodo_inicio=c2.periodo_inicio, ultimo_vence_el=c2.vence_el
     )
     assert c3.periodo_inicio == date(2025, 3, 31)
-    assert c3.vence_el == date(2025, 4, 30)
+    assert c3.vence_el == date(2025, 3, 31)
 
 
 def test_aniversario_dia_normal():
@@ -138,7 +138,7 @@ def test_aniversario_dia_normal():
     insc = InscripcionConfig(fecha_inscripcion=date(2025, 3, 15), monto_mensual=Decimal("250"))
     c = primera_cuota(insc, org)
     assert c.periodo_inicio == date(2025, 3, 15)
-    assert c.vence_el == date(2025, 4, 15)
+    assert c.vence_el == date(2025, 3, 15)  # pago adelantado: vence al inicio
 
 
 # --------------------------------------------------------------------------- #

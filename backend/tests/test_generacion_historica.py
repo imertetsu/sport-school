@@ -34,9 +34,9 @@ def test_inscrito_en_enero_genera_una_cuota_por_mes_hasta_hoy() -> None:
         date(2026, 5, 11),
         date(2026, 6, 11),
     ]
-    # La corriente (última) vence en el futuro; el resto ya venció.
-    assert periodos[-1].vence_el == date(2026, 7, 11)
-    assert all(p.vence_el <= date(2026, 7, 2) for p in periodos[:-1])
+    # Pago adelantado: cada cuota vence al INICIO de su período (el día aniversario).
+    assert all(p.vence_el == p.periodo_inicio for p in periodos)
+    assert periodos[-1].vence_el == date(2026, 6, 11)
 
 
 def test_todas_las_cuotas_llevan_el_monto_de_la_inscripcion() -> None:
@@ -47,12 +47,13 @@ def test_todas_las_cuotas_llevan_el_monto_de_la_inscripcion() -> None:
 
 
 def test_inscrito_este_mes_solo_genera_la_cuota_corriente() -> None:
-    # Inscrito hoy: solo la primera cuota (vence el mes que viene, en el futuro).
+    # Inscrito hoy: solo la cuota corriente, que (pago adelantado) vence HOY mismo.
     periodos = _periodos_hasta_corriente(
         _insc(date(2026, 7, 2)), _ORG_ANIVERSARIO, hoy=date(2026, 7, 2)
     )
     assert len(periodos) == 1
     assert periodos[0].periodo_inicio == date(2026, 7, 2)
+    assert periodos[0].vence_el == date(2026, 7, 2)
 
 
 def test_no_genera_periodos_futuros_de_mas() -> None:

@@ -116,8 +116,12 @@ def generar_cuotas_org(db: Session, *, org_id: uuid.UUID, hoy: date | None = Non
         # (cota de seguridad para no entrar en bucle si los datos son raros).
         ultimo_inicio = ultima.periodo_inicio
         ultimo_vence = ultima.vence_el
+        ultimo_fin = ultima.periodo_fin
         for _ in range(120):  # máx 10 años de catch-up
-            if ultimo_vence > hoy:
+            # Corta por FIN de período (no por vencimiento): independiente de si el
+            # cobro es adelantado o vencido. El período corriente (fin futuro) es el
+            # último que se genera.
+            if ultimo_fin > hoy:
                 break
             periodo = siguiente_cuota(
                 insc_cfg,
@@ -131,6 +135,7 @@ def generar_cuotas_org(db: Session, *, org_id: uuid.UUID, hoy: date | None = Non
                 creadas += 1
             ultimo_inicio = periodo.periodo_inicio
             ultimo_vence = periodo.vence_el
+            ultimo_fin = periodo.periodo_fin
 
     return creadas
 
@@ -148,7 +153,10 @@ def _periodos_hasta_corriente(
     periodos = [primera_cuota(insc_cfg, org_cfg)]
     for _ in range(600):  # cota de seguridad (~50 años de catch-up)
         ultimo = periodos[-1]
-        if ultimo.vence_el > hoy:
+        # Corta por FIN de período (no por vencimiento) para ser independiente de si el
+        # cobro es adelantado (vence al inicio) o vencido (vence al fin): el número de
+        # cuotas que corresponden hoy es el mismo en ambos casos.
+        if ultimo.periodo_fin > hoy:
             break
         siguiente = siguiente_cuota(
             insc_cfg,

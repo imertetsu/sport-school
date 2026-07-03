@@ -168,13 +168,19 @@ def siguiente_cuota(
 
 # --- ANIVERSARIO ---------------------------------------------------------- #
 def _cuota_aniversario(insc: InscripcionConfig, *, k: int) -> PeriodoCuota:
-    """Cuota k (k≥1) en modo ANIVERSARIO (primer período completo)."""
+    """Cuota k (k≥1) en modo ANIVERSARIO — pago ADELANTADO (primer período completo).
+
+    Cada mes se cobra al INICIO de su período (el día aniversario de la inscripción),
+    de modo que el primer mes vence el MISMO día de la inscripción. Por eso
+    `vence_el = inicio` (no el fin del período). `periodo_fin` sigue siendo el fin real
+    del período (usado por el motor de generación para contar cuántas cuotas van).
+    """
     inicio = add_months(insc.fecha_inscripcion, k - 1)
-    vence = add_months(insc.fecha_inscripcion, k)
+    fin = add_months(insc.fecha_inscripcion, k)
     return PeriodoCuota(
         periodo_inicio=inicio,
-        periodo_fin=vence,
-        vence_el=vence,
+        periodo_fin=fin,
+        vence_el=inicio,
         monto=_round2(insc.monto_mensual),
         es_prorrateo=False,
     )
