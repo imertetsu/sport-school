@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.org_context import set_current_org_id
 from app.domain.ports.invoice import ComprobanteService
 from app.domain.ports.whatsapp import WhatsAppImageMessage, WhatsAppPort
 from app.models.deportista import Deportista
@@ -97,6 +98,13 @@ def enviar_comprobante_whatsapp(
     comprobante_svc: ComprobanteService,
 ) -> EnvioComprobanteResult:
     """Envía el comprobante (imagen del recibo + caption) al tutor responsable de pago."""
+    # El adaptador del gateway resuelve la org por ContextVar (`app.core.org_context`).
+    # En un request sync, el ContextVar que fija `set_tenant_context` (dependencia) NO
+    # llega al cuerpo del endpoint: FastAPI corre las dependencias y el endpoint sync en
+    # hilos distintos del threadpool y los ContextVars no se propagan de vuelta. Lo fijamos
+    # aquí — mismo contexto que llama al puerto — o el envío falla con
+    # "sin contexto de organización" (el GUC de RLS sí funciona porque va en la sesión de BD).
+    set_current_org_id(str(org.id))
     cuotas = pagos_svc._cuotas_de_pago(db, pago.id)
     deportista = pagos_svc._deportista_de_cuotas(db, cuotas)
     if deportista is None:

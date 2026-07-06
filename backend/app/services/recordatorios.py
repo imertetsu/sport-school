@@ -39,6 +39,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
+from app.core.org_context import set_current_org_id
 from app.domain.ports.whatsapp import (
     WhatsAppImageMessage,
     WhatsAppPort,
@@ -174,6 +175,11 @@ def enviar_recordatorio_cuota(
        `FALLIDO`. Todo en la MISMA tx del caller (no commitea aquí).
     """
     ciclo = _ciclo(tipo, cuota=cuota, hoy=hoy)
+
+    # El adaptador del gateway resuelve la org por ContextVar. En un request sync ese
+    # ContextVar (fijado por la dependencia) NO llega al cuerpo del endpoint (threadpool),
+    # así que lo fijamos aquí; en el worker/cron ya viene fijado (idempotente).
+    set_current_org_id(str(cuota.org_id))
 
     # 2) Destinatario: cuota -> inscripcion -> deportista -> tutor responsable de pago.
     insc = db.execute(
