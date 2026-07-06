@@ -178,14 +178,15 @@ describe('NuevoDeportista — OCR + recuperar-por-CI + disciplina (S3)', () => {
 
     await user.click(screen.getByRole('button', { name: '[mock] Escanear cédula' }));
 
+    // Nombres/apellidos del deportista se normalizan a MAYÚSCULA al registrarlo.
     expect((screen.getByLabelText(/Apellido paterno/) as HTMLInputElement).value).toBe(
-      'Quispe',
+      'QUISPE',
     );
     expect((screen.getByLabelText(/Apellido materno/) as HTMLInputElement).value).toBe(
-      'Mamani',
+      'MAMANI',
     );
     // [0] = deportista (el tutor también tiene "Nombres"/"CI").
-    expect((screen.getAllByLabelText(/^Nombres/)[0] as HTMLInputElement).value).toBe('Mateo');
+    expect((screen.getAllByLabelText(/^Nombres/)[0] as HTMLInputElement).value).toBe('MATEO');
     expect((screen.getAllByLabelText(/^CI/)[0] as HTMLInputElement).value).toBe('9123456');
     expect((screen.getByLabelText(/Fecha de nacimiento/) as HTMLInputElement).value).toBe(
       '2014-03-10',
@@ -209,9 +210,9 @@ describe('NuevoDeportista — OCR + recuperar-por-CI + disciplina (S3)', () => {
     expect(
       await screen.findByText(/Se recuperó el registro anterior del deportista/),
     ).toBeInTheDocument();
-    // Los datos del registro anterior se cargaron en el form.
+    // Los datos del registro anterior se cargaron en el form (apellido en MAYÚSCULA).
     expect((screen.getByLabelText(/Apellido paterno/) as HTMLInputElement).value).toBe(
-      'Condori',
+      'CONDORI',
     );
     expect((screen.getAllByLabelText(/^Nombres/)[1] as HTMLInputElement).value).toBe(
       'Rosa Huanca',
@@ -461,9 +462,9 @@ describe('NuevoDeportista — modo EDICIÓN (Fase 3)', () => {
     expect(await screen.findByText('Editar deportista')).toBeInTheDocument();
     await waitFor(() => expect(deportistaMock).toHaveBeenCalledWith('dep-1', expect.anything()));
 
-    // Datos básicos precargados.
+    // Datos básicos precargados (nombres/apellidos en MAYÚSCULA).
     expect((screen.getByLabelText(/Apellido paterno/) as HTMLInputElement).value).toBe(
-      'Condori',
+      'CONDORI',
     );
     expect((screen.getAllByLabelText(/^CI/)[0] as HTMLInputElement).value).toBe('9876543');
     // Ficha médica precargada.
@@ -500,7 +501,8 @@ describe('NuevoDeportista — modo EDICIÓN (Fase 3)', () => {
     await waitFor(() => expect(actualizarDeportistaMock).toHaveBeenCalledTimes(1));
     const [calledId, payload] = actualizarDeportistaMock.mock.calls[0];
     expect(calledId).toBe('dep-1');
-    expect(payload.nombres).toBe('Valentina Sofía');
+    // El nombre del deportista se normaliza a MAYÚSCULA al guardar.
+    expect(payload.nombres).toBe('VALENTINA SOFÍA');
     // Los tutores van con su id (reconciliación por id) y NO se manda consentimiento.
     expect(payload.tutores).toHaveLength(2);
     expect(payload.tutores[0].id).toBe('t1');

@@ -207,9 +207,9 @@ export function NuevoDeportista() {
 
   // Carga los datos de un deportista recuperado en el formulario (modo recuperado).
   function cargarDeportista(d: DeportistaDetail) {
-    setApPaterno(d.ap_paterno ?? '');
-    setApMaterno(d.ap_materno ?? '');
-    setNombres(d.nombres ?? '');
+    setApPaterno((d.ap_paterno ?? '').toUpperCase());
+    setApMaterno((d.ap_materno ?? '').toUpperCase());
+    setNombres((d.nombres ?? '').toUpperCase());
     setCi(d.ci ?? '');
     setFechaNac(d.fecha_nac ?? '');
     // Precarga el select con el FK canónico devuelto ("" si no tiene disciplina).
@@ -300,9 +300,10 @@ export function NuevoDeportista() {
   // OCR: pre-rellena los campos del deportista. El usuario SIEMPRE puede corregir.
   // Tras extraer, dispara el recuperar-por-CI del deportista con el CI detectado.
   function handleOcr(fields: CedulaFields) {
-    if (fields.apellidoPaterno) setApPaterno(fields.apellidoPaterno);
-    if (fields.apellidoMaterno) setApMaterno(fields.apellidoMaterno);
-    if (fields.nombres) setNombres(fields.nombres);
+    // Nombres/apellidos SIEMPRE en mayúscula (consistencia de registro, pedido del cliente).
+    if (fields.apellidoPaterno) setApPaterno(fields.apellidoPaterno.toUpperCase());
+    if (fields.apellidoMaterno) setApMaterno(fields.apellidoMaterno.toUpperCase());
+    if (fields.nombres) setNombres(fields.nombres.toUpperCase());
     if (fields.fechaNacimiento) setFechaNac(fields.fechaNacimiento);
     // Campos opcionales del reverso (solo si el OCR los extrajo con confianza).
     if (fields.domicilio) setDomicilio(fields.domicilio);
@@ -431,9 +432,9 @@ export function NuevoDeportista() {
         // backend; aquí los enviamos siempre para reflejar el estado del formulario).
         // El consentimiento NO va en el update (ya existe).
         const updatePayload: DeportistaUpdate = {
-          ap_paterno: apPaterno.trim(),
-          ap_materno: apMaterno.trim(),
-          nombres: nombres.trim(),
+          ap_paterno: apPaterno.trim().toUpperCase(),
+          ap_materno: apMaterno.trim().toUpperCase(),
+          nombres: nombres.trim().toUpperCase(),
           ci: ci.trim() || null,
           fecha_nac: fechaNac,
           disciplina_id: disciplinaId || null,
@@ -456,9 +457,9 @@ export function NuevoDeportista() {
 
       // ALTA: POST.
       const payload: DeportistaCreate = {
-        ap_paterno: apPaterno.trim(),
-        ap_materno: apMaterno.trim(),
-        nombres: nombres.trim(),
+        ap_paterno: apPaterno.trim().toUpperCase(),
+        ap_materno: apMaterno.trim().toUpperCase(),
+        nombres: nombres.trim().toUpperCase(),
         ci: ci.trim() || null,
         fecha_nac: fechaNac,
         // FK canónico (S3): "" => null. El backend valida y deriva el nombre legacy.
@@ -597,20 +598,20 @@ export function NuevoDeportista() {
             <Field
               label="Apellido paterno"
               value={apPaterno}
-              onChange={(e) => setApPaterno(e.target.value)}
+              onChange={(e) => setApPaterno(e.target.value.toUpperCase())}
               error={fieldErrors.ap_paterno}
               required
             />
             <Field
               label="Apellido materno"
               value={apMaterno}
-              onChange={(e) => setApMaterno(e.target.value)}
+              onChange={(e) => setApMaterno(e.target.value.toUpperCase())}
               error={fieldErrors.ap_materno}
             />
             <Field
               label="Nombres"
               value={nombres}
-              onChange={(e) => setNombres(e.target.value)}
+              onChange={(e) => setNombres(e.target.value.toUpperCase())}
               error={fieldErrors.nombres}
               required
             />
