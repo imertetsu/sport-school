@@ -40,6 +40,8 @@ from app.schemas.cobranza import (
     CuotaAplicada,
     CuotaCubierta,
     CuotaItem,
+    CuotaMontoIn,
+    CuotaMontoOut,
     CuotaRevertida,
     CuotasAgg,
     CuotasPage,
@@ -490,7 +492,10 @@ def listar_pagos(
         items.append(
             PagoListItem(
                 id=pago.id,
-                fecha=pago.created_at,
+                # "Fecha de pago" = fecha REAL en que se cobró (`pagado_en`, editable en el
+                # modal para cargar meses viejos con su fecha), NO `created_at` (cuándo se
+                # creó el registro). Fallback a created_at por si algún pago no la tuviera.
+                fecha=pago.pagado_en or pago.created_at,
                 metodo=pago.metodo,
                 estado=pago.estado,
                 monto=pago.monto,
@@ -651,6 +656,86 @@ def enviar_recordatorio(
         cuota_id=cuota_id,
         provider_message_id=result.provider_message_id,
         motivo=result.motivo,
+    )
+
+
+# --------------------------------------------------------------------------- #
+# DELETE /cobranza/cuotas/{cuota_id}  (borrar cuota SIN pago — limpieza de migración)
+# --------------------------------------------------------------------------- #
+@router.delete("/cuotas/{cuota_id}", status_code=status.HTTP_204_NO_CONTENT)
+def eliminar_cuota(
+    cuota_id: uuid.UUID,
+    _user: CurrentUser = Depends(require_role("ADMIN")),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Elimina una cuota generada automáticamente que NO tiene pago aplicado (admin).
+
+    Caso de uso (migración): un deportista que se dio de baja y volvió deja cuotas
+    "fantasma" de los meses en que no asistió. Solo se pueden borrar cuotas SIN cobro:
+    si la cuota tiene `monto_pagado > 0` o algún pago aplicado (fila en `pago_cuota`),
+    primero hay que anular el pago (409). Al borrar, los recordatorios de esa cuota se
+    eliminan en cascada y cualquier comprobante pendiente queda con `cuota_id = NULL`
+    (FKs de la BD). RLS limita la cuota al tenant; 404 si no existe.
+    """
+    cuota = db.execute(select(Cuota).where(Cuota.id == cuota_id)).scalar_one_or_none()
+    if cuota is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Cuota no encontrada")
+
+    tiene_pago = db.execute(
+        select(func.count()).select_from(PagoCuota).where(PagoCuota.cuota_id == cuota_id)
+    ).scalar_one()
+    if tiene_pago or cuota.monto_pagado > 0:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="La cuota tiene un pago aplicado; anula el pago antes de eliminarla.",
+        )
+
+    db.delete(cuota)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# --------------------------------------------------------------------------- #
+# PATCH /cobranza/cuotas/{cuota_id}  (editar el monto de una cuota SIN pago)
+# --------------------------------------------------------------------------- #
+@router.patch("/cuotas/{cuota_id}", response_model=CuotaMontoOut)
+def editar_monto_cuota(
+    cuota_id: uuid.UUID,
+    body: CuotaMontoIn,
+    _user: CurrentUser = Depends(require_role("ADMIN")),
+    db: Session = Depends(get_db),
+) -> CuotaMontoOut:
+    """Cambia el monto de una cuota que NO tiene pago aplicado (admin).
+
+    Caso de uso: la tarifa mensual cambió a mitad de año y las cuotas viejas quedaron
+    con el monto inicial; el admin corrige el monto de cada mes. Solo se permite sobre
+    cuotas SIN cobro (`monto_pagado == 0` y sin fila en `pago_cuota`): cambiar el monto
+    de una cuota ya pagada/parcial rompería la contabilidad → 409 (primero anula el pago).
+    No toca el `monto_mensual` de la inscripción (ese es el default de cuotas NUEVAS).
+    RLS limita la cuota al tenant; 404 si no existe.
+    """
+    cuota = db.execute(select(Cuota).where(Cuota.id == cuota_id)).scalar_one_or_none()
+    if cuota is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Cuota no encontrada")
+
+    tiene_pago = db.execute(
+        select(func.count()).select_from(PagoCuota).where(PagoCuota.cuota_id == cuota_id)
+    ).scalar_one()
+    if tiene_pago or cuota.monto_pagado > 0:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="La cuota tiene un pago aplicado; anula el pago antes de cambiar el monto.",
+        )
+
+    cuota.monto = body.monto.quantize(Decimal("0.01"))
+    db.commit()
+    db.refresh(cuota)
+    return CuotaMontoOut(
+        id=cuota.id,
+        monto=cuota.monto,
+        monto_pagado=cuota.monto_pagado,
+        saldo=cuota.monto - cuota.monto_pagado,
+        estado=cuota.estado,
     )
 
 

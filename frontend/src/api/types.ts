@@ -334,6 +334,15 @@ export interface CuotaListItem {
 
 export type CuotasListResponse = Paginated<CuotaListItem>;
 
+// --- PATCH /cobranza/cuotas/{id} --- respuesta al cambiar el monto de una cuota.
+export interface CuotaMontoActualizada {
+  id: string;
+  monto: string; // numeric(10,2)
+  monto_pagado: string;
+  saldo: string;
+  estado: EstadoCuota;
+}
+
 // --- GET /cobranza/panel ---
 // {ingresos_mes:{monto}, deportistas_activos:{count, sucursales, disciplinas},
 //  cuotas_pendientes:{count, monto}, cuotas_vencidas:{count, monto},

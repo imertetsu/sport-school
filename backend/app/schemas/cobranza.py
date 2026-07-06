@@ -68,6 +68,26 @@ class CuotasPage(BaseModel):
     page_size: int
 
 
+class CuotaMontoIn(BaseModel):
+    """`PATCH /cobranza/cuotas/{id}` -> nuevo monto de una cuota SIN pago.
+
+    Permite corregir la tarifa de un mes puntual (p. ej. la cuota subió a mitad de
+    año y las cuotas viejas quedaron con el monto inicial).
+    """
+
+    monto: Decimal = Field(..., gt=0)
+
+
+class CuotaMontoOut(BaseModel):
+    """Respuesta del PATCH de monto: refleja el estado de la cuota tras el cambio."""
+
+    id: uuid.UUID
+    monto: Decimal
+    monto_pagado: Decimal
+    saldo: Decimal
+    estado: str
+
+
 # --------------------------------------------------------------------------- #
 # Panel (KPIs + morosidad)
 # --------------------------------------------------------------------------- #
@@ -231,7 +251,8 @@ class PagoListItem(BaseModel):
 
     `anulable = (registrado_por is not None and estado == 'CONFIRMADO')`: solo los pagos
     registrados A MANO (efectivo o QR/transferencia) son anulables; el QR automático por
-    webhook (sin `registrado_por`) no lo es. `fecha` = created_at.
+    webhook (sin `registrado_por`) no lo es. `fecha` = `pagado_en` (fecha real del cobro,
+    editable al registrar), con fallback a `created_at`.
     `deportista_nombre` va en MAYÚSCULAS (datos de deportista ya almacenados así).
     `cuotas` = las cuotas que este pago cubrió (con su vencimiento), para el historial
     por deportista.

@@ -25,6 +25,7 @@ import type {
   ConfirmarComprobanteBody,
   EstadoComprobante,
   CuotasListResponse,
+  CuotaMontoActualizada,
   DisciplinaRef,
   EgresoCreate,
   EgresoCreated,
@@ -438,6 +439,26 @@ export const api = {
   },
   generarCuotas(signal?: AbortSignal): Promise<GenerarCuotasResponse> {
     return request<GenerarCuotasResponse>('/cobranza/generar', { method: 'POST', signal });
+  },
+  // DELETE /cobranza/cuotas/{cuota_id} (ADMIN) -> borra una cuota SIN pago aplicado
+  // (limpieza de migración: cuotas "fantasma" de un deportista que se fue y volvió).
+  // 409 si la cuota tiene un pago aplicado (hay que anular el pago primero).
+  eliminarCuota(cuotaId: string, signal?: AbortSignal): Promise<void> {
+    return request<void>(`/cobranza/cuotas/${cuotaId}`, { method: 'DELETE', signal });
+  },
+  // PATCH /cobranza/cuotas/{cuota_id} (ADMIN) -> cambia el monto de una cuota SIN pago
+  // (la tarifa mensual cambió y las cuotas viejas quedaron con el monto inicial).
+  // 409 si la cuota ya tiene un pago aplicado.
+  actualizarMontoCuota(
+    cuotaId: string,
+    monto: string,
+    signal?: AbortSignal,
+  ): Promise<CuotaMontoActualizada> {
+    return request<CuotaMontoActualizada>(`/cobranza/cuotas/${cuotaId}`, {
+      method: 'PATCH',
+      body: { monto },
+      signal,
+    });
   },
   pagoEfectivo(body: RegistrarPagoEfectivoBody, signal?: AbortSignal): Promise<PagoOut> {
     return request<PagoOut>('/cobranza/pagos/efectivo', {

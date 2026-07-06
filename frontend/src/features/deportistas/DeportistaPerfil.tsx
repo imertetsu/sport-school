@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, ApiError } from '@/api/client';
 import { useAuth } from '@/auth/useAuth';
-import type { DeportistaDetail, PagoListItem } from '@/api/types';
-import { Avatar, Badge, Button, Card, Tabs, type TabItem } from '@/components/ui';
+import type { CuotaListItem, DeportistaDetail, PagoListItem } from '@/api/types';
+import { Avatar, Badge, Button, Card, EstadoBadge, Tabs, type TabItem } from '@/components/ui';
 import { formatDate, formatDateLarga, formatMoney, mesLargo, nivelLabel } from '@/lib/format';
 import './DeportistaPerfil.css';
 
@@ -200,6 +200,284 @@ function HistorialPagos({ deportistaId }: { deportistaId: string }) {
           </tbody>
         </table>
       </div>
+    </Card>
+  );
+}
+
+// Cuotas de UN deportista: lista todas (mes, vencimiento, monto, estado). El ADMIN
+// puede ELIMINAR cuotas SIN pago — limpieza de migración: meses "fantasma" de un
+// deportista que se dio de baja y volvió. Las cuotas con pago no se pueden borrar
+// (hay que anular el pago primero; el backend responde 409).
+function CuotasDeportista({
+  deportistaId,
+  isAdmin,
+}: {
+  deportistaId: string;
+  isAdmin: boolean;
+}) {
+  const [cuotas, setCuotas] = useState<CuotaListItem[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  // Confirmación en dos pasos por fila (evita borrados accidentales).
+  const [confirmarId, setConfirmarId] = useState<string | null>(null);
+  const [borrandoId, setBorrandoId] = useState<string | null>(null);
+  // Edición inline del monto (la tarifa mensual cambió; corregir cuotas viejas).
+  const [editandoId, setEditandoId] = useState<string | null>(null);
+  const [montoEdit, setMontoEdit] = useState('');
+  const [guardandoId, setGuardandoId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+    setError(null);
+    api
+      .cuotas({ deportista_id: deportistaId, page: 1, page_size: 100 }, controller.signal)
+      .then((res) => {
+        if (active) setCuotas(res.items);
+      })
+      .catch((err) => {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        if (active) setError('No se pudieron cargar las cuotas.');
+      });
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [deportistaId]);
+
+  async function eliminar(cuotaId: string) {
+    setBorrandoId(cuotaId);
+    setError(null);
+    try {
+      await api.eliminarCuota(cuotaId);
+      setCuotas((prev) => (prev ? prev.filter((c) => c.id !== cuotaId) : prev));
+      setConfirmarId(null);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setError(
+          err.status === 409
+            ? 'Esa cuota tiene un pago aplicado; anula el pago antes de eliminarla.'
+            : err.isForbidden
+              ? 'No tienes permiso para eliminar cuotas.'
+              : err.message,
+        );
+      } else {
+        setError('No se pudo eliminar la cuota.');
+      }
+    } finally {
+      setBorrandoId(null);
+    }
+  }
+
+  function iniciarEdicion(c: CuotaListItem) {
+    setEditandoId(c.id);
+    setMontoEdit(String(c.monto));
+    setConfirmarId(null);
+    setError(null);
+  }
+
+  function cancelarEdicion() {
+    setEditandoId(null);
+    setMontoEdit('');
+  }
+
+  async function guardarMonto(cuotaId: string) {
+    const monto = montoEdit.trim();
+    if (!monto || Number.isNaN(Number(monto)) || Number(monto) <= 0) {
+      setError('Ingresa un monto mayor a 0.');
+      return;
+    }
+    setGuardandoId(cuotaId);
+    setError(null);
+    try {
+      const actualizada = await api.actualizarMontoCuota(cuotaId, monto);
+      setCuotas((prev) =>
+        prev
+          ? prev.map((c) =>
+              c.id === cuotaId
+                ? {
+                    ...c,
+                    monto: actualizada.monto,
+                    saldo: actualizada.saldo,
+                    estado: actualizada.estado,
+                  }
+                : c,
+            )
+          : prev,
+      );
+      setEditandoId(null);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setError(
+          err.status === 409
+            ? 'Esa cuota tiene un pago aplicado; anula el pago antes de cambiar el monto.'
+            : err.isForbidden
+              ? 'No tienes permiso para cambiar el monto.'
+              : err.message,
+        );
+      } else {
+        setError('No se pudo cambiar el monto.');
+      }
+    } finally {
+      setGuardandoId(null);
+    }
+  }
+
+  if (error && cuotas === null) {
+    return (
+      <Card>
+        <div className="page-error" role="alert">
+          {error}
+        </div>
+      </Card>
+    );
+  }
+  if (cuotas === null) {
+    return (
+      <Card>
+        <p className="perfil__empty">Cargando cuotas…</p>
+      </Card>
+    );
+  }
+  if (cuotas.length === 0) {
+    return (
+      <Card>
+        <p className="perfil__empty">Sin cuotas generadas.</p>
+      </Card>
+    );
+  }
+
+  // Cronológico por vencimiento (el backend las trae desc; acá asc para lectura).
+  const ordenadas = [...cuotas].sort((a, b) => a.vence_el.localeCompare(b.vence_el));
+
+  return (
+    <Card>
+      {error && (
+        <div className="page-error" role="alert">
+          {error}
+        </div>
+      )}
+      <div className="perfil-pagos__wrap">
+        <table className="perfil-pagos">
+          <thead>
+            <tr>
+              <th>Cuota</th>
+              <th>Vencimiento</th>
+              <th className="perfil-pagos__num">Monto</th>
+              <th>Estado</th>
+              {isAdmin && <th aria-label="Acciones" />}
+            </tr>
+          </thead>
+          <tbody>
+            {ordenadas.map((c) => {
+              // "Con pago" (no borrable) = tiene algo aplicado o ya está pagada/parcial.
+              const conPago =
+                Number(c.monto_pagado) > 0 ||
+                c.estado === 'PAGADO' ||
+                c.estado === 'PARCIAL';
+              return (
+                <tr key={c.id}>
+                  <td>{mesLargo(c.vence_el)}</td>
+                  <td>{formatDateLarga(c.vence_el)}</td>
+                  <td className="perfil-pagos__num tabular">
+                    {editandoId === c.id ? (
+                      <input
+                        className="field__input perfil-cuotas__monto-input"
+                        type="number"
+                        inputMode="decimal"
+                        min="0"
+                        step="0.01"
+                        value={montoEdit}
+                        onChange={(e) => setMontoEdit(e.target.value)}
+                        autoFocus
+                        aria-label="Nuevo monto de la cuota"
+                      />
+                    ) : (
+                      formatMoney(c.monto)
+                    )}
+                  </td>
+                  <td>
+                    <EstadoBadge estado={c.estado} />
+                  </td>
+                  {isAdmin && (
+                    <td className="perfil-pagos__num">
+                      {conPago ? (
+                        <span
+                          className="perfil-cuotas__lock"
+                          title="Tiene un pago aplicado; anúlalo para editar o borrar."
+                        >
+                          Con pago
+                        </span>
+                      ) : editandoId === c.id ? (
+                        <span className="perfil-cuotas__confirm">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={cancelarEdicion}
+                            disabled={guardandoId === c.id}
+                          >
+                            Cancelar
+                          </Button>
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            onClick={() => guardarMonto(c.id)}
+                            disabled={guardandoId === c.id}
+                          >
+                            {guardandoId === c.id ? 'Guardando…' : 'Guardar'}
+                          </Button>
+                        </span>
+                      ) : confirmarId === c.id ? (
+                        <span className="perfil-cuotas__confirm">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setConfirmarId(null)}
+                            disabled={borrandoId === c.id}
+                          >
+                            Cancelar
+                          </Button>
+                          <Button
+                            variant="danger"
+                            size="sm"
+                            onClick={() => eliminar(c.id)}
+                            disabled={borrandoId === c.id}
+                          >
+                            {borrandoId === c.id ? 'Eliminando…' : 'Confirmar'}
+                          </Button>
+                        </span>
+                      ) : (
+                        <span className="perfil-cuotas__confirm">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => iniciarEdicion(c)}
+                          >
+                            Editar monto
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setConfirmarId(c.id)}
+                          >
+                            Eliminar
+                          </Button>
+                        </span>
+                      )}
+                    </td>
+                  )}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {isAdmin && (
+        <p className="perfil-cuotas__hint">
+          Podés <strong>editar el monto</strong> o <strong>eliminar</strong> cuotas{' '}
+          <strong>sin pago</strong> — útil si la tarifa cambió a mitad de año, o para
+          limpiar meses generados de más. Las que ya tienen pago se anulan primero.
+        </p>
+      )}
     </Card>
   );
 }
@@ -428,6 +706,11 @@ export function DeportistaPerfil() {
           )}
         </Card>
       ),
+    },
+    {
+      id: 'cuotas',
+      label: 'Cuotas',
+      content: <CuotasDeportista deportistaId={deportista.id} isAdmin={isAdmin} />,
     },
     {
       id: 'pagos',
