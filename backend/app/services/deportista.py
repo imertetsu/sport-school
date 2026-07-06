@@ -215,22 +215,28 @@ def crear_deportista(db: Session, body: DeportistaCreate, *, org_id: uuid.UUID) 
         )
     )
 
+    nueva_insc: Inscripcion | None = None
     if body.inscripcion is not None:
         ins = body.inscripcion
-        db.add(
-            Inscripcion(
-                org_id=org_id,
-                deportista_id=deportista.id,
-                disciplina=ins.disciplina,
-                fecha_inscripcion=ins.fecha_inscripcion,
-                monto_mensual=ins.monto_mensual,
-                modo_cobro=ins.modo_cobro,
-                dia_corte=ins.dia_corte,
-                estado=ins.estado,
-            )
+        nueva_insc = Inscripcion(
+            org_id=org_id,
+            deportista_id=deportista.id,
+            disciplina=ins.disciplina,
+            fecha_inscripcion=ins.fecha_inscripcion,
+            monto_mensual=ins.monto_mensual,
+            modo_cobro=ins.modo_cobro,
+            dia_corte=ins.dia_corte,
+            estado=ins.estado,
         )
+        db.add(nueva_insc)
 
     db.flush()
+    # Genera las cuotas desde la fecha de inscripción EN EL ALTA (no esperar al cron):
+    # así el deportista recién creado ya tiene sus cuotas y se le puede registrar un
+    # pago de una, sin tener que editar+guardar. Idempotente (UNIQUE por período); el
+    # cron diario no duplica.
+    if nueva_insc is not None:
+        generacion.generar_cuotas_historicas(db, inscripcion_id=nueva_insc.id)
     return deportista
 
 
@@ -370,8 +376,8 @@ def _upsert_inscripcion(
     pasado tiene sus cuotas mes a mes y se pueden cobrar. Además, las cuotas futuras sin
     pago se **reajustan** al monto vigente (`reajustar_monto_cuotas_futuras`, no-op salvo
     las que difieran); las pagadas/parciales y los períodos ya vencidos conservan su
-    monto. Esto corre en la edición (ADMIN); el alta por `POST /deportistas` sigue
-    delegando la generación al motor/cron.
+    monto. Esto corre en la edición (ADMIN); el alta por `POST /deportistas` también
+    genera sus cuotas de una (ver `crear_deportista`), y el cron diario es el respaldo.
     """
     existente = (
         db.execute(select(Inscripcion).where(Inscripcion.deportista_id == deportista.id))
