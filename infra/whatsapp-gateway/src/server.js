@@ -173,11 +173,15 @@ async function startSession(session) {
           return;
         }
         if (loggedOut) {
-          // Sesion invalidada (logout desde el telefono): hay que re-parear (nuevo QR).
-          session.selfJid = null;
-          session.currentQr = null;
-          session.starting = false;
-          startSession(session).catch((e) => log.error({ err: e.message, org_id: orgId }, 'fallo re-arranque tras logout'));
+          // Sesion invalidada (logout desde el telefono / expirada). Reintentar con las
+          // MISMAS creds muertas dispara un BUCLE infinito de login: WhatsApp lo ve como
+          // abuso y BLOQUEA el numero ("can't link new devices right now"). Se ELIMINA la
+          // sesion (borra creds del disco, saca del Map) y NO se reintenta: el proximo
+          // GET /sessions/:org/qr ("Vincular") arranca un pairing limpio con QR nuevo.
+          log.warn({ org_id: orgId }, 'sesion deslogueada: eliminada sin reintentar (re-vincular por QR)');
+          destroySession(orgId).catch((e) =>
+            log.error({ err: e.message, org_id: orgId }, 'fallo eliminando sesion deslogueada'),
+          );
         } else {
           // Caida transitoria: reconectar.
           session.starting = false;
