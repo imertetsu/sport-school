@@ -43,7 +43,7 @@ vi.mock('./RegistrarPago', () => ({
 import { PanelCobranza } from './PanelCobranza';
 
 const PANEL: PanelData = {
-  ingresos_mes: { monto: '28450' },
+  ingresos_mes: { monto: '28450', efectivo: '20000', qr: '8450' },
   deportistas_activos: { count: 142, sucursales: 2, disciplinas: 3 },
   cuotas_pendientes: { count: 23, monto: '5290' },
   cuotas_vencidas: { count: 7, monto: '1680' },

@@ -1,9 +1,10 @@
+import type { ReactNode } from 'react';
 import './KPICard.css';
 
 export interface KPICardProps {
   label: string;
   value: string;
-  hint?: string;
+  hint?: ReactNode;
   // "overdue" resalta la card en rojo (Cuotas vencidas — design-system §1).
   tone?: 'default' | 'overdue';
   loading?: boolean;

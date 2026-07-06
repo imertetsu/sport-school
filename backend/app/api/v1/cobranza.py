@@ -43,6 +43,7 @@ from app.schemas.cobranza import (
     CuotaMontoIn,
     CuotaMontoOut,
     CuotaRevertida,
+    EnviarComprobanteOut,
     CuotasAgg,
     CuotasPage,
     DeportistaRef,
@@ -62,6 +63,7 @@ from app.schemas.cobranza import (
     RecordatorioOut,
     SucursalNombre,
 )
+from app.services import comprobante_whatsapp
 from app.services import pagos as pagos_svc
 from app.services.deps import (
     get_comprobante_service,
@@ -180,13 +182,21 @@ def panel(
     hoy = datetime.now(UTC).date()
     inicio_mes = hoy.replace(day=1)
 
-    # Ingresos del mes: pagos CONFIRMADO con pagado_en en el mes corriente.
-    ingresos = db.execute(
-        select(func.coalesce(func.sum(Pago.monto), 0)).where(
+    # Ingresos del mes: pagos CONFIRMADO con pagado_en en el mes corriente, desglosados
+    # por método (efectivo / QR) para saber cuánto entra de cada lado. El total es la
+    # suma de todos los métodos (idéntico al cálculo anterior).
+    ingresos_rows = db.execute(
+        select(Pago.metodo, func.coalesce(func.sum(Pago.monto), 0))
+        .where(
             Pago.estado == "CONFIRMADO",
             Pago.pagado_en >= datetime(inicio_mes.year, inicio_mes.month, 1, tzinfo=UTC),
         )
-    ).scalar_one()
+        .group_by(Pago.metodo)
+    ).all()
+    ingresos_por_metodo = {metodo: monto for metodo, monto in ingresos_rows}
+    ingresos_efectivo = ingresos_por_metodo.get("EFECTIVO", Decimal("0"))
+    ingresos_qr = ingresos_por_metodo.get("QR", Decimal("0"))
+    ingresos = sum(ingresos_por_metodo.values(), Decimal("0"))
 
     # Deportistas activos: con inscripción ACTIVA. Sucursales/disciplinas distintas.
     activos = db.execute(
@@ -275,7 +285,7 @@ def panel(
         )
 
     return PanelOut(
-        ingresos_mes=IngresosMes(monto=ingresos),
+        ingresos_mes=IngresosMes(monto=ingresos, efectivo=ingresos_efectivo, qr=ingresos_qr),
         deportistas_activos=DeportistasActivos(
             count=activos, sucursales=sucursales_count, disciplinas=disciplinas_count
         ),
@@ -766,6 +776,42 @@ def comprobante_pdf(
         headers={
             "Content-Disposition": f'inline; filename="comprobante_{pago_id}.pdf"',
         },
+    )
+
+
+# --------------------------------------------------------------------------- #
+# POST /cobranza/pagos/{pago_id}/enviar-whatsapp  (recibo como imagen + mensaje al tutor)
+# --------------------------------------------------------------------------- #
+@router.post("/pagos/{pago_id}/enviar-whatsapp", response_model=EnviarComprobanteOut)
+def enviar_comprobante_whatsapp(
+    pago_id: uuid.UUID,
+    _user: CurrentUser = Depends(require_role("ADMIN")),
+    db: Session = Depends(get_db),
+) -> EnviarComprobanteOut:
+    """Envía el comprobante (imagen del recibo + mensaje) al tutor responsable por WhatsApp.
+
+    Requiere que la escuela tenga su WhatsApp vinculado (el front lo gatea consultando
+    `/mi-escuela/whatsapp/estado`; si el envío falla igual, se reporta en `motivo`). Solo
+    pagos CONFIRMADO. RLS aísla por org. No lanza por fallos de envío: los reporta.
+    """
+    pago = db.execute(select(Pago).where(Pago.id == pago_id)).scalar_one_or_none()
+    if pago is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pago no encontrado")
+    if pago.estado != "CONFIRMADO":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Solo se puede enviar el comprobante de un pago confirmado",
+        )
+    org = db.execute(select(Organizacion).where(Organizacion.id == pago.org_id)).scalar_one()
+    res = comprobante_whatsapp.enviar_comprobante_whatsapp(
+        db,
+        pago=pago,
+        org=org,
+        port=get_whatsapp_port(),
+        comprobante_svc=get_comprobante_service(),
+    )
+    return EnviarComprobanteOut(
+        enviado=res.enviado, motivo=res.motivo, provider_message_id=res.provider_message_id
     )
 
 

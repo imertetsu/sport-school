@@ -349,6 +349,9 @@ export interface CuotaMontoActualizada {
 //  morosidad:[{deportista_id, nombre_completo, categoria, monto, dias_mora}]}
 export interface PanelIngresosMes {
   monto: string;
+  // Desglose por método de cobro (efectivo + qr = monto).
+  efectivo: string;
+  qr: string;
 }
 
 export interface PanelDeportistasActivos {
@@ -425,6 +428,13 @@ export interface PagoOut {
   // Recibo (epic Recibo): N° correlativo por org REC-NNNNNN, asignado al
   // confirmar. null hasta confirmar / pagos históricos sin backfill.
   numero_recibo?: string | null;
+}
+
+// --- POST /cobranza/pagos/{id}/enviar-whatsapp -> resultado del envío del recibo ---
+export interface EnviarComprobanteOut {
+  enviado: boolean;
+  motivo: string; // ok | sin_deportista | sin_telefono | error_envio
+  provider_message_id: string | null;
 }
 
 // --- POST /cobranza/pagos/qr -> QR a mostrar ---

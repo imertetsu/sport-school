@@ -268,3 +268,14 @@
 .moras__link:hover {
   text-decoration: underline;
 }
+
+/* Desglose de ingresos por método: Efectivo en verde, QR en azul (para que se note). */
+.kpi-metodo {
+  font-weight: 600;
+}
+.kpi-metodo--efectivo {
+  color: var(--state-paid-text, #137a3a);
+}
+.kpi-metodo--qr {
+  color: #2563eb;
+}

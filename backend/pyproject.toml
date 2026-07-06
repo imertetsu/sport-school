@@ -22,6 +22,10 @@ dependencies = [
     "python-dateutil>=2.9",
     "fpdf2>=2.7",
     "qrcode[pil]>=7.4",
+    # Rasteriza el PDF del comprobante a imagen (JPG) para enviarlo por WhatsApp como
+    # foto (app/services/comprobante_whatsapp.py). Wheel autocontenido (incluye PDFium),
+    # sin dependencias de sistema. Renderiza a bitmap y Pillow lo codifica a JPEG.
+    "pypdfium2>=4.0",
     # OCR server-side del comprobante de pago (app/services/ocr.py). pytesseract es un
     # wrapper sobre el binario `tesseract` (lo instala infra-dev en la imagen api/worker
     # + `tesseract-ocr-spa`). Pillow ya viene transitivo por qrcode[pil]. Si el binario

@@ -44,6 +44,7 @@ import type {
   IngresosReporte,
   LoginRequest,
   AnularPagoBody,
+  EnviarComprobanteOut,
   PagoAnuladoOut,
   PagoOut,
   PagosListResponse,
@@ -368,6 +369,8 @@ export const api = {
     params: {
       q?: string;
       sucursal_id?: string;
+      disciplina_id?: string;
+      categoria_id?: string;
       solo_activos?: boolean;
       page?: number;
       page_size?: number;
@@ -472,6 +475,17 @@ export const api = {
   },
   pago(id: string, signal?: AbortSignal): Promise<PagoOut> {
     return request<PagoOut>(`/cobranza/pagos/${id}`, { signal });
+  },
+  // POST /cobranza/pagos/{id}/enviar-whatsapp (ADMIN) -> envía el recibo (imagen) +
+  // mensaje al tutor responsable por el WhatsApp vinculado de la escuela.
+  enviarComprobanteWhatsapp(
+    pagoId: string,
+    signal?: AbortSignal,
+  ): Promise<EnviarComprobanteOut> {
+    return request<EnviarComprobanteOut>(`/cobranza/pagos/${pagoId}/enviar-whatsapp`, {
+      method: 'POST',
+      signal,
+    });
   },
   // Sandbox: dispara el flujo del webhook para demostrar el QR en vivo (C3).
   simularConfirmacionQr(id: string, signal?: AbortSignal): Promise<PagoOut> {

@@ -33,6 +33,28 @@
   flex-direction: column;
 }
 
+/* Barra de filtros: sucursal / disciplina / categoría */
+.deportistas-list__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.deportistas-list__filter {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 12rem;
+  flex: 1 1 12rem;
+}
+.deportistas-list__filter-label {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
 /* Toggle "Mostrar inactivos" (espejo invertido del de Entrenadores) */
 .deportistas-list__toggle {
   display: flex;

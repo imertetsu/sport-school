@@ -298,6 +298,7 @@ export function PanelCobranza() {
   );
 
   const ingresos = panel?.ingresos_mes.monto;
+  const ingresosMes = panel?.ingresos_mes;
   const activos = panel?.deportistas_activos;
   const pendientes = panel?.cuotas_pendientes;
   const vencidas = panel?.cuotas_vencidas;
@@ -330,6 +331,19 @@ export function PanelCobranza() {
         <KPICard
           label="Ingresos del mes"
           value={formatMoney(ingresos)}
+          hint={
+            ingresosMes ? (
+              <>
+                <span className="kpi-metodo kpi-metodo--efectivo">
+                  Efectivo {formatMoney(ingresosMes.efectivo)}
+                </span>
+                {' · '}
+                <span className="kpi-metodo kpi-metodo--qr">
+                  QR {formatMoney(ingresosMes.qr)}
+                </span>
+              </>
+            ) : undefined
+          }
           loading={!panel && !panelError}
         />
         <KPICard

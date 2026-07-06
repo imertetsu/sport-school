@@ -83,6 +83,8 @@ def _puede_ver_ficha(user: CurrentUser, deportista: Deportista) -> bool:
 def list_deportistas(
     q: str | None = Query(default=None),
     sucursal_id: uuid.UUID | None = Query(default=None),
+    disciplina_id: uuid.UUID | None = Query(default=None),
+    categoria_id: uuid.UUID | None = Query(default=None),
     solo_activos: bool = Query(default=False),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
@@ -105,6 +107,10 @@ def list_deportistas(
     base = select(Deportista)
     if sucursal_id is not None:
         base = base.where(Deportista.sucursal_id == sucursal_id)
+    if disciplina_id is not None:
+        base = base.where(Deportista.disciplina_id == disciplina_id)
+    if categoria_id is not None:
+        base = base.where(Deportista.categoria_id == categoria_id)
     if solo_activos:
         base = base.where(Deportista.activo.is_(True))
 

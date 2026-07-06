@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { api, ApiError, comprobantePdfUrl } from '@/api/client';
-import type { CuotaListItem, PagoOut, RegistrarPagoEfectivoBody } from '@/api/types';
+import { useNavigate } from 'react-router-dom';
+import { api, ApiError } from '@/api/client';
+import type {
+  CuotaListItem,
+  PagoOut,
+  RegistrarPagoEfectivoBody,
+  WhatsAppEstado,
+} from '@/api/types';
+import { useAuth } from '@/auth/useAuth';
 import { Badge, Button, Card, EstadoBadge, Field } from '@/components/ui';
 import { formatDate, formatMoney, mesLargo } from '@/lib/format';
 import './RegistrarPago.css';
@@ -22,6 +29,8 @@ export interface RegistrarPagoProps {
 }
 
 export function RegistrarPago({ cuotaInicial, onClose, onConfirmado }: RegistrarPagoProps) {
+  // Nombre de la escuela (login C1) para el mensaje de WhatsApp del comprobante.
+  const { org } = useAuth();
   // --- Selección de deportista + cuotas ---
   const [busqueda, setBusqueda] = useState('');
   const [cuotasDeportista, setCuotasDeportista] = useState<CuotaListItem[]>([]);
@@ -154,6 +163,15 @@ export function RegistrarPago({ cuotaInicial, onClose, onConfirmado }: Registrar
 
   const listaCuotas = cuotasDeportista;
 
+  // Cuotas efectivamente seleccionadas (para el comprobante / mensaje de WhatsApp).
+  const cuotasSeleccionadas = seleccion
+    .map((id) => catalogoById.get(id))
+    .filter((c): c is CuotaListItem => c != null);
+  const deportistaNombre =
+    cuotasSeleccionadas[0]?.deportista.nombre_completo ?? cuotaInicial?.deportista.nombre_completo ?? null;
+  const deportistaId =
+    cuotasSeleccionadas[0]?.deportista.id ?? cuotaInicial?.deportista.id ?? null;
+
   const selector = (
     <div className="rp-selector">
       {!cuotaInicial && (
@@ -254,7 +272,15 @@ export function RegistrarPago({ cuotaInicial, onClose, onConfirmado }: Registrar
         </header>
         <div className="rp-modal__body">
           {selector}
-          <PagoManual cuotaIds={seleccion} saldoTotal={saldoTotal} onConfirmado={onConfirmado} />
+          <PagoManual
+            cuotaIds={seleccion}
+            saldoTotal={saldoTotal}
+            cuotasSeleccionadas={cuotasSeleccionadas}
+            deportistaNombre={deportistaNombre}
+            deportistaId={deportistaId}
+            orgNombre={org?.nombre ?? 'LATINOSPORT'}
+            onConfirmado={onConfirmado}
+          />
         </div>
       </div>
     </div>
@@ -265,11 +291,19 @@ export function RegistrarPago({ cuotaInicial, onClose, onConfirmado }: Registrar
 function PagoManual({
   cuotaIds,
   saldoTotal,
+  cuotasSeleccionadas,
+  deportistaNombre,
+  deportistaId,
+  orgNombre,
   onConfirmado,
 }: {
   cuotaIds: string[];
   // Σ saldo de lo seleccionado: default del "Monto recibido" (Abonos).
   saldoTotal: number;
+  cuotasSeleccionadas: CuotaListItem[];
+  deportistaNombre: string | null;
+  deportistaId: string | null;
+  orgNombre: string;
   onConfirmado?: () => void;
 }) {
   const [pago, setPago] = useState<PagoOut | null>(null);
@@ -328,7 +362,16 @@ function PagoManual({
   }
 
   if (pago) {
-    return <Comprobante pago={pago} />;
+    return (
+      <Comprobante
+        pago={pago}
+        cuotas={cuotasSeleccionadas}
+        deportistaNombre={deportistaNombre}
+        deportistaId={deportistaId}
+        orgNombre={orgNombre}
+        metodo={metodo}
+      />
+    );
   }
 
   return (
@@ -426,16 +469,173 @@ function PagoManual({
   );
 }
 
-// --- Comprobante: PDF (descarga real) + WhatsApp (visual) ---
-function Comprobante({ pago }: { pago: PagoOut }) {
-  const [whatsappEnviado, setWhatsappEnviado] = useState(false);
-  const cuotas = pago.cuotas_aplicadas ?? [];
+// --- Comprobante: descarga PDF (autenticada) + copiar mensaje para WhatsApp ---
+function Comprobante({
+  pago,
+  cuotas,
+  deportistaNombre,
+  deportistaId,
+  orgNombre,
+  metodo,
+}: {
+  pago: PagoOut;
+  // Cuotas cobradas (con mes/vencimiento) para el texto de WhatsApp.
+  cuotas: CuotaListItem[];
+  deportistaNombre: string | null;
+  deportistaId: string | null;
+  orgNombre: string;
+  metodo: 'EFECTIVO' | 'QR';
+}) {
+  const navigate = useNavigate();
+  const [pdfEnVuelo, setPdfEnVuelo] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
+  const [copiado, setCopiado] = useState(false);
+  // Tutor responsable de pago (destinatario) — solo para el aviso "se enviará a …".
+  const [tutorNombre, setTutorNombre] = useState<string | null>(null);
+  // Estado del WhatsApp de la escuela: decide si se puede ENVIAR o hay que VINCULAR.
+  const [waEstado, setWaEstado] = useState<WhatsAppEstado | null>(null);
+  const [enviando, setEnviando] = useState(false);
+  const [envioOk, setEnvioOk] = useState(false);
+  const [envioError, setEnvioError] = useState<string | null>(null);
+  const aplicaciones = pago.cuotas_aplicadas ?? [];
+
+  // Nombre del tutor responsable (para mostrar a quién se enviará el recibo).
+  useEffect(() => {
+    if (!deportistaId) return;
+    const controller = new AbortController();
+    let active = true;
+    api
+      .deportista(deportistaId, controller.signal)
+      .then((d) => {
+        if (!active) return;
+        const conTel = d.tutores.filter((t) => t.telefono && t.telefono.trim());
+        const elegido = conTel.find((t) => t.responsable_pago) ?? conTel[0] ?? null;
+        if (elegido) setTutorNombre(elegido.nombres);
+      })
+      .catch(() => {
+        /* el nombre del tutor es informativo; su ausencia no bloquea el envío */
+      });
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [deportistaId]);
+
+  // Estado de la sesión de WhatsApp de la escuela (enviar vs vincular).
+  useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+    api
+      .whatsappEstado(controller.signal)
+      .then((e) => {
+        if (active) setWaEstado(e.estado);
+      })
+      .catch(() => {
+        if (active) setWaEstado(null);
+      });
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, []);
+
   const creditoAplicado = Number(pago.credito_aplicado ?? 0);
   const creditoGenerado = Number(pago.credito_generado ?? 0);
   // ¿Quedó algo a medias? (saldo restante > 0 en alguna cuota → estado PARCIAL).
-  const hayParcial = cuotas.some(
+  const hayParcial = aplicaciones.some(
     (c) => c.estado === 'PARCIAL' || Number(c.saldo_restante) > 0,
   );
+
+  // Descarga el PDF con el token Bearer: el endpoint es autenticado y un <a href>
+  // simple NO manda el header (daba 401). Trae el blob y dispara la descarga.
+  async function descargarPdf() {
+    setPdfEnVuelo(true);
+    setPdfError(null);
+    try {
+      const url = await api.comprobantePdfUrl(pago.id);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `recibo-${pago.numero_recibo ?? pago.id}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch {
+      setPdfError('No se pudo descargar el PDF.');
+    } finally {
+      setPdfEnVuelo(false);
+    }
+  }
+
+  // Texto listo para pegar en un chat de WhatsApp.
+  function mensajeWhatsapp(): string {
+    const lineas: (string | null)[] = [
+      `🧾 *${orgNombre}* — Comprobante de pago`,
+      pago.numero_recibo ? `Recibo: ${pago.numero_recibo}` : null,
+      deportistaNombre ? `Deportista: ${deportistaNombre}` : null,
+      ...cuotas.map(
+        (c) =>
+          `• Cuota ${mesLargo(c.vence_el)} ${c.vence_el.slice(0, 4)} (vence ${formatDate(c.vence_el)})`,
+      ),
+      `Monto: ${formatMoney(pago.monto)}`,
+      `Método: ${metodo === 'EFECTIVO' ? 'Efectivo' : 'QR'}`,
+      '¡Gracias por tu pago! 🙌',
+    ];
+    return lineas.filter((l): l is string => Boolean(l)).join('\n');
+  }
+
+  async function copiarMensaje() {
+    const texto = mensajeWhatsapp();
+    try {
+      await navigator.clipboard.writeText(texto);
+    } catch {
+      // Fallback (navegador sin Clipboard API o contexto no seguro).
+      const ta = document.createElement('textarea');
+      ta.value = texto;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand('copy');
+      } catch {
+        /* si tampoco funciona, no rompemos la UI */
+      }
+      ta.remove();
+    }
+    setCopiado(true);
+    setTimeout(() => setCopiado(false), 2500);
+  }
+
+  // Envía el recibo (imagen) + mensaje al tutor responsable DESDE el servidor, por el
+  // WhatsApp vinculado de la escuela. El backend resuelve el número y arma la imagen.
+  async function enviarWhatsapp() {
+    setEnviando(true);
+    setEnvioError(null);
+    try {
+      const res = await api.enviarComprobanteWhatsapp(pago.id);
+      if (res.enviado) {
+        setEnvioOk(true);
+      } else {
+        setEnvioError(
+          res.motivo === 'sin_telefono'
+            ? 'El tutor no tiene un teléfono registrado.'
+            : res.motivo === 'error_envio'
+              ? 'No se pudo enviar. Verificá que el WhatsApp de la escuela siga vinculado.'
+              : 'No se pudo enviar el comprobante.',
+        );
+      }
+    } catch (err) {
+      setEnvioError(
+        err instanceof ApiError && err.isForbidden
+          ? 'No tenés permiso para enviar.'
+          : 'No se pudo enviar por WhatsApp.',
+      );
+    } finally {
+      setEnviando(false);
+    }
+  }
+
   return (
     <div className="rp-comprobante">
       <Card>
@@ -449,12 +649,13 @@ function Comprobante({ pago }: { pago: PagoOut }) {
           <p className="rp-comprobante__recibo">Recibo {pago.numero_recibo}</p>
         )}
         <p className="rp-comprobante__text">
-          Comprobante generado. Descárgalo en PDF o envíalo por WhatsApp.
+          Comprobante generado. Envialo al tutor por WhatsApp, descargá el PDF o copiá el
+          mensaje.
         </p>
 
-        {cuotas.length > 0 && (
+        {aplicaciones.length > 0 && (
           <ul className="rp-aplicaciones">
-            {cuotas.map((c) => (
+            {aplicaciones.map((c) => (
               <li key={c.cuota_id} className="rp-aplicacion">
                 <span className="rp-aplicacion__top">
                   <EstadoBadge estado={c.estado} />
@@ -489,24 +690,52 @@ function Comprobante({ pago }: { pago: PagoOut }) {
           </div>
         )}
 
+        {pdfError && (
+          <div className="page-error" role="alert">
+            {pdfError}
+          </div>
+        )}
+        {envioError && (
+          <div className="page-error" role="alert">
+            {envioError}
+          </div>
+        )}
+
         <div className="rp-comprobante__actions">
-          <a
-            className="btn btn--secondary btn--md"
-            href={comprobantePdfUrl(pago.id)}
-            target="_blank"
-            rel="noopener noreferrer"
-            download
-          >
-            Descargar PDF
-          </a>
-          <Button
-            variant="ghost"
-            onClick={() => setWhatsappEnviado(true)}
-            disabled={whatsappEnviado}
-          >
-            {whatsappEnviado ? 'Enviado por WhatsApp' : 'Enviar por WhatsApp'}
+          {/* Enviar directo por el WhatsApp de la escuela SOLO si está vinculado; si no,
+              el botón lleva a Ajustes a vincular. PDF y Copiar son el respaldo. */}
+          {waEstado === 'CONECTADA' ? (
+            <Button
+              variant="primary"
+              onClick={enviarWhatsapp}
+              disabled={enviando || envioOk}
+            >
+              {envioOk ? '✓ Enviado por WhatsApp' : enviando ? 'Enviando…' : 'Enviar por WhatsApp'}
+            </Button>
+          ) : (
+            <Button variant="primary" onClick={() => navigate('/ajustes')}>
+              Vincular WhatsApp
+            </Button>
+          )}
+          <Button variant="secondary" onClick={descargarPdf} disabled={pdfEnVuelo}>
+            {pdfEnVuelo ? 'Generando…' : 'Descargar PDF'}
+          </Button>
+          <Button variant="ghost" onClick={copiarMensaje}>
+            {copiado ? '✓ Mensaje copiado' : 'Copiar mensaje'}
           </Button>
         </div>
+
+        {waEstado === 'CONECTADA' && tutorNombre && !envioOk && (
+          <p className="rp-comprobante__text">
+            Se enviará el recibo a <strong>{tutorNombre}</strong> (tutor responsable).
+          </p>
+        )}
+        {waEstado != null && waEstado !== 'CONECTADA' && (
+          <p className="rp-comprobante__text">
+            Para enviar por WhatsApp, primero <strong>vinculá el número de la escuela</strong> en
+            Ajustes. Mientras tanto podés descargar el PDF o copiar el mensaje.
+          </p>
+        )}
       </Card>
     </div>
   );

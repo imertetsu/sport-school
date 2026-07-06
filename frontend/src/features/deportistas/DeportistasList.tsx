@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, ApiError } from '@/api/client';
-import type { DeportistaListItem } from '@/api/types';
+import type { Categoria, DeportistaListItem, DisciplinaRef } from '@/api/types';
 import {
   Avatar,
   Badge,
@@ -26,7 +26,8 @@ function useDebounced<T>(value: T, delay = 300): T {
 
 export function DeportistasList() {
   const navigate = useNavigate();
-  const { selected: sucursalId } = useSucursales();
+  // El filtro de Sucursal usa el selector global (se sincroniza con el del header).
+  const { sucursales, selected: sucursalId, setSelected: setSucursalId } = useSucursales();
   const { query } = useSearch();
   const debouncedQuery = useDebounced(query.trim());
 
@@ -35,6 +36,12 @@ export function DeportistasList() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Filtros de la pantalla: disciplina (catálogo global) y categoría (por sucursal).
+  const [disciplinas, setDisciplinas] = useState<DisciplinaRef[]>([]);
+  const [categorias, setCategorias] = useState<Categoria[]>([]);
+  const [disciplinaId, setDisciplinaId] = useState('');
+  const [categoriaId, setCategoriaId] = useState('');
+
   // Toggle "Mostrar inactivos" (epic escuela-y-bajas, Fase 2). ESPEJO INVERTIDO
   // del de Entrenadores ("Mostrar solo activos"): aquí el caso común es ver los
   // activos, así que por defecto (false) filtramos a los activos enviando
@@ -42,6 +49,45 @@ export function DeportistasList() {
   // también los dados de baja. Mismo parámetro de cliente, etiqueta/default
   // adaptados al caso por defecto de cada lista.
   const [mostrarInactivos, setMostrarInactivos] = useState(false);
+
+  // Catálogo de disciplinas (global) para el filtro. Se carga una vez.
+  useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+    api
+      .disciplinasCatalogo(controller.signal)
+      .then((d) => {
+        if (active) setDisciplinas(d);
+      })
+      .catch(() => {
+        /* el filtro de disciplina no bloquea la lista */
+      });
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, []);
+
+  // Categorías del filtro: dependen de la sucursal (sin sucursal => todas las de la org).
+  // Al cambiar de sucursal, si la categoría elegida ya no pertenece, se limpia.
+  useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+    api
+      .categorias(sucursalId || undefined, controller.signal)
+      .then((cats) => {
+        if (!active) return;
+        setCategorias(cats);
+        setCategoriaId((prev) => (prev && cats.some((c) => c.id === prev) ? prev : ''));
+      })
+      .catch(() => {
+        if (active) setCategorias([]);
+      });
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [sucursalId]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -53,6 +99,8 @@ export function DeportistasList() {
         {
           q: debouncedQuery || undefined,
           sucursal_id: sucursalId || undefined,
+          disciplina_id: disciplinaId || undefined,
+          categoria_id: categoriaId || undefined,
           // mostrarInactivos OFF => solo_activos=true (solo activos);
           // ON => sin filtro (todos, incl. inactivos).
           solo_activos: mostrarInactivos ? undefined : true,
@@ -78,7 +126,7 @@ export function DeportistasList() {
       active = false;
       controller.abort();
     };
-  }, [debouncedQuery, sucursalId, mostrarInactivos]);
+  }, [debouncedQuery, sucursalId, disciplinaId, categoriaId, mostrarInactivos]);
 
   const columns = useMemo<Column<DeportistaListItem>[]>(
     () => [
@@ -155,6 +203,54 @@ export function DeportistasList() {
         </div>
       )}
 
+      <div className="deportistas-list__filters">
+        <label className="deportistas-list__filter">
+          <span className="deportistas-list__filter-label">Sucursal</span>
+          <select
+            className="field__input"
+            value={sucursalId}
+            onChange={(e) => setSucursalId(e.target.value)}
+          >
+            <option value="">Todas las sucursales</option>
+            {sucursales.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.nombre}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="deportistas-list__filter">
+          <span className="deportistas-list__filter-label">Disciplina</span>
+          <select
+            className="field__input"
+            value={disciplinaId}
+            onChange={(e) => setDisciplinaId(e.target.value)}
+          >
+            <option value="">Todas las disciplinas</option>
+            {disciplinas.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.nombre}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="deportistas-list__filter">
+          <span className="deportistas-list__filter-label">Categoría</span>
+          <select
+            className="field__input"
+            value={categoriaId}
+            onChange={(e) => setCategoriaId(e.target.value)}
+          >
+            <option value="">Todas las categorías</option>
+            {categorias.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.nombre} {nivelLabel(c.nivel)}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
       <label className="deportistas-list__toggle">
         <input
           type="checkbox"
@@ -173,7 +269,7 @@ export function DeportistasList() {
           loading={loading}
           onRowClick={(a) => navigate(`/deportistas/${a.id}`)}
           emptyMessage={
-            debouncedQuery || sucursalId
+            debouncedQuery || sucursalId || disciplinaId || categoriaId
               ? 'Sin deportistas para este filtro'
               : 'Aún no hay deportistas registrados'
           }
