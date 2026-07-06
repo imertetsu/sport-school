@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, ApiError, comprobantePdfUrl } from '@/api/client';
 import type { CuotaListItem, PagoOut, RegistrarPagoEfectivoBody } from '@/api/types';
 import { Badge, Button, Card, EstadoBadge, Field } from '@/components/ui';
-import { formatDate, formatMoney } from '@/lib/format';
+import { formatDate, formatMoney, mesLargo } from '@/lib/format';
 import './RegistrarPago.css';
 
 // Fecha de HOY en formato YYYY-MM-DD (local): default del campo "Fecha de pago".
@@ -216,7 +216,12 @@ export function RegistrarPago({ cuotaInicial, onClose, onConfirmado }: Registrar
                       )}
                       <EstadoBadge estado={c.estado} />
                     </span>
-                    <span className="rp-cuota__meta">Vence {formatDate(c.vence_el)}</span>
+                    {/* La cuota se etiqueta por el MES en que vence (DICIEMBRE 2025),
+                        junto a la fecha exacta de vencimiento. */}
+                    <span className="rp-cuota__meta">
+                      Cuota {mesLargo(c.vence_el)} {c.vence_el.slice(0, 4)} | Vence{' '}
+                      {formatDate(c.vence_el)}
+                    </span>
                   </span>
                   <span className="rp-cuota__monto tabular">{formatMoney(c.saldo)}</span>
                 </label>
