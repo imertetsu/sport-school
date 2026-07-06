@@ -616,14 +616,18 @@ function Comprobante({
       const res = await api.enviarComprobanteWhatsapp(pago.id);
       if (res.enviado) {
         setEnvioOk(true);
-      } else {
+      } else if (res.motivo === 'sin_telefono') {
+        setEnvioError('El tutor no tiene un teléfono registrado.');
+      } else if (res.motivo === 'sin_whatsapp') {
         setEnvioError(
-          res.motivo === 'sin_telefono'
-            ? 'El tutor no tiene un teléfono registrado.'
-            : res.motivo === 'error_envio'
-              ? 'No se pudo enviar. Verificá que el WhatsApp de la escuela siga vinculado.'
-              : 'No se pudo enviar el comprobante.',
+          'El número del tutor no está en WhatsApp (o está mal escrito). Revisá el teléfono del tutor responsable.',
         );
+      } else if (res.motivo === 'error_envio') {
+        setEnvioError(
+          `No se pudo enviar por WhatsApp${res.detalle ? ` (${res.detalle})` : ''}. Reintentá; si persiste, revisá que el WhatsApp de la escuela siga vinculado.`,
+        );
+      } else {
+        setEnvioError('No se pudo enviar el comprobante.');
       }
     } catch (err) {
       setEnvioError(

@@ -811,7 +811,10 @@ def enviar_comprobante_whatsapp(
         comprobante_svc=get_comprobante_service(),
     )
     return EnviarComprobanteOut(
-        enviado=res.enviado, motivo=res.motivo, provider_message_id=res.provider_message_id
+        enviado=res.enviado,
+        motivo=res.motivo,
+        provider_message_id=res.provider_message_id,
+        detalle=res.detalle,
     )
 
 

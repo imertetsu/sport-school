@@ -433,8 +433,9 @@ export interface PagoOut {
 // --- POST /cobranza/pagos/{id}/enviar-whatsapp -> resultado del envío del recibo ---
 export interface EnviarComprobanteOut {
   enviado: boolean;
-  motivo: string; // ok | sin_deportista | sin_telefono | error_envio
+  motivo: string; // ok | sin_deportista | sin_telefono | sin_whatsapp | error_envio
   provider_message_id: string | null;
+  detalle: string | null; // error crudo del gateway (diagnóstico)
 }
 
 // --- POST /cobranza/pagos/qr -> QR a mostrar ---

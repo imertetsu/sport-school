@@ -91,13 +91,15 @@ class CuotaMontoOut(BaseModel):
 class EnviarComprobanteOut(BaseModel):
     """`POST /cobranza/pagos/{id}/enviar-whatsapp` -> resultado del envío.
 
-    `motivo` ∈ {ok, sin_deportista, sin_telefono, error_envio}. El front gatea antes por
-    el estado de la sesión (CONECTADA); estos motivos cubren los fallos del envío en sí.
+    `motivo` ∈ {ok, sin_deportista, sin_telefono, sin_whatsapp, error_envio}. El front gatea
+    antes por el estado de la sesión (CONECTADA); estos motivos cubren los fallos del envío
+    en sí. `detalle` trae el error crudo del gateway (diagnóstico).
     """
 
     enviado: bool
     motivo: str
     provider_message_id: str | None = None
+    detalle: str | None = None
 
 
 # --------------------------------------------------------------------------- #

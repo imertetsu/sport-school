@@ -28,11 +28,17 @@ from app.services import pagos as pagos_svc
 
 @dataclass(frozen=True)
 class EnvioComprobanteResult:
-    """Resultado del envío. `motivo` ∈ {ok, sin_deportista, sin_telefono, error_envio}."""
+    """Resultado del envío.
+
+    `motivo` ∈ {ok, sin_deportista, sin_telefono, sin_whatsapp, error_envio}.
+    - `sin_whatsapp`: el número del tutor NO está registrado en WhatsApp (o mal cargado).
+    - `error_envio`: otro fallo del gateway (sesión caída, timeout, etc.); ver `detalle`.
+    """
 
     enviado: bool
     motivo: str
     provider_message_id: str | None = None
+    detalle: str | None = None
 
 
 def rasterizar_pdf_a_jpg(pdf_bytes: bytes, *, scale: float = 2.0) -> bytes:
@@ -117,4 +123,8 @@ def enviar_comprobante_whatsapp(
         return EnvioComprobanteResult(
             enviado=True, motivo="ok", provider_message_id=result.provider_message_id
         )
-    return EnvioComprobanteResult(enviado=False, motivo="error_envio")
+    # El gateway responde `ok:false` con un `error`. Distinguimos el caso más común
+    # (destinatario sin WhatsApp) del resto para dar un mensaje útil en la UI.
+    err = (result.error or "").lower()
+    motivo = "sin_whatsapp" if "registrado" in err or "no esta en whatsapp" in err else "error_envio"
+    return EnvioComprobanteResult(enviado=False, motivo=motivo, detalle=result.error)
