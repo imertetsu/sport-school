@@ -9,7 +9,7 @@ import type {
   PreviewNotificacionOut,
   Sucursal,
 } from '@/api/types';
-import { Button, Card, Field, SelectField } from '@/components/ui';
+import { Button, Card, Field, SelectField, useToast } from '@/components/ui';
 
 export interface NuevoAvisoProps {
   sucursales: Sucursal[];
@@ -29,6 +29,7 @@ const ALCANCE_OPCIONES: { value: AlcanceAviso; label: string }[] = [
 // Formulario de alta/edición de aviso (modal, solo ADMIN). Valida UX, pero el
 // backend es la fuente de verdad: refleja sus 422 (incl. la invariante de alcance).
 export function NuevoAviso({ sucursales, aviso, onClose, onSaved }: NuevoAvisoProps) {
+  const toast = useToast();
   const editar = Boolean(aviso);
 
   const [titulo, setTitulo] = useState(aviso?.titulo ?? '');
@@ -106,23 +107,27 @@ export function NuevoAviso({ sucursales, aviso, onClose, onSaved }: NuevoAvisoPr
       const saved = aviso
         ? await api.actualizarAviso(aviso.id, payload)
         : await api.crearAviso(payload);
+      toast.success(aviso ? 'Aviso actualizado' : 'Aviso publicado');
       onSaved(saved);
     } catch (err) {
       // Si veníamos del paso de confirmación, vuelve al formulario para mostrar
       // el error (la invariante o el 403 se reflejan en los campos/banner).
       setPending(null);
+      let msg: string;
       if (err instanceof ApiError) {
         if (err.isValidation) {
           applyApiErrors(err);
-          setFormError('El servidor rechazó los datos. Revisa los campos marcados.');
+          msg = 'El servidor rechazó los datos. Revisa los campos marcados.';
         } else if (err.isForbidden) {
-          setFormError('No tienes permiso para publicar avisos.');
+          msg = 'No tienes permiso para publicar avisos.';
         } else {
-          setFormError(err.message);
+          msg = err.message;
         }
       } else {
-        setFormError('No se pudo conectar con el servidor.');
+        msg = 'No se pudo conectar con el servidor.';
       }
+      setFormError(msg);
+      toast.error(msg);
     } finally {
       setSubmitting(false);
     }

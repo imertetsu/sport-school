@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, ApiError, resolveSignedUrl } from '@/api/client';
-import { Button, Card } from '@/components/ui';
+import { Button, Card, useToast } from '@/components/ui';
 import type { QrCobroMeta } from '@/api/types';
 import './QrCobroUploader.css';
 
@@ -26,6 +26,7 @@ function formatBytes(bytes: number | null | undefined): string {
 }
 
 export function QrCobroUploader() {
+  const toast = useToast();
   const [meta, setMeta] = useState<QrCobroMeta | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -122,16 +123,20 @@ export function QrCobroUploader() {
       setFileError(null);
       setCambiando(false);
       if (inputRef.current) inputRef.current.value = '';
+      toast.success('QR de cobro actualizado');
     } catch (err) {
+      let msg: string;
       if (err instanceof ApiError) {
         if (err.isForbidden) {
-          setActionError('No tienes permiso para subir el QR de cobro.');
+          msg = 'No tienes permiso para subir el QR de cobro.';
         } else {
-          setActionError(err.message);
+          msg = err.message;
         }
       } else {
-        setActionError('No se pudo subir el QR. Inténtalo de nuevo.');
+        msg = 'No se pudo subir el QR. Inténtalo de nuevo.';
       }
+      setActionError(msg);
+      toast.error(msg);
     } finally {
       setSubiendo(false);
     }
@@ -152,14 +157,16 @@ export function QrCobroUploader() {
       setArchivo(null);
       setPreviewUrl(null);
       setFileError(null);
+      toast.success('QR de cobro eliminado');
     } catch (err) {
-      if (err instanceof ApiError) {
-        setActionError(
-          err.isForbidden ? 'No tienes permiso para quitar el QR de cobro.' : err.message,
-        );
-      } else {
-        setActionError('No se pudo quitar el QR. Inténtalo de nuevo.');
-      }
+      const msg =
+        err instanceof ApiError
+          ? err.isForbidden
+            ? 'No tienes permiso para quitar el QR de cobro.'
+            : err.message
+          : 'No se pudo quitar el QR. Inténtalo de nuevo.';
+      setActionError(msg);
+      toast.error(msg);
     } finally {
       setQuitando(false);
     }

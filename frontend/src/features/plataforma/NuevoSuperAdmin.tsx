@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { platformApi, ApiError } from '@/api/client';
 import type { CrearSuperAdminIn, SuperAdminCreado } from '@/api/types';
-import { Button, Card, Field } from '@/components/ui';
+import { Button, Card, Field, useToast } from '@/components/ui';
 
 export interface NuevoSuperAdminProps {
   onClose: () => void;
@@ -10,6 +10,7 @@ export interface NuevoSuperAdminProps {
 
 // Alta de super admin de plataforma. 409 = email duplicado (se muestra en el campo).
 export function NuevoSuperAdmin({ onClose, onCreated }: NuevoSuperAdminProps) {
+  const toast = useToast();
   const [nombre, setNombre] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -56,24 +57,28 @@ export function NuevoSuperAdmin({ onClose, onCreated }: NuevoSuperAdminProps) {
     setSubmitting(true);
     try {
       const created = await platformApi.crearAdmin(payload);
+      toast.success('Administrador creado');
       onCreated(created);
     } catch (err) {
+      let msg: string;
       if (err instanceof ApiError) {
         if (err.status === 409) {
           setFieldErrors((prev) => ({
             ...prev,
             email: 'Ya existe un super admin con este correo.',
           }));
-          setFormError('El correo ya está en uso.');
+          msg = 'El correo ya está en uso.';
         } else if (err.isValidation) {
           applyApiErrors(err);
-          setFormError('El servidor rechazó los datos. Revisa los campos marcados.');
+          msg = 'El servidor rechazó los datos. Revisa los campos marcados.';
         } else {
-          setFormError(err.message);
+          msg = err.message;
         }
       } else {
-        setFormError('No se pudo conectar con el servidor.');
+        msg = 'No se pudo conectar con el servidor.';
       }
+      setFormError(msg);
+      toast.error(msg);
     } finally {
       setSubmitting(false);
     }

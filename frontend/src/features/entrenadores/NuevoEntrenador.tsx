@@ -8,7 +8,7 @@ import type {
   Sucursal,
 } from '@/api/types';
 import { DocumentScanner, type CedulaFields } from '@/components/ocr/DocumentScanner';
-import { Button, Card, Field } from '@/components/ui';
+import { Button, Card, Field, useToast } from '@/components/ui';
 
 export interface NuevoEntrenadorProps {
   // Entrenador a editar; si se omite, el formulario crea uno nuevo.
@@ -23,6 +23,7 @@ export interface NuevoEntrenadorProps {
 // CI ya en uso). En edición el email NO es editable. El CI (opcional) se puede
 // prellenar con el escáner OCR de cédula; la imagen NO se sube ni se guarda.
 export function NuevoEntrenador({ entrenador, onClose, onSaved }: NuevoEntrenadorProps) {
+  const toast = useToast();
   const editar = Boolean(entrenador);
 
   const [nombres, setNombres] = useState(entrenador?.nombres ?? '');
@@ -181,8 +182,10 @@ export function NuevoEntrenador({ entrenador, onClose, onSaved }: NuevoEntrenado
         };
         saved = await api.createEntrenador(payload);
       }
+      toast.success(entrenador ? 'Cambios guardados' : 'Entrenador registrado');
       onSaved(saved);
     } catch (err) {
+      let msg: string;
       if (err instanceof ApiError) {
         if (err.status === 409) {
           // El backend usa 409 para email duplicado y para CI duplicado (D2:
@@ -194,24 +197,25 @@ export function NuevoEntrenador({ entrenador, onClose, onSaved }: NuevoEntrenado
               ...prev,
               ci: 'Ya existe un entrenador con ese CI',
             }));
-            setFormError(
-              'Ya existe un entrenador con ese CI en tu organización. Edita el entrenador existente en lugar de crear otro.',
-            );
+            msg =
+              'Ya existe un entrenador con ese CI en tu organización. Edita el entrenador existente en lugar de crear otro.';
           } else {
             setFieldErrors((prev) => ({ ...prev, email: 'Ese email ya está en uso.' }));
-            setFormError('El email ya está en uso por otra cuenta.');
+            msg = 'El email ya está en uso por otra cuenta.';
           }
         } else if (err.isValidation) {
           applyApiErrors(err);
-          setFormError('El servidor rechazó los datos. Revisa los campos marcados.');
+          msg = 'El servidor rechazó los datos. Revisa los campos marcados.';
         } else if (err.isForbidden) {
-          setFormError('No tienes permiso para gestionar entrenadores.');
+          msg = 'No tienes permiso para gestionar entrenadores.';
         } else {
-          setFormError(err.message);
+          msg = err.message;
         }
       } else {
-        setFormError('No se pudo conectar con el servidor.');
+        msg = 'No se pudo conectar con el servidor.';
       }
+      setFormError(msg);
+      toast.error(msg);
     } finally {
       setSubmitting(false);
     }

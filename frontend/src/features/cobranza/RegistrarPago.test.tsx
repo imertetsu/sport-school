@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
 import type { CuotaListItem, PagoOut } from '@/api/types';
 
 // Mock del cliente API: solo nos interesa el camino de pago en efectivo.
@@ -17,9 +18,21 @@ vi.mock('@/api/client', () => ({
     pagoQr: (...a: unknown[]) => pagoQrMock(...a),
     pago: (...a: unknown[]) => pagoMock(...a),
     simularConfirmacionQr: (...a: unknown[]) => simularMock(...a),
+    // El comprobante (tras registrar) consulta estos al montar; no nos interesan
+    // en estos tests, solo que existan para no romper el render.
+    whatsappEstado: vi.fn(() => Promise.resolve({ estado: 'no_vinculado' })),
+    deportista: vi.fn(() => Promise.resolve({ tutores: [] })),
+    enviarComprobanteWhatsapp: vi.fn(),
+    comprobantePdfUrl: vi.fn(() => Promise.resolve('#')),
   },
   ApiError: class ApiError extends Error {},
   comprobantePdfUrl: () => '#',
+}));
+
+// La escuela (nombre para el mensaje de WhatsApp) viene de useAuth; el componente
+// solo lee `org`. Mockeamos el hook para no necesitar <AuthProvider> en el test.
+vi.mock('@/auth/useAuth', () => ({
+  useAuth: () => ({ org: { id: 'o1', nombre: 'Escuela Test' } }),
 }));
 
 import { RegistrarPago } from './RegistrarPago';
@@ -61,7 +74,11 @@ describe('RegistrarPago — aviso de sobrepago', () => {
 
   it('al pagar de más pide confirmación y NO registra hasta confirmar', async () => {
     const user = userEvent.setup();
-    render(<RegistrarPago cuotaInicial={CUOTA} onClose={() => {}} />);
+    render(
+      <MemoryRouter>
+        <RegistrarPago cuotaInicial={CUOTA} onClose={() => {}} />
+      </MemoryRouter>,
+    );
 
     const monto = await screen.findByLabelText(/Monto recibido/);
     await user.type(monto, '250'); // saldo total = 200 → 50 de más
@@ -79,7 +96,11 @@ describe('RegistrarPago — aviso de sobrepago', () => {
 
   it('"Revisar monto" cancela el aviso sin registrar', async () => {
     const user = userEvent.setup();
-    render(<RegistrarPago cuotaInicial={CUOTA} onClose={() => {}} />);
+    render(
+      <MemoryRouter>
+        <RegistrarPago cuotaInicial={CUOTA} onClose={() => {}} />
+      </MemoryRouter>,
+    );
     const monto = await screen.findByLabelText(/Monto recibido/);
     await user.type(monto, '250');
     await user.click(screen.getByRole('button', { name: /Confirmar pago/ }));
@@ -93,7 +114,11 @@ describe('RegistrarPago — aviso de sobrepago', () => {
 
   it('si paga el monto exacto (vacío = total) registra directo, sin aviso', async () => {
     const user = userEvent.setup();
-    render(<RegistrarPago cuotaInicial={CUOTA} onClose={() => {}} />);
+    render(
+      <MemoryRouter>
+        <RegistrarPago cuotaInicial={CUOTA} onClose={() => {}} />
+      </MemoryRouter>,
+    );
     await screen.findByLabelText(/Monto recibido/);
     await user.click(screen.getByRole('button', { name: /Confirmar pago/ }));
     await waitFor(() => expect(pagoEfectivoMock).toHaveBeenCalledTimes(1));
@@ -102,7 +127,11 @@ describe('RegistrarPago — aviso de sobrepago', () => {
 
   it('envía el método (QR) y la fecha de pago en el body', async () => {
     const user = userEvent.setup();
-    render(<RegistrarPago cuotaInicial={CUOTA} onClose={() => {}} />);
+    render(
+      <MemoryRouter>
+        <RegistrarPago cuotaInicial={CUOTA} onClose={() => {}} />
+      </MemoryRouter>,
+    );
     await screen.findByLabelText(/Monto recibido/);
     // Selector de método: cambiar a QR.
     await user.click(screen.getByRole('radio', { name: 'QR' }));

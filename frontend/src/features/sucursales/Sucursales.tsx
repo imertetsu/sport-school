@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api, ApiError } from '@/api/client';
 import type { Sucursal } from '@/api/types';
-import { Button, Card, DataTable, type Column } from '@/components/ui';
+import { Button, Card, DataTable, useToast, type Column } from '@/components/ui';
 import { NuevaSucursal, type SucursalEditable } from './NuevaSucursal';
 import { CategoriasPanel } from './CategoriasPanel';
 import './Sucursales.css';
@@ -12,6 +12,7 @@ import './Sucursales.css';
 // protegida (409 si la sucursal está en uso) reflejada inline. Al elegir una
 // sucursal se despliega la gestión de sus categorías.
 export function Sucursales() {
+  const toast = useToast();
   const [sucursales, setSucursales] = useState<Sucursal[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -76,23 +77,27 @@ export function Sucursales() {
     setError(null);
     try {
       await api.eliminarSucursal(id);
+      toast.success('Sucursal eliminada');
       setConfirmId(null);
       if (activeId === id) setActiveId(null);
       recargar();
     } catch (err) {
       // 409: la sucursal está en uso (categorías/deportistas). Mostramos el mensaje
       // del backend ("…tiene N categorías / M deportistas…") sin borrar en cascada.
+      let msg: string;
       if (err instanceof ApiError) {
         if (err.status === 409) {
-          setError(err.message);
+          msg = err.message;
         } else if (err.isForbidden) {
-          setError('No tienes permiso para eliminar sucursales.');
+          msg = 'No tienes permiso para eliminar sucursales.';
         } else {
-          setError(err.message);
+          msg = err.message;
         }
       } else {
-        setError('No se pudo eliminar la sucursal.');
+        msg = 'No se pudo eliminar la sucursal.';
       }
+      setError(msg);
+      toast.error(msg);
       setConfirmId(null);
     } finally {
       setDeletingId(null);

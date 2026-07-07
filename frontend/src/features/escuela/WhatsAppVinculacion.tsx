@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '@/api/client';
-import { Button, Card } from '@/components/ui';
+import { Button, Card, useToast } from '@/components/ui';
 import { formatDate } from '@/lib/format';
 import type { WhatsAppEstado } from '@/api/types';
 import './WhatsAppVinculacion.css';
@@ -24,6 +24,7 @@ const ESTADO_POLL_MS = 3000; // polling de GET /estado mientras PENDIENTE_QR
 const QR_TIMEOUT_MS = 120000; // ~2min: el QR expira -> pedir reintento
 
 export function WhatsAppVinculacion() {
+  const toast = useToast();
   const [estado, setEstado] = useState<WhatsAppEstado | null>(null);
   const [numero, setNumero] = useState<string | null>(null);
   const [vinculadoEn, setVinculadoEn] = useState<string | null>(null);
@@ -207,11 +208,13 @@ export function WhatsAppVinculacion() {
       const data = await api.whatsappDesvincular();
       if (!mountedRef.current) return;
       aplicarEstado({ estado: data.estado, numero: null, vinculado_en: null });
+      toast.success('WhatsApp desvinculado');
     } catch (err) {
       if (!mountedRef.current) return;
-      setActionError(
-        err instanceof ApiError ? err.message : 'No se pudo desvincular el WhatsApp.',
-      );
+      const msg =
+        err instanceof ApiError ? err.message : 'No se pudo desvincular el WhatsApp.';
+      setActionError(msg);
+      toast.error(msg);
     } finally {
       if (mountedRef.current) setDesvinculando(false);
     }

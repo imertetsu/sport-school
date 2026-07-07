@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { api, ApiError } from '@/api/client';
 import type { Sucursal, SucursalCreate } from '@/api/types';
-import { Button, Card, Field } from '@/components/ui';
+import { Button, Card, Field, useToast } from '@/components/ui';
 
 // Forma mínima de la sucursal a editar. Si se omite, el formulario crea una nueva.
 export interface SucursalEditable {
@@ -21,6 +21,7 @@ export interface NuevaSucursalProps {
 // Formulario de alta/edición de sucursal (modal, solo ADMIN). Valida UX (nombre
 // no vacío), pero el backend es la fuente de verdad: refleja sus 422.
 export function NuevaSucursal({ sucursal, onClose, onSaved }: NuevaSucursalProps) {
+  const toast = useToast();
   const editar = Boolean(sucursal);
 
   const [nombre, setNombre] = useState(sucursal?.nombre ?? '');
@@ -68,20 +69,24 @@ export function NuevaSucursal({ sucursal, onClose, onSaved }: NuevaSucursalProps
       const saved = sucursal
         ? await api.actualizarSucursal(sucursal.id, payload)
         : await api.crearSucursal(payload);
+      toast.success(sucursal ? 'Sucursal actualizada' : 'Sucursal creada');
       onSaved(saved);
     } catch (err) {
+      let msg: string;
       if (err instanceof ApiError) {
         if (err.isValidation) {
           applyApiErrors(err);
-          setFormError('El servidor rechazó los datos. Revisa los campos marcados.');
+          msg = 'El servidor rechazó los datos. Revisa los campos marcados.';
         } else if (err.isForbidden) {
-          setFormError('No tienes permiso para gestionar sucursales.');
+          msg = 'No tienes permiso para gestionar sucursales.';
         } else {
-          setFormError(err.message);
+          msg = err.message;
         }
       } else {
-        setFormError('No se pudo conectar con el servidor.');
+        msg = 'No se pudo conectar con el servidor.';
       }
+      setFormError(msg);
+      toast.error(msg);
     } finally {
       setSubmitting(false);
     }

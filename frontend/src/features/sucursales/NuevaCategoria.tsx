@@ -7,7 +7,7 @@ import type {
   DisciplinaRef,
   Nivel,
 } from '@/api/types';
-import { Button, Card, Field, SelectField } from '@/components/ui';
+import { Button, Card, Field, SelectField, useToast } from '@/components/ui';
 
 // Niveles válidos (= CHECK de BD: PRINCIPIANTE|INTERMEDIO|AVANZADO). Si el
 // backend rechaza un nivel (422), se refleja en el campo.
@@ -47,6 +47,7 @@ export function NuevaCategoria({
   onClose,
   onSaved,
 }: NuevaCategoriaProps) {
+  const toast = useToast();
   const editar = Boolean(categoria);
 
   const [nombre, setNombre] = useState(categoria?.nombre ?? '');
@@ -129,20 +130,24 @@ export function NuevaCategoria({
             sucursal_id: sucursalId,
             disciplina_id,
           } satisfies CategoriaCreate);
+      toast.success(categoria ? 'Categoría actualizada' : 'Categoría creada');
       onSaved(saved);
     } catch (err) {
+      let msg: string;
       if (err instanceof ApiError) {
         if (err.isValidation) {
           applyApiErrors(err);
-          setFormError('El servidor rechazó los datos. Revisa los campos marcados.');
+          msg = 'El servidor rechazó los datos. Revisa los campos marcados.';
         } else if (err.isForbidden) {
-          setFormError('No tienes permiso para gestionar categorías.');
+          msg = 'No tienes permiso para gestionar categorías.';
         } else {
-          setFormError(err.message);
+          msg = err.message;
         }
       } else {
-        setFormError('No se pudo conectar con el servidor.');
+        msg = 'No se pudo conectar con el servidor.';
       }
+      setFormError(msg);
+      toast.error(msg);
     } finally {
       setSubmitting(false);
     }

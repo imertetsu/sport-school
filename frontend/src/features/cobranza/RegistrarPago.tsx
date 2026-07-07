@@ -8,7 +8,7 @@ import type {
   WhatsAppEstado,
 } from '@/api/types';
 import { useAuth } from '@/auth/useAuth';
-import { Badge, Button, Card, EstadoBadge, Field } from '@/components/ui';
+import { Badge, Button, Card, EstadoBadge, Field, useToast } from '@/components/ui';
 import { formatDate, formatMoney, mesLargo } from '@/lib/format';
 import './RegistrarPago.css';
 
@@ -306,6 +306,7 @@ function PagoManual({
   orgNombre: string;
   onConfirmado?: () => void;
 }) {
+  const toast = useToast();
   const [pago, setPago] = useState<PagoOut | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -353,9 +354,12 @@ function PagoManual({
       }
       const res = await api.pagoEfectivo(body);
       setPago(res);
+      toast.success('Pago registrado');
       onConfirmado?.();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'No se pudo registrar el pago.');
+      const msg = err instanceof ApiError ? err.message : 'No se pudo registrar el pago.';
+      setError(msg);
+      toast.error(msg);
     } finally {
       setSubmitting(false);
     }

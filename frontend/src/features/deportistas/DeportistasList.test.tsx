@@ -9,6 +9,9 @@ vi.mock('@/api/client', () => ({
   api: {
     deportistas: (...args: unknown[]) => deportistasMock(...args),
     sucursales: vi.fn(() => Promise.resolve([])),
+    // Catálogos de los filtros (disciplina/categoría): la lista los carga al montar.
+    disciplinasCatalogo: vi.fn(() => Promise.resolve([])),
+    categorias: vi.fn(() => Promise.resolve([])),
   },
   ApiError: class ApiError extends Error {},
 }));

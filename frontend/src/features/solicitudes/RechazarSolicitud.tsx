@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { api, ApiError } from '@/api/client';
 import type { SolicitudOut } from '@/api/types';
-import { Button, Card } from '@/components/ui';
+import { Button, Card, useToast } from '@/components/ui';
 
 export interface RechazarSolicitudProps {
   solicitud: SolicitudOut;
@@ -12,6 +12,7 @@ export interface RechazarSolicitudProps {
 
 // Modal de rechazo (solo ADMIN): exige un motivo. 409 si la solicitud ya fue resuelta.
 export function RechazarSolicitud({ solicitud, onClose, onRejected }: RechazarSolicitudProps) {
+  const toast = useToast();
   const [motivo, setMotivo] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -29,21 +30,29 @@ export function RechazarSolicitud({ solicitud, onClose, onRejected }: RechazarSo
     setSubmitting(true);
     try {
       const rechazada = await api.rechazarSolicitud(solicitud.id, motivo.trim());
+      toast.success('Solicitud rechazada');
       onRejected(rechazada);
     } catch (err) {
+      let msg: string;
       if (err instanceof ApiError) {
         if (err.isValidation) {
-          setMotivoError(err.fieldErrors[0]?.msg ?? 'Motivo inválido.');
+          msg = err.fieldErrors[0]?.msg ?? 'Motivo inválido.';
+          setMotivoError(msg);
         } else if (err.isForbidden) {
-          setFormError('No tienes permiso para rechazar solicitudes.');
+          msg = 'No tienes permiso para rechazar solicitudes.';
+          setFormError(msg);
         } else if (err.status === 409) {
-          setFormError('Esta solicitud ya fue resuelta.');
+          msg = 'Esta solicitud ya fue resuelta.';
+          setFormError(msg);
         } else {
-          setFormError(err.message);
+          msg = err.message;
+          setFormError(msg);
         }
       } else {
-        setFormError('No se pudo conectar con el servidor.');
+        msg = 'No se pudo conectar con el servidor.';
+        setFormError(msg);
       }
+      toast.error(msg);
     } finally {
       setSubmitting(false);
     }

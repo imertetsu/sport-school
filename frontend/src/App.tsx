@@ -1,4 +1,5 @@
 import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router-dom';
+import { ToastProvider } from '@/components/ui';
 import { AuthProvider } from '@/auth/AuthContext';
 import { ProtectedRoute, RoleRoute } from '@/auth/ProtectedRoute';
 import { Login } from '@/auth/Login';
@@ -34,8 +35,9 @@ import { OcrSpike } from '@/features/dev/OcrSpike';
 
 export default function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
+    <ToastProvider>
+      <AuthProvider>
+        <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route
@@ -172,7 +174,8 @@ export default function App() {
 
           <Route path="*" element={<Navigate to="/panel" replace />} />
         </Routes>
-      </BrowserRouter>
-    </AuthProvider>
+        </BrowserRouter>
+      </AuthProvider>
+    </ToastProvider>
   );
 }

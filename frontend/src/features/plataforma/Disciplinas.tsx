@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { platformApi, ApiError } from '@/api/client';
 import type { Disciplina } from '@/api/types';
-import { Badge, Button, Card, DataTable, type Column } from '@/components/ui';
+import { Badge, Button, Card, DataTable, useToast, type Column } from '@/components/ui';
 import { formatDate } from '@/lib/format';
 import { NuevaDisciplina } from './NuevaDisciplina';
 import './Plataforma.css';
@@ -11,6 +11,7 @@ import './Plataforma.css';
 // una disciplina es soft-delete (PUT activo=false), nunca hard delete (FK RESTRICT
 // desde categoría). Espejo de SuperAdmins.
 export function Disciplinas() {
+  const toast = useToast();
   const [items, setItems] = useState<Disciplina[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -56,17 +57,20 @@ export function Disciplinas() {
       setItems((prev) =>
         prev.map((d) => (d.id === res.id ? { ...d, activo: res.activo } : d)),
       );
+      toast.success('Disciplina actualizada');
     } catch (err) {
+      let msg: string;
       if (err instanceof ApiError && err.status === 409) {
         // En uso por una categoría (FK RESTRICT): mensaje del backend.
-        setActionError(err.message || 'No se puede retirar: la disciplina está en uso.');
+        msg = err.message || 'No se puede retirar: la disciplina está en uso.';
       } else {
-        setActionError(
+        msg =
           err instanceof ApiError
             ? err.message
-            : `No se pudo ${desactivar ? 'retirar' : 'reactivar'} la disciplina.`,
-        );
+            : `No se pudo ${desactivar ? 'retirar' : 'reactivar'} la disciplina.`;
       }
+      setActionError(msg);
+      toast.error(msg);
     } finally {
       setPendingId(null);
     }

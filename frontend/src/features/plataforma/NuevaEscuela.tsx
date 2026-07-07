@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { platformApi, ApiError } from '@/api/client';
 import type { CrearEscuelaIn, EscuelaCreada } from '@/api/types';
-import { Button, Card, Field } from '@/components/ui';
+import { Button, Card, Field, useToast } from '@/components/ui';
 
 export interface NuevaEscuelaProps {
   onClose: () => void;
@@ -12,6 +12,7 @@ export interface NuevaEscuelaProps {
 // Valida UX; el backend es la fuente de verdad (refleja 422/409). 409 =
 // admin_email duplicado -> se muestra en el campo del correo del admin.
 export function NuevaEscuela({ onClose, onCreated }: NuevaEscuelaProps) {
+  const toast = useToast();
   const [nombre, setNombre] = useState('');
   const [pais, setPais] = useState('');
   const [moneda, setMoneda] = useState('');
@@ -66,24 +67,28 @@ export function NuevaEscuela({ onClose, onCreated }: NuevaEscuelaProps) {
     setSubmitting(true);
     try {
       const created = await platformApi.crearEscuela(payload);
+      toast.success('Escuela creada');
       onCreated(created);
     } catch (err) {
+      let msg: string;
       if (err instanceof ApiError) {
         if (err.status === 409) {
           setFieldErrors((prev) => ({
             ...prev,
             admin_email: 'Ya existe una cuenta con este correo.',
           }));
-          setFormError('El correo del administrador ya está en uso.');
+          msg = 'El correo del administrador ya está en uso.';
         } else if (err.isValidation) {
           applyApiErrors(err);
-          setFormError('El servidor rechazó los datos. Revisa los campos marcados.');
+          msg = 'El servidor rechazó los datos. Revisa los campos marcados.';
         } else {
-          setFormError(err.message);
+          msg = err.message;
         }
       } else {
-        setFormError('No se pudo conectar con el servidor.');
+        msg = 'No se pudo conectar con el servidor.';
       }
+      setFormError(msg);
+      toast.error(msg);
     } finally {
       setSubmitting(false);
     }

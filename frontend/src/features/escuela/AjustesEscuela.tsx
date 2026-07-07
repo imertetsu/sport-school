@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError } from '@/api/client';
 import { useAuth } from '@/auth/useAuth';
-import { Button, Card, Field, Monogram } from '@/components/ui';
+import { Button, Card, Field, Monogram, useToast } from '@/components/ui';
 import { WhatsAppVinculacion } from './WhatsAppVinculacion';
 import { QrCobroUploader } from './QrCobroUploader';
 import './AjustesEscuela.css';
@@ -34,6 +34,7 @@ function normalizeHex(c: string): string {
 // ENTRENADOR) y scopee SIEMPRE a user.org_id. Al guardar, refresca la org del
 // AuthContext para que el TopBar se actualice al instante (sin re-login).
 export function AjustesEscuela() {
+  const toast = useToast();
   const { setOrg, orgId } = useAuth();
 
   const [loading, setLoading] = useState(true);
@@ -132,18 +133,22 @@ export function AjustesEscuela() {
       setNombre(actualizado.nombre);
       setColor(actualizado.color);
       setSavedOk(true);
+      toast.success('Ajustes guardados');
     } catch (err) {
+      let msg: string;
       if (err instanceof ApiError) {
         if (err.isForbidden) {
-          setSaveError('No tienes permiso para editar la escuela.');
+          msg = 'No tienes permiso para editar la escuela.';
         } else if (err.isValidation) {
-          setSaveError(err.message);
+          msg = err.message;
         } else {
-          setSaveError(err.message);
+          msg = err.message;
         }
       } else {
-        setSaveError('No se pudo guardar. Inténtalo de nuevo.');
+        msg = 'No se pudo guardar. Inténtalo de nuevo.';
       }
+      setSaveError(msg);
+      toast.error(msg);
     } finally {
       setSaving(false);
     }

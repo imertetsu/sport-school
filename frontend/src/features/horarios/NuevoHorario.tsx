@@ -7,7 +7,7 @@ import type {
   HorarioCreate,
   HorarioCreated,
 } from '@/api/types';
-import { Button, Card, Field, SelectField } from '@/components/ui';
+import { Button, Card, Field, SelectField, useToast } from '@/components/ui';
 
 // Forma mínima del horario a editar (lo arma la rejilla a partir de la clase +
 // el día). Si se omite, el formulario crea uno nuevo.
@@ -50,6 +50,7 @@ function toTimeInput(t: string): string {
 // (hora_fin > hora_inicio), pero el backend es la fuente de verdad: refleja sus
 // 422 (validación) y 409 (unicidad categoria+día+hora_inicio).
 export function NuevoHorario({ horario, sucursalId, onClose, onSaved }: NuevoHorarioProps) {
+  const toast = useToast();
   const editar = Boolean(horario);
 
   const [categoriaId, setCategoriaId] = useState(horario?.categoria_id ?? '');
@@ -154,22 +155,26 @@ export function NuevoHorario({ horario, sucursalId, onClose, onSaved }: NuevoHor
       const saved = horario
         ? await api.actualizarHorario(horario.id, payload)
         : await api.crearHorario(payload);
+      toast.success(horario ? 'Horario actualizado' : 'Horario creado');
       onSaved(saved);
     } catch (err) {
+      let msg: string;
       if (err instanceof ApiError) {
         if (err.isValidation) {
           applyApiErrors(err);
-          setFormError('El servidor rechazó los datos. Revisa los campos marcados.');
+          msg = 'El servidor rechazó los datos. Revisa los campos marcados.';
         } else if (err.status === 409) {
-          setFormError('Ya existe un horario para esa categoría, día y hora de inicio.');
+          msg = 'Ya existe un horario para esa categoría, día y hora de inicio.';
         } else if (err.isForbidden) {
-          setFormError('No tienes permiso para gestionar horarios.');
+          msg = 'No tienes permiso para gestionar horarios.';
         } else {
-          setFormError(err.message);
+          msg = err.message;
         }
       } else {
-        setFormError('No se pudo conectar con el servidor.');
+        msg = 'No se pudo conectar con el servidor.';
       }
+      setFormError(msg);
+      toast.error(msg);
     } finally {
       setSubmitting(false);
     }

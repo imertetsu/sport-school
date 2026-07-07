@@ -6,7 +6,7 @@ import type {
   DiaSemana,
   SemanaOut,
 } from '@/api/types';
-import { Badge, Button, Card, SelectField } from '@/components/ui';
+import { Badge, Button, Card, SelectField, useToast } from '@/components/ui';
 import { useSucursales } from '@/components/shell/SucursalContext';
 import { useAuth } from '@/auth/useAuth';
 import { formatTime } from '@/lib/format';
@@ -24,6 +24,7 @@ interface BloqueRef {
 // sucursal, scoped por rol en el backend. ADMIN: alta + editar/eliminar (soft)
 // por bloque. ENTRENADOR: solo lectura (sus sucursales).
 export function Horarios() {
+  const toast = useToast();
   const { sucursales } = useSucursales();
   // viewRole es la verdad de la UI (respeta el toggle del prototipo); el backend
   // impone los permisos reales (require_role) en las escrituras.
@@ -127,16 +128,18 @@ export function Horarios() {
     setError(null);
     try {
       await api.eliminarHorario(id);
+      toast.success('Horario eliminado');
       setConfirmId(null);
       recargar();
     } catch (err) {
-      if (err instanceof ApiError) {
-        setError(
-          err.isForbidden ? 'No tienes permiso para eliminar horarios.' : err.message,
-        );
-      } else {
-        setError('No se pudo eliminar el horario.');
-      }
+      const msg =
+        err instanceof ApiError
+          ? err.isForbidden
+            ? 'No tienes permiso para eliminar horarios.'
+            : err.message
+          : 'No se pudo eliminar el horario.';
+      setError(msg);
+      toast.error(msg);
     } finally {
       setDeletingId(null);
     }

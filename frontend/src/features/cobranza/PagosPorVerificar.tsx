@@ -4,7 +4,7 @@ import type {
   ComprobanteCuotaElegible,
   ComprobantePendienteItem,
 } from '@/api/types';
-import { Button, Card, EstadoBadge, SelectField } from '@/components/ui';
+import { Button, Card, EstadoBadge, SelectField, useToast } from '@/components/ui';
 import { formatDate, formatMoney } from '@/lib/format';
 import './PagosPorVerificar.css';
 
@@ -16,6 +16,7 @@ const PAGE_SIZE = 20;
 // pre-llena por el OCR + match por teléfono: el admin confirma en 1 clic (reusa
 // registrar_pago_efectivo, idempotente) o rechaza. NUNCA auto-confirma (v1).
 export function PagosPorVerificar() {
+  const toast = useToast();
   const [items, setItems] = useState<ComprobantePendienteItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -72,11 +73,13 @@ export function PagosPorVerificar() {
     if (!ok) return;
     try {
       await api.rechazarComprobante(item.id);
+      toast.success('Comprobante rechazado');
       recargar();
     } catch (err) {
-      setError(
-        err instanceof ApiError ? err.message : 'No se pudo rechazar el comprobante.',
-      );
+      const msg =
+        err instanceof ApiError ? err.message : 'No se pudo rechazar el comprobante.';
+      setError(msg);
+      toast.error(msg);
     }
   }
 
@@ -285,6 +288,7 @@ function ConfirmarComprobante({
   onClose: () => void;
   onConfirmado: () => void;
 }) {
+  const toast = useToast();
   // Cuotas elegibles para el dropdown (incluye la sugerida si existe). Se cargan
   // siempre para permitir reasignar; "sin identificar" depende de que el backend
   // las resuelva sin tutor.
@@ -366,21 +370,23 @@ function ConfirmarComprobante({
     setSubmitting(true);
     try {
       await api.confirmarComprobante(item.id, { cuota_id: cuotaId, monto: monto.trim() });
+      toast.success('Pago confirmado');
       onConfirmado();
     } catch (err) {
+      let msg = 'No se pudo confirmar el pago. Inténtalo de nuevo.';
       if (err instanceof ApiError) {
         if (err.isForbidden) {
-          setFormError('No tienes permiso para confirmar comprobantes.');
+          msg = 'No tienes permiso para confirmar comprobantes.';
         } else if (err.isConflict) {
-          setFormError('Este comprobante ya fue resuelto.');
+          msg = 'Este comprobante ya fue resuelto.';
         } else if (err.isValidation) {
-          setFormError(err.fieldErrors[0]?.msg ?? err.message);
+          msg = err.fieldErrors[0]?.msg ?? err.message;
         } else {
-          setFormError(err.message);
+          msg = err.message;
         }
-      } else {
-        setFormError('No se pudo confirmar el pago. Inténtalo de nuevo.');
       }
+      setFormError(msg);
+      toast.error(msg);
     } finally {
       setSubmitting(false);
     }

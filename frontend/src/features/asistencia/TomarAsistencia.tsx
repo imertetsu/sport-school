@@ -5,7 +5,7 @@ import type {
   EstadoAsistencia,
   RosterItem,
 } from '@/api/types';
-import { Avatar, Button, Card, Field, SelectField } from '@/components/ui';
+import { Avatar, Button, Card, Field, SelectField, useToast } from '@/components/ui';
 import { nivelLabel } from '@/lib/format';
 import './TomarAsistencia.css';
 
@@ -31,6 +31,7 @@ function estadoEfectivo(estado: EstadoAsistencia | null): EstadoAsistencia {
 }
 
 export function TomarAsistencia() {
+  const toast = useToast();
   // --- Categorías visibles por rol ---
   const [categorias, setCategorias] = useState<CategoriaAsistencia[]>([]);
   const [categoriasError, setCategoriasError] = useState<string | null>(null);
@@ -151,12 +152,13 @@ export function TomarAsistencia() {
         // El backend devuelve el roster guardado: refleja exactamente lo persistido.
         setItems(data.items);
         setGuardadoOk(true);
+        toast.success('Asistencia guardada');
       })
       .catch((err) => {
         if (err instanceof DOMException && err.name === 'AbortError') return;
-        setGuardarError(
-          err instanceof ApiError ? err.message : 'No se pudo guardar la asistencia',
-        );
+        const msg = err instanceof ApiError ? err.message : 'No se pudo guardar la asistencia';
+        setGuardarError(msg);
+        toast.error(msg);
       })
       .finally(() => setGuardando(false));
   }, [categoriaId, fecha, items]);

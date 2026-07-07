@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { api, ApiError } from '@/api/client';
 import type { EgresoCreate, EgresoCreated, Sucursal } from '@/api/types';
-import { Button, Card, Field, SelectField } from '@/components/ui';
+import { Button, Card, Field, SelectField, useToast } from '@/components/ui';
 
 // Fecha de hoy en formato YYYY-MM-DD (local), valor por defecto del campo.
 function hoyISO(): string {
@@ -22,6 +22,7 @@ export interface NuevoEgresoProps {
 // Formulario de alta de egreso (modal). Valida UX (categoría no vacía, monto > 0),
 // pero el backend es la fuente de verdad: refleja sus 422 en los campos.
 export function NuevoEgreso({ sucursales, onClose, onCreated }: NuevoEgresoProps) {
+  const toast = useToast();
   const [sucursalId, setSucursalId] = useState('');
   const [categoria, setCategoria] = useState('');
   const [monto, setMonto] = useState('');
@@ -79,20 +80,22 @@ export function NuevoEgreso({ sucursales, onClose, onCreated }: NuevoEgresoProps
     setSubmitting(true);
     try {
       const created = await api.createEgreso(payload);
+      toast.success('Egreso registrado');
       onCreated(created);
     } catch (err) {
+      let msg = 'No se pudo conectar con el servidor.';
       if (err instanceof ApiError) {
         if (err.isValidation) {
           applyApiErrors(err);
-          setFormError('El servidor rechazó los datos. Revisa los campos marcados.');
+          msg = 'El servidor rechazó los datos. Revisa los campos marcados.';
         } else if (err.isForbidden) {
-          setFormError('No tienes permiso para registrar egresos.');
+          msg = 'No tienes permiso para registrar egresos.';
         } else {
-          setFormError(err.message);
+          msg = err.message;
         }
-      } else {
-        setFormError('No se pudo conectar con el servidor.');
       }
+      setFormError(msg);
+      toast.error(msg);
     } finally {
       setSubmitting(false);
     }

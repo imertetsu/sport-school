@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError } from '@/api/client';
 import type { AvisoOut } from '@/api/types';
-import { Badge, Button, Card } from '@/components/ui';
+import { Badge, Button, Card, useToast } from '@/components/ui';
 import { useSucursales } from '@/components/shell/SucursalContext';
 import { useAuth } from '@/auth/useAuth';
 import { formatDate } from '@/lib/format';
@@ -25,6 +25,7 @@ function alcanceBadge(a: AvisoOut) {
 // Muro de avisos (RF-COM-01): feed de tarjetas, scoped por rol en el backend.
 // ADMIN: publica + edita/elimina (soft-delete). ENTRENADOR: solo lectura.
 export function Muro() {
+  const toast = useToast();
   const { sucursales } = useSucursales();
   // viewRole es la verdad de la UI (respeta el toggle del prototipo); el
   // backend impone los permisos reales (require_role) en las escrituras.
@@ -101,16 +102,18 @@ export function Muro() {
     setError(null);
     try {
       await api.eliminarAviso(id);
+      toast.success('Aviso eliminado');
       setConfirmId(null);
       recargar();
     } catch (err) {
-      if (err instanceof ApiError) {
-        setError(
-          err.isForbidden ? 'No tienes permiso para eliminar avisos.' : err.message,
-        );
-      } else {
-        setError('No se pudo eliminar el aviso.');
-      }
+      const msg =
+        err instanceof ApiError
+          ? err.isForbidden
+            ? 'No tienes permiso para eliminar avisos.'
+            : err.message
+          : 'No se pudo eliminar el aviso.';
+      setError(msg);
+      toast.error(msg);
     } finally {
       setDeletingId(null);
     }

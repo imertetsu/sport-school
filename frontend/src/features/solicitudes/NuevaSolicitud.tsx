@@ -6,7 +6,7 @@ import type {
   SolicitudOut,
   Sucursal,
 } from '@/api/types';
-import { Button, Card, Field, SelectField } from '@/components/ui';
+import { Button, Card, Field, SelectField, useToast } from '@/components/ui';
 import { nivelLabel } from '@/lib/format';
 
 export interface NuevaSolicitudProps {
@@ -24,6 +24,7 @@ const CONSENT_VERSION = 'v1';
 // estructura del alta de deportista (datos deportista + ficha médica + tutor +
 // consentimiento). El backend es la fuente de verdad: refleja sus 422/403.
 export function NuevaSolicitud({ sucursales, onClose, onSaved }: NuevaSolicitudProps) {
+  const toast = useToast();
   // Datos del deportista
   const [apPaterno, setApPaterno] = useState('');
   const [apMaterno, setApMaterno] = useState('');
@@ -162,22 +163,24 @@ export function NuevaSolicitud({ sucursales, onClose, onSaved }: NuevaSolicitudP
     setSubmitting(true);
     try {
       const saved = await api.crearSolicitud(payload);
+      toast.success('Solicitud enviada');
       onSaved(saved);
     } catch (err) {
+      let msg: string;
       if (err instanceof ApiError) {
         if (err.isValidation) {
           applyApiErrors(err);
-          setFormError('El servidor rechazó los datos. Revisa los campos marcados.');
+          msg = 'El servidor rechazó los datos. Revisa los campos marcados.';
         } else if (err.isForbidden) {
-          setFormError(
-            'No puedes sugerir esa sucursal: está fuera de tu alcance.',
-          );
+          msg = 'No puedes sugerir esa sucursal: está fuera de tu alcance.';
         } else {
-          setFormError(err.message);
+          msg = err.message;
         }
       } else {
-        setFormError('No se pudo conectar con el servidor.');
+        msg = 'No se pudo conectar con el servidor.';
       }
+      setFormError(msg);
+      toast.error(msg);
     } finally {
       setSubmitting(false);
     }

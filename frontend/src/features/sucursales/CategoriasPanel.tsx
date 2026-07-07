@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api, ApiError } from '@/api/client';
 import type { Categoria, Nivel, Sucursal } from '@/api/types';
-import { Badge, Button, Card, DataTable, type Column } from '@/components/ui';
+import { Badge, Button, Card, DataTable, useToast, type Column } from '@/components/ui';
 import { NuevaCategoria, type CategoriaEditable } from './NuevaCategoria';
 
 // Etiquetas legibles para el nivel (el valor crudo es el del CHECK de BD).
@@ -21,6 +21,7 @@ export interface CategoriasPanelProps {
 // 409 si la categoría está en uso (deportistas/horarios/sesiones) -> mensaje del
 // backend inline, sin cascada. Se monta como sección dentro de Sucursales.
 export function CategoriasPanel({ sucursal }: CategoriasPanelProps) {
+  const toast = useToast();
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -87,22 +88,26 @@ export function CategoriasPanel({ sucursal }: CategoriasPanelProps) {
     setError(null);
     try {
       await api.eliminarCategoria(id);
+      toast.success('Categoría eliminada');
       setConfirmId(null);
       recargar();
     } catch (err) {
       // 409: la categoría está en uso (deportistas/horarios/sesiones). Mostramos el
       // mensaje del backend inline, sin borrar en cascada.
+      let msg: string;
       if (err instanceof ApiError) {
         if (err.status === 409) {
-          setError(err.message);
+          msg = err.message;
         } else if (err.isForbidden) {
-          setError('No tienes permiso para eliminar categorías.');
+          msg = 'No tienes permiso para eliminar categorías.';
         } else {
-          setError(err.message);
+          msg = err.message;
         }
       } else {
-        setError('No se pudo eliminar la categoría.');
+        msg = 'No se pudo eliminar la categoría.';
       }
+      setError(msg);
+      toast.error(msg);
       setConfirmId(null);
     } finally {
       setDeletingId(null);

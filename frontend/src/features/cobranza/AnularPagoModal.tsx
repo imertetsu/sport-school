@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { api, ApiError } from '@/api/client';
 import type { PagoListItem } from '@/api/types';
-import { Button, Card } from '@/components/ui';
+import { Button, Card, useToast } from '@/components/ui';
 import { formatDate, formatMoney } from '@/lib/format';
 import './Pagos.css';
 
@@ -18,6 +18,7 @@ export function AnularPagoModal({
   onClose: () => void;
   onAnulado: () => void;
 }) {
+  const toast = useToast();
   const [motivo, setMotivo] = useState('');
   const [motivoError, setMotivoError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -36,25 +37,26 @@ export function AnularPagoModal({
     setSubmitting(true);
     try {
       await api.anularPago(pago.id, motivoLimpio);
+      toast.success('Pago anulado');
       onAnulado();
     } catch (err) {
+      let msg = 'No se pudo anular el pago. Inténtalo de nuevo.';
       if (err instanceof ApiError) {
         if (err.isNotFound) {
-          setFormError('Este pago ya no existe o no es visible para tu escuela.');
+          msg = 'Este pago ya no existe o no es visible para tu escuela.';
         } else if (err.isConflict) {
-          setFormError(
-            'No se puede anular: el saldo a favor que generó este pago ya fue usado en un pago posterior. Anula primero ese pago.',
-          );
+          msg =
+            'No se puede anular: el saldo a favor que generó este pago ya fue usado en un pago posterior. Anula primero ese pago.';
         } else if (err.isValidation) {
-          setFormError(err.fieldErrors[0]?.msg ?? err.message);
+          msg = err.fieldErrors[0]?.msg ?? err.message;
         } else if (err.isForbidden) {
-          setFormError('No tienes permiso para anular pagos.');
+          msg = 'No tienes permiso para anular pagos.';
         } else {
-          setFormError(err.message);
+          msg = err.message;
         }
-      } else {
-        setFormError('No se pudo anular el pago. Inténtalo de nuevo.');
       }
+      setFormError(msg);
+      toast.error(msg);
     } finally {
       setSubmitting(false);
     }

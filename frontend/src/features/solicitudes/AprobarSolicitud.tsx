@@ -8,7 +8,7 @@ import type {
   SolicitudOut,
   Sucursal,
 } from '@/api/types';
-import { Button, Card, Field, SelectField } from '@/components/ui';
+import { Button, Card, Field, SelectField, useToast } from '@/components/ui';
 import { nivelLabel } from '@/lib/format';
 
 export interface AprobarSolicitudProps {
@@ -34,6 +34,7 @@ export function AprobarSolicitud({
   onClose,
   onApproved,
 }: AprobarSolicitudProps) {
+  const toast = useToast();
   // Pre-rellena con las sugerencias de la solicitud (el admin las puede cambiar).
   const [sucursalId, setSucursalId] = useState(solicitud.sucursal_sugerida?.id ?? '');
   const [categoriaId, setCategoriaId] = useState(solicitud.categoria_sugerida?.id ?? '');
@@ -116,22 +117,26 @@ export function AprobarSolicitud({
     setSubmitting(true);
     try {
       const deportista = await api.aprobarSolicitud(solicitud.id, body);
+      toast.success('Solicitud aprobada');
       onApproved(deportista);
     } catch (err) {
+      let msg: string;
       if (err instanceof ApiError) {
         if (err.isValidation) {
           applyApiErrors(err);
-          setFormError('El servidor rechazó los datos. Revisa los campos marcados.');
+          msg = 'El servidor rechazó los datos. Revisa los campos marcados.';
         } else if (err.isForbidden) {
-          setFormError('No tienes permiso para aprobar solicitudes.');
+          msg = 'No tienes permiso para aprobar solicitudes.';
         } else if (err.status === 409) {
-          setFormError('Esta solicitud ya fue resuelta.');
+          msg = 'Esta solicitud ya fue resuelta.';
         } else {
-          setFormError(err.message);
+          msg = err.message;
         }
       } else {
-        setFormError('No se pudo conectar con el servidor.');
+        msg = 'No se pudo conectar con el servidor.';
       }
+      setFormError(msg);
+      toast.error(msg);
     } finally {
       setSubmitting(false);
     }

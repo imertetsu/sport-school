@@ -13,7 +13,7 @@ import type {
   TutorCreate,
   TutorUpsert,
 } from '@/api/types';
-import { Button, Card, Field, SelectField } from '@/components/ui';
+import { Button, Card, Field, SelectField, useToast } from '@/components/ui';
 import { DocumentScanner, type CedulaFields } from '@/components/ocr/DocumentScanner';
 import { nivelLabel } from '@/lib/format';
 import './NuevoDeportista.css';
@@ -58,6 +58,7 @@ const CONSENT_VERSION = 'v1';
 
 export function NuevoDeportista() {
   const navigate = useNavigate();
+  const toast = useToast();
   // Distingue ALTA de EDICIÓN: si la ruta trae :id (/deportistas/:id/editar),
   // estamos editando un deportista existente; si no, es un alta nueva
   // (/deportistas/nuevo). isEdit gobierna título/botones, la precarga, el OCR y
@@ -534,6 +535,7 @@ export function NuevoDeportista() {
           inscripciones: inscripcionesPayload(),
         };
         const updated = await api.actualizarDeportista(id, updatePayload);
+        toast.success('Cambios guardados');
         navigate(`/deportistas/${updated.id}`);
         return;
       }
@@ -565,39 +567,36 @@ export function NuevoDeportista() {
       }
 
       const created = await api.crearDeportista(payload);
+      toast.success('Deportista registrado');
       navigate(`/deportistas/${created.id}`, { replace: true });
     } catch (err) {
+      let msg = 'No se pudo conectar con el servidor.';
       if (err instanceof ApiError) {
         if (err.isValidation) {
           applyApiErrors(err);
-          setFormError(
-            isEdit
-              ? 'El servidor rechazó los cambios. Revisa los campos marcados y los tutores.'
-              : 'El servidor rechazó los datos. Revisa los campos marcados.',
-          );
+          msg = isEdit
+            ? 'El servidor rechazó los cambios. Revisa los campos marcados y los tutores.'
+            : 'El servidor rechazó los datos. Revisa los campos marcados.';
         } else if (err.isConflict) {
           // CI duplicado: el deportista ya existe en la org (RNF-06, sin duplicar).
           setFieldErrors((prev) => ({
             ...prev,
             ci: 'Ya existe un deportista con ese CI en la organización.',
           }));
-          setFormError(
-            'Ya hay un deportista registrado con ese CI. Búscalo en la lista para editarlo en vez de crear un duplicado.',
-          );
+          msg =
+            'Ya hay un deportista registrado con ese CI. Búscalo en la lista para editarlo en vez de crear un duplicado.';
         } else if (err.isNotFound) {
-          setFormError('El deportista ya no existe.');
+          msg = 'El deportista ya no existe.';
         } else if (err.isForbidden) {
-          setFormError(
-            isEdit
-              ? 'No tienes permiso para editar este deportista.'
-              : 'No tienes permiso para crear deportistas en esa sucursal.',
-          );
+          msg = isEdit
+            ? 'No tienes permiso para editar este deportista.'
+            : 'No tienes permiso para crear deportistas en esa sucursal.';
         } else {
-          setFormError(err.message);
+          msg = err.message;
         }
-      } else {
-        setFormError('No se pudo conectar con el servidor.');
       }
+      setFormError(msg);
+      toast.error(msg);
     } finally {
       setSubmitting(false);
     }

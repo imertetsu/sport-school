@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { platformApi, ApiError } from '@/api/client';
 import type { Disciplina, DisciplinaCreate } from '@/api/types';
-import { Button, Card, Field } from '@/components/ui';
+import { Button, Card, Field, useToast } from '@/components/ui';
 
 export interface NuevaDisciplinaProps {
   onClose: () => void;
@@ -12,6 +12,7 @@ export interface NuevaDisciplinaProps {
 // 409 = nombre duplicado case-insensitive (lower(nombre) ya existe) -> se muestra
 // en el campo. Espejo de NuevoSuperAdmin.
 export function NuevaDisciplina({ onClose, onCreated }: NuevaDisciplinaProps) {
+  const toast = useToast();
   const [nombre, setNombre] = useState('');
 
   const [submitting, setSubmitting] = useState(false);
@@ -49,24 +50,28 @@ export function NuevaDisciplina({ onClose, onCreated }: NuevaDisciplinaProps) {
     setSubmitting(true);
     try {
       const created = await platformApi.crearDisciplina(payload);
+      toast.success('Disciplina creada');
       onCreated(created);
     } catch (err) {
+      let msg: string;
       if (err instanceof ApiError) {
         if (err.status === 409) {
           setFieldErrors((prev) => ({
             ...prev,
             nombre: 'Ya existe una disciplina con este nombre.',
           }));
-          setFormError('El nombre ya está en uso.');
+          msg = 'El nombre ya está en uso.';
         } else if (err.isValidation) {
           applyApiErrors(err);
-          setFormError('El servidor rechazó los datos. Revisa los campos marcados.');
+          msg = 'El servidor rechazó los datos. Revisa los campos marcados.';
         } else {
-          setFormError(err.message);
+          msg = err.message;
         }
       } else {
-        setFormError('No se pudo conectar con el servidor.');
+        msg = 'No se pudo conectar con el servidor.';
       }
+      setFormError(msg);
+      toast.error(msg);
     } finally {
       setSubmitting(false);
     }

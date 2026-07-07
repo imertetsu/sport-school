@@ -5,7 +5,7 @@ import type {
   EstadoRecordatorioDeudores,
   RecordatorioDeudoresResult,
 } from '@/api/types';
-import { Badge, Button, Card, DataTable, type Column } from '@/components/ui';
+import { Badge, Button, Card, DataTable, useToast, type Column } from '@/components/ui';
 import { formatMoney } from '@/lib/format';
 import { NuevoEntrenador } from './NuevoEntrenador';
 import './Entrenadores.css';
@@ -32,6 +32,7 @@ const ESTADO_RECORDATORIO_LABEL: Record<EstadoRecordatorioDeudores, string> = {
 // Lista (nombres, email, especialidad, chips de disciplinas, badge activo) +
 // alta + edición (incl. baja/reactivación con activo).
 export function Entrenadores() {
+  const toast = useToast();
   const [items, setItems] = useState<EntrenadorOut[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -79,6 +80,7 @@ export function Entrenadores() {
       try {
         const data = await api.enviarRecordatorioDeudores(entrenador.id);
         setResultado({ entrenador, data });
+        toast.success(`${data.enviados} recordatorio(s) enviado(s)`);
       } catch (err) {
         const mensaje =
           err instanceof ApiError
@@ -89,11 +91,12 @@ export function Entrenadores() {
                 : err.message
             : 'No se pudo conectar con el servidor.';
         setResultadoError({ entrenador, mensaje });
+        toast.error(mensaje);
       } finally {
         setEnviandoId(null);
       }
     },
-    [],
+    [toast],
   );
 
   // Da de baja / reactiva (soft-delete reversible) vía el contrato existente
@@ -103,6 +106,7 @@ export function Entrenadores() {
     setBajaError(null);
     try {
       await api.updateEntrenador(entrenador.id, { activo: !entrenador.activo });
+      toast.success('Entrenador actualizado');
       setConfirmandoBaja(null);
       recargar();
     } catch (err) {
@@ -115,6 +119,7 @@ export function Entrenadores() {
               : err.message
           : 'No se pudo conectar con el servidor.';
       setBajaError(mensaje);
+      toast.error(mensaje);
     } finally {
       setBajaEnVuelo(false);
     }

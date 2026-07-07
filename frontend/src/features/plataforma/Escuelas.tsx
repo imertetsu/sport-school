@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { platformApi, ApiError } from '@/api/client';
 import type { Escuela } from '@/api/types';
-import { Badge, Button, Card, DataTable, type Column } from '@/components/ui';
+import { Badge, Button, Card, DataTable, useToast, type Column } from '@/components/ui';
 import { formatDate } from '@/lib/format';
 import { NuevaEscuela } from './NuevaEscuela';
 import './Plataforma.css';
@@ -10,6 +10,7 @@ import './Plataforma.css';
 // estado + alta (org + primer admin) + suspender/reactivar por fila. La verdad la
 // impone el backend; aquí gateamos la UI según el estado.
 export function Escuelas() {
+  const toast = useToast();
   const [items, setItems] = useState<Escuela[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -63,10 +64,12 @@ export function Escuelas() {
       setItems((prev) =>
         prev.map((e) => (e.id === res.id ? { ...e, estado: res.estado } : e)),
       );
+      toast.success(suspender ? 'Escuela suspendida' : 'Escuela reactivada');
     } catch (err) {
-      setActionError(
-        err instanceof ApiError ? err.message : `No se pudo ${verbo} la escuela.`,
-      );
+      const msg =
+        err instanceof ApiError ? err.message : `No se pudo ${verbo} la escuela.`;
+      setActionError(msg);
+      toast.error(msg);
     } finally {
       setPendingId(null);
     }

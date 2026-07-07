@@ -3,7 +3,16 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, ApiError } from '@/api/client';
 import { useAuth } from '@/auth/useAuth';
 import type { CuotaListItem, DeportistaDetail, PagoListItem } from '@/api/types';
-import { Avatar, Badge, Button, Card, EstadoBadge, Tabs, type TabItem } from '@/components/ui';
+import {
+  Avatar,
+  Badge,
+  Button,
+  Card,
+  EstadoBadge,
+  Tabs,
+  useToast,
+  type TabItem,
+} from '@/components/ui';
 import { formatDate, formatDateLarga, formatMoney, mesLargo, nivelLabel } from '@/lib/format';
 import './DeportistaPerfil.css';
 
@@ -215,6 +224,7 @@ function CuotasDeportista({
   deportistaId: string;
   isAdmin: boolean;
 }) {
+  const toast = useToast();
   const [cuotas, setCuotas] = useState<CuotaListItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Confirmación en dos pasos por fila (evita borrados accidentales).
@@ -251,18 +261,19 @@ function CuotasDeportista({
       await api.eliminarCuota(cuotaId);
       setCuotas((prev) => (prev ? prev.filter((c) => c.id !== cuotaId) : prev));
       setConfirmarId(null);
+      toast.success('Cuota eliminada');
     } catch (err) {
+      let msg = 'No se pudo eliminar la cuota.';
       if (err instanceof ApiError) {
-        setError(
+        msg =
           err.status === 409
             ? 'Esa cuota tiene un pago aplicado; anula el pago antes de eliminarla.'
             : err.isForbidden
               ? 'No tienes permiso para eliminar cuotas.'
-              : err.message,
-        );
-      } else {
-        setError('No se pudo eliminar la cuota.');
+              : err.message;
       }
+      setError(msg);
+      toast.error(msg);
     } finally {
       setBorrandoId(null);
     }
@@ -305,18 +316,19 @@ function CuotasDeportista({
           : prev,
       );
       setEditandoId(null);
+      toast.success('Monto de la cuota actualizado');
     } catch (err) {
+      let msg = 'No se pudo cambiar el monto.';
       if (err instanceof ApiError) {
-        setError(
+        msg =
           err.status === 409
             ? 'Esa cuota tiene un pago aplicado; anula el pago antes de cambiar el monto.'
             : err.isForbidden
               ? 'No tienes permiso para cambiar el monto.'
-              : err.message,
-        );
-      } else {
-        setError('No se pudo cambiar el monto.');
+              : err.message;
       }
+      setError(msg);
+      toast.error(msg);
     } finally {
       setGuardandoId(null);
     }
@@ -490,6 +502,7 @@ export function DeportistaPerfil() {
   // real (viewRole === user.role, sin toggle de prototipo).
   const { viewRole } = useAuth();
   const isAdmin = viewRole === 'ADMIN';
+  const toast = useToast();
 
   const [deportista, setDeportista] = useState<DeportistaDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -509,23 +522,25 @@ export function DeportistaPerfil() {
     setBajaEnVuelo(true);
     setBajaError(null);
     try {
-      const actualizado = deportista.activo
+      const esBaja = deportista.activo;
+      const actualizado = esBaja
         ? await api.darBajaDeportista(deportista.id)
         : await api.reactivarDeportista(deportista.id);
       setDeportista(actualizado);
       setConfirmando(false);
+      toast.success(esBaja ? 'Deportista dado de baja' : 'Deportista reactivado');
     } catch (err) {
+      let msg = 'No se pudo conectar con el servidor.';
       if (err instanceof ApiError) {
-        setBajaError(
+        msg =
           err.status === 404
             ? 'El deportista ya no existe.'
             : err.isForbidden
               ? 'No tienes permiso para esta acción.'
-              : err.message,
-        );
-      } else {
-        setBajaError('No se pudo conectar con el servidor.');
+              : err.message;
       }
+      setBajaError(msg);
+      toast.error(msg);
     } finally {
       setBajaEnVuelo(false);
     }
