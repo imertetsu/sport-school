@@ -215,7 +215,7 @@ export function DeportistasList() {
             type="search"
             value={tutorQuery}
             onChange={(e) => setTutorQuery(e.target.value)}
-            placeholder="Ej: Roxana o 70723756"
+            placeholder="Ej: María o 71234567"
           />
         </label>
         <label className="deportistas-list__filter">
