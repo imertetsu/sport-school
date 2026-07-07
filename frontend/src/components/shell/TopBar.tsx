@@ -102,7 +102,7 @@ export function TopBar({ onToggleSidebar }: TopBarProps) {
       <div className="topbar__right">
         <button
           type="button"
-          className="topbar__icon-btn"
+          className="topbar__icon-btn topbar__accent-btn"
           onClick={toggleAccent}
           aria-label={`Cambiar acento (actual: ${accent})`}
           title={`Acento: ${accent === 'verde' ? 'verde' : 'azul'}`}
@@ -112,7 +112,7 @@ export function TopBar({ onToggleSidebar }: TopBarProps) {
 
         <button
           type="button"
-          className="topbar__icon-btn"
+          className="topbar__icon-btn topbar__bell"
           aria-label="Notificaciones"
           title="Notificaciones"
         >

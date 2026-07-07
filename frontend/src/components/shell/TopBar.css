@@ -223,4 +223,21 @@
   .topbar__sucursal {
     display: none;
   }
+  /* Móvil: la barra tiene poco ancho y el cluster derecho se desbordaba,
+     dejando el botón de "Cerrar sesión" (⎋, el más a la derecha) fuera de la
+     pantalla e imposible de tocar. Liberamos espacio ocultando controles
+     secundarios: la campana (placeholder sin acción) y el cambio de acento
+     (preferencia que ya se ajusta/persiste desde escritorio). Así el avatar y
+     el botón de cerrar sesión siempre quedan visibles y accesibles. */
+  .topbar__bell,
+  .topbar__accent-btn {
+    display: none;
+  }
+  /* Compactar un poco más para teléfonos angostos (~320px). */
+  .topbar__right {
+    gap: 2px;
+  }
+  .topbar__school-name {
+    max-width: 110px;
+  }
 }
