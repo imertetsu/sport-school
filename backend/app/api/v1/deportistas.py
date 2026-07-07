@@ -229,7 +229,15 @@ def get_deportista_por_ci(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Deportista no encontrado"
         )
-    return get_deportista(deportista_id=deportista.id, user=user, db=db)
+    # Se arma el detalle (queries explícitas → objeto Pydantic ya materializado) y se
+    # COMMITEA antes de devolver. La dependencia `get_db` commitea DESPUÉS de enviar la
+    # respuesta (gotcha de FastAPI con deps `yield`); como el front suele leer el perfil
+    # apenas recibe la respuesta, sin este commit la lectura corría una carrera contra el
+    # commit del cambio (en el ALTA daba 404 "no encontrado" intermitente). Con el commit
+    # acá, el cliente recibe la respuesta sólo cuando el cambio ya es durable.
+    detalle = get_deportista(deportista_id=deportista.id, user=user, db=db)
+    db.commit()
+    return detalle
 
 
 # --------------------------------------------------------------------------- #
@@ -397,7 +405,15 @@ def create_deportista(
                 "y de sus tutores (podés dejarlo vacío si aún no lo tienes)."
             ),
         ) from exc
-    return get_deportista(deportista_id=deportista.id, user=user, db=db)
+    # Se arma el detalle (queries explícitas → objeto Pydantic ya materializado) y se
+    # COMMITEA antes de devolver. La dependencia `get_db` commitea DESPUÉS de enviar la
+    # respuesta (gotcha de FastAPI con deps `yield`); como el front suele leer el perfil
+    # apenas recibe la respuesta, sin este commit la lectura corría una carrera contra el
+    # commit del cambio (en el ALTA daba 404 "no encontrado" intermitente). Con el commit
+    # acá, el cliente recibe la respuesta sólo cuando el cambio ya es durable.
+    detalle = get_deportista(deportista_id=deportista.id, user=user, db=db)
+    db.commit()
+    return detalle
 
 
 # --------------------------------------------------------------------------- #
@@ -431,7 +447,15 @@ def update_deportista(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
         ) from exc
-    return get_deportista(deportista_id=deportista.id, user=user, db=db)
+    # Se arma el detalle (queries explícitas → objeto Pydantic ya materializado) y se
+    # COMMITEA antes de devolver. La dependencia `get_db` commitea DESPUÉS de enviar la
+    # respuesta (gotcha de FastAPI con deps `yield`); como el front suele leer el perfil
+    # apenas recibe la respuesta, sin este commit la lectura corría una carrera contra el
+    # commit del cambio (en el ALTA daba 404 "no encontrado" intermitente). Con el commit
+    # acá, el cliente recibe la respuesta sólo cuando el cambio ya es durable.
+    detalle = get_deportista(deportista_id=deportista.id, user=user, db=db)
+    db.commit()
+    return detalle
 
 
 # --------------------------------------------------------------------------- #
@@ -469,7 +493,15 @@ def baja_deportista(
         .values(estado="INACTIVA")
     )
     db.flush()
-    return get_deportista(deportista_id=deportista.id, user=user, db=db)
+    # Se arma el detalle (queries explícitas → objeto Pydantic ya materializado) y se
+    # COMMITEA antes de devolver. La dependencia `get_db` commitea DESPUÉS de enviar la
+    # respuesta (gotcha de FastAPI con deps `yield`); como el front suele leer el perfil
+    # apenas recibe la respuesta, sin este commit la lectura corría una carrera contra el
+    # commit del cambio (en el ALTA daba 404 "no encontrado" intermitente). Con el commit
+    # acá, el cliente recibe la respuesta sólo cuando el cambio ya es durable.
+    detalle = get_deportista(deportista_id=deportista.id, user=user, db=db)
+    db.commit()
+    return detalle
 
 
 # --------------------------------------------------------------------------- #
@@ -502,4 +534,12 @@ def reactivar_deportista(
         .values(estado="ACTIVA")
     )
     db.flush()
-    return get_deportista(deportista_id=deportista.id, user=user, db=db)
+    # Se arma el detalle (queries explícitas → objeto Pydantic ya materializado) y se
+    # COMMITEA antes de devolver. La dependencia `get_db` commitea DESPUÉS de enviar la
+    # respuesta (gotcha de FastAPI con deps `yield`); como el front suele leer el perfil
+    # apenas recibe la respuesta, sin este commit la lectura corría una carrera contra el
+    # commit del cambio (en el ALTA daba 404 "no encontrado" intermitente). Con el commit
+    # acá, el cliente recibe la respuesta sólo cuando el cambio ya es durable.
+    detalle = get_deportista(deportista_id=deportista.id, user=user, db=db)
+    db.commit()
+    return detalle
