@@ -126,8 +126,15 @@ class ConsentimientoOut(BaseModel):
 
 
 class InscripcionIn(BaseModel):
-    """Inscripción opcional en el alta (C5)."""
+    """Inscripción a una disciplina (con su cuota). Un deportista puede tener varias.
 
+    En EDICIÓN la lista es reconciliable por `id`: con `id` => edita la existente; sin
+    `id` => alta de una nueva; una existente que NO aparece en la lista => se marca
+    INACTIVA (no se borra, conserva sus cuotas/historial).
+    """
+
+    id: uuid.UUID | None = None
+    disciplina_id: uuid.UUID | None = None
     disciplina: str | None = None
     fecha_inscripcion: date
     monto_mensual: Decimal
@@ -139,9 +146,13 @@ class InscripcionIn(BaseModel):
 class InscripcionOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
+    id: uuid.UUID
     fecha_inscripcion: date
     monto_mensual: Decimal
     disciplina: str | None = None
+    disciplina_id: uuid.UUID | None = None
+    # Nombre de la disciplina resuelto del catálogo (para mostrar sin otra llamada).
+    disciplina_nombre: str | None = None
     estado: str
 
 
@@ -178,7 +189,10 @@ class DeportistaCreate(BaseModel):
 
     tutores: list[TutorIn] = Field(..., min_length=1)
     consentimiento: ConsentimientoIn
+    # Inscripción única (compat) o varias (una por disciplina, cada una con su cuota).
+    # Si viene `inscripciones`, tiene prioridad; `inscripcion` se conserva por compat.
     inscripcion: InscripcionIn | None = None
+    inscripciones: list[InscripcionIn] | None = None
 
     @field_validator("tutores")
     @classmethod
@@ -214,6 +228,9 @@ class DeportistaUpdate(BaseModel):
     # inscripción si el deportista no tenía (caso de los registrados sin cobro, p. ej.
     # auto-registro) o actualiza la existente. Si NO viene (None / ausente), no se toca.
     inscripcion: InscripcionIn | None = None
+    # Lista reconciliable de inscripciones (una por disciplina). Si viene, tiene
+    # prioridad sobre `inscripcion` y gobierna el alta/edición/baja de cada una.
+    inscripciones: list[InscripcionIn] | None = None
 
 
 # --------------------------------------------------------------------------- #
@@ -256,7 +273,9 @@ class DeportistaDetailOut(BaseModel):
     lugar_nacimiento: str | None = None
     sucursal: SucursalRef
     categoria: CategoriaRef | None = None
+    # `inscripcion` = la principal (compat); `inscripciones` = TODAS (una por disciplina).
     inscripcion: InscripcionOut | None = None
+    inscripciones: list[InscripcionOut] = Field(default_factory=list)
     tutores: list[TutorOut]
     consentimiento: ConsentimientoOut | None = None
     ficha_medica: FichaMedica | None = None

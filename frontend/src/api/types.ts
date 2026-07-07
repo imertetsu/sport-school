@@ -111,9 +111,12 @@ export type ModoCobro = 'FIJO' | 'ANIVERSARIO';
 export type EstadoInscripcion = 'ACTIVA' | 'INACTIVA';
 
 export interface Inscripcion {
+  id: string;
   fecha_inscripcion: string; // date
   monto_mensual: string; // numeric(10,2) serializado como string
-  disciplina: string;
+  disciplina: string | null;
+  disciplina_id: string | null;
+  disciplina_nombre: string | null; // resuelto del catálogo
   estado: EstadoInscripcion;
 }
 
@@ -149,7 +152,9 @@ export interface DeportistaDetail {
   lugar_nacimiento?: string | null;
   sucursal: SucursalRef;
   categoria: CategoriaRef | null;
+  // `inscripcion` = la principal (compat); `inscripciones` = TODAS (una por disciplina).
   inscripcion: Inscripcion | null;
+  inscripciones: Inscripcion[];
   tutores: Tutor[];
   consentimiento: Consentimiento | null;
   // null si el rol no tiene acceso (RNF-02).
@@ -187,11 +192,16 @@ export interface ConsentimientoCreate {
 }
 
 export interface InscripcionCreate {
+  // En edición, `id` reconcilia por inscripción existente (con id => edita; sin id =>
+  // alta; existente que no viene en la lista => el backend la marca INACTIVA).
+  id?: string;
   disciplina?: string | null;
+  disciplina_id?: string | null;
   fecha_inscripcion: string;
   monto_mensual: string;
   modo_cobro?: ModoCobro | null;
   dia_corte?: number | null;
+  estado?: EstadoInscripcion;
 }
 
 export interface FichaMedicaCreate {
@@ -223,6 +233,9 @@ export interface DeportistaCreate {
   tutores: TutorCreate[]; // >= 1 (validación dura backend -> 422)
   consentimiento: ConsentimientoCreate; // obligatorio
   inscripcion?: InscripcionCreate | null;
+  // Varias inscripciones (una por disciplina, cada una con su cuota). Si viene, tiene
+  // prioridad sobre `inscripcion` (compat).
+  inscripciones?: InscripcionCreate[];
   ficha_medica?: FichaMedicaCreate | null;
 }
 
@@ -276,6 +289,9 @@ export interface DeportistaUpdate {
   // Inscripción (cobro): si viene, el backend hace UPSERT (crea o actualiza). Permite
   // dar de alta el cobro a un deportista que se registró sin él.
   inscripcion?: InscripcionCreate | null;
+  // Lista reconciliable de inscripciones (una por disciplina). Si viene, gobierna el
+  // alta/edición/baja de cada una y tiene prioridad sobre `inscripcion`.
+  inscripciones?: InscripcionCreate[];
 }
 
 // ---- escuela-y-bajas C2: GET/PUT /mi-escuela (gated ADMIN) ----

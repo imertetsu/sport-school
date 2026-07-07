@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from app.core.db import get_db
 from app.core.tenant import CurrentUser, require_role, set_tenant_context
 from app.models.categoria import Categoria
+from app.models.disciplina import Disciplina
 from app.models.consentimiento import Consentimiento
 from app.models.deportista import Deportista
 from app.models.deportista_tutor import DeportistaTutor
@@ -285,14 +286,42 @@ def get_deportista(
             select(Categoria).where(Categoria.id == deportista.categoria_id)
         ).scalar_one_or_none()
 
-    insc = (
+    # TODAS las inscripciones del deportista (una por disciplina). La "principal"
+    # (`inscripcion`, compat) es la ACTIVA más reciente, o la más reciente si ninguna.
+    inscripciones_rows = (
         db.execute(
             select(Inscripcion)
             .where(Inscripcion.deportista_id == deportista.id)
             .order_by(Inscripcion.fecha_inscripcion.desc())
         )
         .scalars()
-        .first()
+        .all()
+    )
+    # Nombres de disciplina resueltos del catálogo global en UNA query.
+    disc_ids = {i.disciplina_id for i in inscripciones_rows if i.disciplina_id is not None}
+    disc_nombres: dict[uuid.UUID, str] = {}
+    if disc_ids:
+        disc_nombres = {
+            d_id: nombre
+            for d_id, nombre in db.execute(
+                select(Disciplina.id, Disciplina.nombre).where(Disciplina.id.in_(disc_ids))
+            ).all()
+        }
+
+    def _insc_out(i: Inscripcion) -> InscripcionOut:
+        return InscripcionOut(
+            id=i.id,
+            fecha_inscripcion=i.fecha_inscripcion,
+            monto_mensual=i.monto_mensual,
+            disciplina=i.disciplina,
+            disciplina_id=i.disciplina_id,
+            disciplina_nombre=disc_nombres.get(i.disciplina_id) if i.disciplina_id else None,
+            estado=i.estado,
+        )
+
+    inscripciones_out = [_insc_out(i) for i in inscripciones_rows]
+    insc = next((i for i in inscripciones_rows if i.estado == "ACTIVA"), None) or (
+        inscripciones_rows[0] if inscripciones_rows else None
     )
 
     # Tutores vía puente deportista_tutor (parentesco/responsable_pago del puente).
@@ -343,16 +372,8 @@ def get_deportista(
         lugar_nacimiento=deportista.lugar_nacimiento,
         sucursal=SucursalRef(id=suc.id, nombre=suc.nombre),  # type: ignore[union-attr]
         categoria=(CategoriaRef(id=cat.id, nombre=cat.nombre, nivel=cat.nivel) if cat else None),
-        inscripcion=(
-            InscripcionOut(
-                fecha_inscripcion=insc.fecha_inscripcion,
-                monto_mensual=insc.monto_mensual,
-                disciplina=insc.disciplina,
-                estado=insc.estado,
-            )
-            if insc
-            else None
-        ),
+        inscripcion=_insc_out(insc) if insc else None,
+        inscripciones=inscripciones_out,
         tutores=tutores,
         consentimiento=(
             ConsentimientoOut(

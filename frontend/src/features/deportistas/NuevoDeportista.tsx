@@ -7,6 +7,7 @@ import type {
   DeportistaUpdate,
   DisciplinaRef,
   Categoria,
+  InscripcionCreate,
   Sucursal,
   TutorByCi,
   TutorCreate,
@@ -32,6 +33,24 @@ const EMPTY_TUTOR: TutorForm = {
   ci: '',
   parentesco: '',
   responsable_pago: true,
+};
+
+// Estado interno de UNA inscripción (una por disciplina, cada una con su cuota).
+// Campos SIEMPRE string para inputs controlados. `id`: solo en EDICIÓN, es el id de
+// la inscripción existente; la lista del submit es RECONCILIABLE por id (con id =>
+// edita; sin id => alta; una existente que NO se envía => el backend la marca
+// INACTIVA, no la borra). `disciplinaId` "" => sin disciplina.
+type InscripcionForm = {
+  id?: string;
+  disciplinaId: string;
+  montoMensual: string;
+  fechaInscripcion: string;
+};
+
+const EMPTY_INSCRIPCION: InscripcionForm = {
+  disciplinaId: '',
+  montoMensual: '',
+  fechaInscripcion: '',
 };
 
 // Versión de términos del consentimiento que la UI envía (texto del backend manda).
@@ -68,11 +87,13 @@ export function NuevoDeportista() {
   const [domicilio, setDomicilio] = useState('');
   const [lugarNacimiento, setLugarNacimiento] = useState('');
 
-  // Inscripción / cobro (motor de cuotas). Cuota mensual + fecha de inscripción; el
-  // modo de cobro hereda el default de la escuela. Sin esto el deportista no genera
-  // cuotas (no se le puede cobrar).
-  const [montoMensual, setMontoMensual] = useState('');
-  const [fechaInscripcion, setFechaInscripcion] = useState('');
+  // Inscripción / cobro (motor de cuotas). Lista repetible: una inscripción por
+  // disciplina, cada una con su cuota mensual y fecha. El modo de cobro hereda el
+  // default de la escuela. Sin al menos una inscripción el deportista no genera
+  // cuotas (no se le puede cobrar). Mínimo 1 (validación).
+  const [inscripciones, setInscripciones] = useState<InscripcionForm[]>([
+    { ...EMPTY_INSCRIPCION },
+  ]);
 
   // Ficha médica (OPCIONAL). Grupo sanguíneo = ficha_medica.tipo_sangre.
   const [tipoSangre, setTipoSangre] = useState('');
@@ -217,9 +238,31 @@ export function NuevoDeportista() {
     setContactoEmergencia(d.contacto_emergencia ?? '');
     setDomicilio(d.domicilio ?? '');
     setLugarNacimiento(d.lugar_nacimiento ?? '');
-    // Inscripción (cobro): precarga si el deportista ya tiene una.
-    setMontoMensual(d.inscripcion ? String(d.inscripcion.monto_mensual) : '');
-    setFechaInscripcion(d.inscripcion?.fecha_inscripcion ?? '');
+    // Inscripciones (cobro): precarga las ACTIVAS conservando su id (la lista del
+    // submit reconcilia por id). Si no hay activas, deriva de la principal
+    // (`inscripcion`, compat); si tampoco hay, arranca con una fila en blanco.
+    const activas = (d.inscripciones ?? []).filter((i) => i.estado === 'ACTIVA');
+    if (activas.length > 0) {
+      setInscripciones(
+        activas.map((i) => ({
+          id: i.id,
+          disciplinaId: i.disciplina_id ?? '',
+          montoMensual: String(i.monto_mensual),
+          fechaInscripcion: i.fecha_inscripcion,
+        })),
+      );
+    } else if (d.inscripcion) {
+      setInscripciones([
+        {
+          id: d.inscripcion.id,
+          disciplinaId: d.inscripcion.disciplina_id ?? '',
+          montoMensual: String(d.inscripcion.monto_mensual),
+          fechaInscripcion: d.inscripcion.fecha_inscripcion,
+        },
+      ]);
+    } else {
+      setInscripciones([{ ...EMPTY_INSCRIPCION }]);
+    }
     // Ficha médica: puede venir null si el rol no tiene acceso (RNF-02).
     if (d.ficha_medica) {
       setTipoSangre(d.ficha_medica.tipo_sangre ?? '');
@@ -315,6 +358,25 @@ export function NuevoDeportista() {
     }
   }
 
+  // Disciplina efectiva de una inscripción: la propia si se eligió; para la 1ª fila,
+  // por defecto hereda la disciplina PRINCIPAL del deportista (editable). Se usa igual
+  // en el value del select, la validación y el submit, para que UI y payload coincidan.
+  function effectiveDisciplina(f: InscripcionForm, index: number): string {
+    return f.disciplinaId || (index === 0 ? disciplinaId : '');
+  }
+
+  function updateInscripcion(index: number, patch: Partial<InscripcionForm>) {
+    setInscripciones((prev) => prev.map((f, i) => (i === index ? { ...f, ...patch } : f)));
+  }
+
+  function addInscripcion() {
+    setInscripciones((prev) => [...prev, { ...EMPTY_INSCRIPCION }]);
+  }
+
+  function removeInscripcion(index: number) {
+    setInscripciones((prev) => (prev.length > 1 ? prev.filter((_, i) => i !== index) : prev));
+  }
+
   function updateTutor(index: number, patch: Partial<TutorForm>) {
     setTutores((prev) => prev.map((t, i) => (i === index ? { ...t, ...patch } : t)));
   }
@@ -347,11 +409,17 @@ export function NuevoDeportista() {
     if (!fechaNac) errs.fecha_nac = 'Requerido';
     if (!disciplinaId) errs.disciplina_id = 'Requerido';
     if (!sucursalId) errs.sucursal_id = 'Selecciona una sucursal';
-    // Inscripción (cobro): obligatoria. Cuota mensual > 0 y fecha de inscripción.
-    if (!fechaInscripcion) errs.fecha_inscripcion = 'Requerido';
-    const monto = Number(montoMensual);
-    if (!montoMensual.trim() || Number.isNaN(monto) || monto <= 0)
-      errs.monto_mensual = 'Ingresa una cuota mensual válida';
+    // Inscripciones (cobro): al menos 1, y cada fila con disciplina, cuota > 0 y fecha.
+    if (inscripciones.length === 0) {
+      errs.inscripciones = 'Agrega al menos una inscripción.';
+    }
+    inscripciones.forEach((f, i) => {
+      if (!effectiveDisciplina(f, i)) errs[`inscripcion_${i}_disciplina`] = 'Elige una disciplina';
+      if (!f.fechaInscripcion) errs[`inscripcion_${i}_fecha`] = 'Requerido';
+      const monto = Number(f.montoMensual);
+      if (!f.montoMensual.trim() || Number.isNaN(monto) || monto <= 0)
+        errs[`inscripcion_${i}_monto`] = 'Ingresa una cuota mensual válida';
+    });
 
     const tutoresValidos = tutores.filter((t) => t.nombres.trim());
     if (tutoresValidos.length === 0) {
@@ -374,6 +442,9 @@ export function NuevoDeportista() {
       const key = loc.join('.');
       if (loc.includes('tutores')) {
         mapped.tutores = fe.msg;
+      } else if (loc.includes('inscripciones') || loc.includes('inscripcion')) {
+        // Error a nivel de la lista de inscripciones (el backend valida cuota/fecha).
+        mapped.inscripciones = fe.msg;
       } else if (loc.includes('consentimiento')) {
         mapped.consentimiento = fe.msg;
       } else if (typeof loc[0] === 'string') {
@@ -415,6 +486,20 @@ export function NuevoDeportista() {
       }));
   }
 
+  // Inscripciones a enviar (una por disciplina). Lista RECONCILIABLE por id: con id =>
+  // edita la existente; sin id => alta; una existente que NO se envía => el backend la
+  // marca INACTIVA. `inscripciones` tiene prioridad sobre `inscripcion` (singular), que
+  // ya no enviamos. estado ACTIVA: la UI solo administra inscripciones vigentes.
+  function inscripcionesPayload(): InscripcionCreate[] {
+    return inscripciones.map((f, i) => ({
+      ...(f.id ? { id: f.id } : {}),
+      disciplina_id: effectiveDisciplina(f, i) || null,
+      monto_mensual: f.montoMensual.trim(),
+      fecha_inscripcion: f.fechaInscripcion,
+      estado: 'ACTIVA' as const,
+    }));
+  }
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setFormError(null);
@@ -445,10 +530,8 @@ export function NuevoDeportista() {
           lugar_nacimiento: lugarNacimiento.trim() || null,
           tutores: tutoresPayload(),
           ficha_medica: fichaMedicaPayload(),
-          inscripcion: {
-            fecha_inscripcion: fechaInscripcion,
-            monto_mensual: montoMensual.trim(),
-          },
+          // Varias inscripciones (una por disciplina). El backend reconcilia por id.
+          inscripciones: inscripcionesPayload(),
         };
         const updated = await api.actualizarDeportista(id, updatePayload);
         navigate(`/deportistas/${updated.id}`);
@@ -472,10 +555,8 @@ export function NuevoDeportista() {
         lugar_nacimiento: lugarNacimiento.trim() || null,
         tutores: tutoresPayload(),
         consentimiento: { version_terminos: CONSENT_VERSION, canal: 'WEB' },
-        inscripcion: {
-          fecha_inscripcion: fechaInscripcion,
-          monto_mensual: montoMensual.trim(),
-        },
+        // Varias inscripciones (una por disciplina); tiene prioridad sobre `inscripcion`.
+        inscripciones: inscripcionesPayload(),
       };
 
       const ficha = fichaMedicaPayload();
@@ -715,30 +796,84 @@ export function NuevoDeportista() {
           </div>
         </Card>
 
-        <Card title="Inscripción y cobro">
+        <Card
+          title="Inscripción y cobro"
+          actions={
+            <Button variant="ghost" size="sm" onClick={addInscripcion}>
+              + Añadir inscripción
+            </Button>
+          }
+        >
           <p className="page-head__subtitle">
-            Define la cuota mensual del deportista. Sin esto no se generan cuotas y no se le
-            puede registrar pago. El modo de cobro hereda el de la escuela.
+            Cada inscripción es una disciplina con su propia cuota mensual. Un deportista
+            puede tener varias (una por disciplina). Sin al menos una no se generan cuotas y
+            no se le puede registrar pago. El modo de cobro hereda el de la escuela.
           </p>
-          <div className="form-grid">
-            <Field
-              label="Cuota mensual (Bs)"
-              type="number"
-              value={montoMensual}
-              onChange={(e) => setMontoMensual(e.target.value)}
-              error={fieldErrors.monto_mensual}
-              placeholder="150.00"
-              required
-            />
-            <Field
-              label="Fecha de inscripción"
-              type="date"
-              value={fechaInscripcion}
-              onChange={(e) => setFechaInscripcion(e.target.value)}
-              error={fieldErrors.fecha_inscripcion}
-              hint="Desde cuándo se cobra; define su ciclo mensual"
-              required
-            />
+          {fieldErrors.inscripciones && (
+            <p className="field__error" role="alert">
+              {fieldErrors.inscripciones}
+            </p>
+          )}
+          <div className="tutor-forms">
+            {inscripciones.map((f, i) => {
+              const eff = effectiveDisciplina(f, i);
+              return (
+                <fieldset className="tutor-form" key={i}>
+                  <legend className="tutor-form__legend">
+                    Inscripción {i + 1}
+                    {inscripciones.length > 1 && (
+                      <button
+                        type="button"
+                        className="tutor-form__remove"
+                        onClick={() => removeInscripcion(i)}
+                        aria-label={`Quitar inscripción ${i + 1}`}
+                      >
+                        Quitar
+                      </button>
+                    )}
+                  </legend>
+                  <div className="form-grid">
+                    <SelectField
+                      label="Disciplina"
+                      value={eff}
+                      onChange={(e) => updateInscripcion(i, { disciplinaId: e.target.value })}
+                      error={fieldErrors[`inscripcion_${i}_disciplina`]}
+                      required
+                    >
+                      <option value="">— Sin disciplina —</option>
+                      {/* Si la disciplina cargada no está en el catálogo (p.ej. inactiva),
+                          conservamos el id para no perder el valor. */}
+                      {eff && !disciplinas.some((d) => d.id === eff) && (
+                        <option value={eff}>Disciplina actual</option>
+                      )}
+                      {disciplinas.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.nombre}
+                        </option>
+                      ))}
+                    </SelectField>
+                    <Field
+                      label="Cuota mensual (Bs)"
+                      type="number"
+                      value={f.montoMensual}
+                      onChange={(e) => updateInscripcion(i, { montoMensual: e.target.value })}
+                      error={fieldErrors[`inscripcion_${i}_monto`]}
+                      placeholder="150.00"
+                      required
+                    />
+                    <Field
+                      label="Fecha de inscripción"
+                      type="date"
+                      value={f.fechaInscripcion}
+                      onChange={(e) => updateInscripcion(i, { fechaInscripcion: e.target.value })}
+                      error={fieldErrors[`inscripcion_${i}_fecha`]}
+                      hint="Desde cuándo se cobra; define su ciclo mensual"
+                      required
+                    />
+                  </div>
+                </fieldset>
+              );
+            })}
           </div>
         </Card>
 

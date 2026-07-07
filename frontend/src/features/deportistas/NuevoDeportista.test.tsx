@@ -109,6 +109,8 @@ const DEPORTISTA_RECUPERADO: DeportistaDetail = {
   sucursal: { id: 's1', nombre: 'Centro' },
   categoria: null,
   inscripcion: null,
+  // Varias inscripciones (una por disciplina): vacío en este recuperado.
+  inscripciones: [],
   tutores: [
     {
       id: 't1',
@@ -217,8 +219,9 @@ describe('NuevoDeportista — OCR + recuperar-por-CI + disciplina (S3)', () => {
     expect((screen.getAllByLabelText(/^Nombres/)[1] as HTMLInputElement).value).toBe(
       'Rosa Huanca',
     );
-    // El select de disciplina se precarga con el FK canónico devuelto (disciplina_id).
-    const disciplinaSelect = screen.getByLabelText(/Disciplina/) as HTMLSelectElement;
+    // El select de disciplina PRINCIPAL ([0]) se precarga con el FK canónico devuelto
+    // (disciplina_id). El [1] es el de la inscripción (lista repetible).
+    const disciplinaSelect = screen.getAllByLabelText(/Disciplina/)[0] as HTMLSelectElement;
     expect(disciplinaSelect.value).toBe('d2');
   });
 
@@ -262,8 +265,9 @@ describe('NuevoDeportista — OCR + recuperar-por-CI + disciplina (S3)', () => {
     await user.type(screen.getByLabelText(/Fecha de nacimiento/), '2014-03-10');
 
     // El select de disciplina viene del catálogo (api.disciplinasCatalogo); cada
-    // opción usa el id (FK canónico) como value.
-    const disciplinaSelect = await screen.findByLabelText(/Disciplina/);
+    // opción usa el id (FK canónico) como value. [0] = disciplina principal del
+    // deportista; [1] = disciplina de la inscripción (lista repetible).
+    const disciplinaSelect = (await screen.findAllByLabelText(/Disciplina/))[0];
     await user.selectOptions(disciplinaSelect, 'd1');
     expect(disciplinasCatalogoMock).toHaveBeenCalled();
 
@@ -287,6 +291,16 @@ describe('NuevoDeportista — OCR + recuperar-por-CI + disciplina (S3)', () => {
     expect(payload.sucursal_id).toBe('s1');
     expect(payload.tutores[0].nombres).toBe('Rosa');
     expect(payload.consentimiento).toEqual({ version_terminos: 'v1', canal: 'WEB' });
+    // Ahora se envía la lista `inscripciones` (una por disciplina), no el singular
+    // `inscripcion`. La 1ª fila hereda la disciplina principal (d1) por defecto.
+    expect(payload.inscripcion).toBeUndefined();
+    expect(payload.inscripciones).toHaveLength(1);
+    expect(payload.inscripciones[0]).toMatchObject({
+      disciplina_id: 'd1',
+      monto_mensual: '150',
+      fecha_inscripcion: '2024-01-15',
+      estado: 'ACTIVA',
+    });
   });
 
   it('maneja el 409 (CI duplicado) del alta con un mensaje claro (sin crash)', async () => {
@@ -301,7 +315,7 @@ describe('NuevoDeportista — OCR + recuperar-por-CI + disciplina (S3)', () => {
     await user.type(screen.getAllByLabelText(/^Nombres/)[0], 'Mateo');
     await user.type(screen.getAllByLabelText(/^CI/)[0], '9123456');
     await user.type(screen.getByLabelText(/Fecha de nacimiento/), '2014-03-10');
-    await user.selectOptions(await screen.findByLabelText(/Disciplina/), 'd1');
+    await user.selectOptions((await screen.findAllByLabelText(/Disciplina/))[0], 'd1');
     await user.selectOptions(screen.getByLabelText(/Sucursal/), 's1');
     await user.type(screen.getAllByLabelText(/^Nombres/)[1], 'Rosa');
     await user.click(screen.getByRole('checkbox', { name: /consentimiento/i }));
@@ -326,7 +340,7 @@ describe('NuevoDeportista — OCR + recuperar-por-CI + disciplina (S3)', () => {
     await user.type(screen.getByLabelText(/Apellido paterno/), 'Quispe');
     await user.type(screen.getAllByLabelText(/^Nombres/)[0], 'Mateo');
     await user.type(screen.getByLabelText(/Fecha de nacimiento/), '2014-03-10');
-    await user.selectOptions(await screen.findByLabelText(/Disciplina/), 'd1');
+    await user.selectOptions((await screen.findAllByLabelText(/Disciplina/))[0], 'd1');
     await user.selectOptions(screen.getByLabelText(/Sucursal/), 's1');
     await user.type(screen.getAllByLabelText(/^Nombres/)[1], 'Rosa');
     await user.click(screen.getByRole('checkbox', { name: /consentimiento/i }));
@@ -350,7 +364,7 @@ describe('NuevoDeportista — OCR + recuperar-por-CI + disciplina (S3)', () => {
     await user.type(screen.getAllByLabelText(/^Nombres/)[0], 'Mateo');
     await user.type(screen.getAllByLabelText(/^CI/)[0], '9123456');
     await user.type(screen.getByLabelText(/Fecha de nacimiento/), '2014-03-10');
-    await user.selectOptions(await screen.findByLabelText(/Disciplina/), 'd1');
+    await user.selectOptions((await screen.findAllByLabelText(/Disciplina/))[0], 'd1');
     await user.selectOptions(screen.getByLabelText(/Sucursal/), 's1');
     // Tutor con nombre pero SIN CI (opcional): no debe bloquear el envío.
     await user.type(screen.getAllByLabelText(/^Nombres/)[1], 'Rosa');
@@ -377,7 +391,7 @@ describe('NuevoDeportista — OCR + recuperar-por-CI + disciplina (S3)', () => {
     await user.type(screen.getAllByLabelText(/^Nombres/)[0], 'Mateo');
     await user.type(screen.getAllByLabelText(/^CI/)[0], '9123456');
     await user.type(screen.getByLabelText(/Fecha de nacimiento/), '2014-03-10');
-    await user.selectOptions(await screen.findByLabelText(/Disciplina/), 'd1');
+    await user.selectOptions((await screen.findAllByLabelText(/Disciplina/))[0], 'd1');
     await user.selectOptions(screen.getByLabelText(/Sucursal/), 's1');
     await user.type(screen.getAllByLabelText(/^Nombres/)[1], 'Rosa');
 
@@ -407,14 +421,28 @@ const DEPORTISTA_EDIT: DeportistaDetail = {
   lugar_nacimiento: 'La Paz',
   sucursal: { id: 's1', nombre: 'Centro' },
   categoria: null,
-  // Con inscripción: el form de edición precarga cuota mensual + fecha (ahora
-  // obligatorias), de modo que "Guardar cambios" pase la validación.
+  // Con inscripción: el form de edición precarga la lista de inscripciones (cuota +
+  // fecha + disciplina, ahora obligatorias) para que "Guardar cambios" pase validación.
   inscripcion: {
+    id: 'i1',
     fecha_inscripcion: '2024-01-15',
     monto_mensual: '150.00',
-    disciplina: '',
+    disciplina: 'Natación',
+    disciplina_id: 'd2',
+    disciplina_nombre: 'Natación',
     estado: 'ACTIVA',
   },
+  inscripciones: [
+    {
+      id: 'i1',
+      fecha_inscripcion: '2024-01-15',
+      monto_mensual: '150.00',
+      disciplina: 'Natación',
+      disciplina_id: 'd2',
+      disciplina_nombre: 'Natación',
+      estado: 'ACTIVA',
+    },
+  ],
   tutores: [
     {
       id: 't1',
@@ -510,6 +538,11 @@ describe('NuevoDeportista — modo EDICIÓN (Fase 3)', () => {
     expect(payload.consentimiento).toBeUndefined();
     // Ficha médica incluida (tenía datos).
     expect(payload.ficha_medica.tipo_sangre).toBe('O+');
+    // Las inscripciones van con su id (reconciliación por id), no el singular.
+    expect(payload.inscripcion).toBeUndefined();
+    expect(payload.inscripciones).toHaveLength(1);
+    expect(payload.inscripciones[0].id).toBe('i1');
+    expect(payload.inscripciones[0].disciplina_id).toBe('d2');
     // Navegó al perfil del deportista.
     expect(await screen.findByText('PERFIL dep-1')).toBeInTheDocument();
   });

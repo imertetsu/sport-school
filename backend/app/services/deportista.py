@@ -215,28 +215,34 @@ def crear_deportista(db: Session, body: DeportistaCreate, *, org_id: uuid.UUID) 
         )
     )
 
-    nueva_insc: Inscripcion | None = None
-    if body.inscripcion is not None:
-        ins = body.inscripcion
-        nueva_insc = Inscripcion(
+    # Un deportista puede inscribirse a VARIAS disciplinas (cada una con su cuota). Se
+    # acepta `inscripciones` (lista) o `inscripcion` (única, compat); prioriza la lista.
+    lista_ins = body.inscripciones if body.inscripciones is not None else (
+        [body.inscripcion] if body.inscripcion is not None else []
+    )
+    nuevas: list[Inscripcion] = []
+    for ins in lista_ins:
+        fila = Inscripcion(
             org_id=org_id,
             deportista_id=deportista.id,
             disciplina=ins.disciplina,
+            disciplina_id=ins.disciplina_id,
             fecha_inscripcion=ins.fecha_inscripcion,
             monto_mensual=ins.monto_mensual,
             modo_cobro=ins.modo_cobro,
             dia_corte=ins.dia_corte,
             estado=ins.estado,
         )
-        db.add(nueva_insc)
+        db.add(fila)
+        nuevas.append(fila)
 
     db.flush()
-    # Genera las cuotas desde la fecha de inscripción EN EL ALTA (no esperar al cron):
-    # así el deportista recién creado ya tiene sus cuotas y se le puede registrar un
-    # pago de una, sin tener que editar+guardar. Idempotente (UNIQUE por período); el
-    # cron diario no duplica.
-    if nueva_insc is not None:
-        generacion.generar_cuotas_historicas(db, inscripcion_id=nueva_insc.id)
+    # Genera las cuotas de CADA inscripción desde su fecha EN EL ALTA (no esperar al
+    # cron): así el deportista recién creado ya tiene sus cuotas por disciplina y se le
+    # puede cobrar de una. Idempotente (UNIQUE por período); el cron no duplica.
+    for fila in nuevas:
+        if fila.estado == "ACTIVA":
+            generacion.generar_cuotas_historicas(db, inscripcion_id=fila.id)
     return deportista
 
 
@@ -421,6 +427,68 @@ def _upsert_inscripcion(
     generacion.generar_cuotas_historicas(db, inscripcion_id=existente.id)
 
 
+def _reconciliar_inscripciones(
+    db: Session, deportista: Deportista, entrantes: list[InscripcionIn], *, org_id: uuid.UUID
+) -> None:
+    """Reconcilia la lista de inscripciones del deportista (una por disciplina, con cuota).
+
+    Semántica reconciliable por `id`:
+      - elemento con `id` de una inscripción existente -> la actualiza.
+      - elemento sin `id` -> alta de una nueva inscripción.
+      - inscripción existente cuyo id NO aparece en la lista -> se marca INACTIVA
+        (NO se borra: conserva sus cuotas/pagos/historial).
+    Tras aplicar cada una ACTIVA: reajusta el monto de sus cuotas futuras sin pago y
+    rellena las cuotas desde su fecha (idempotente, igual que `_upsert_inscripcion`).
+    """
+    actuales = {
+        i.id: i
+        for i in db.execute(
+            select(Inscripcion).where(Inscripcion.deportista_id == deportista.id)
+        )
+        .scalars()
+        .all()
+    }
+    vistos: set[uuid.UUID] = set()
+    for ins in entrantes:
+        fila = actuales.get(ins.id) if ins.id is not None else None
+        if fila is not None:
+            vistos.add(fila.id)
+            fila.fecha_inscripcion = ins.fecha_inscripcion
+            fila.monto_mensual = ins.monto_mensual
+            fila.estado = ins.estado
+            fila.disciplina_id = ins.disciplina_id
+            if ins.disciplina is not None:
+                fila.disciplina = ins.disciplina
+            if ins.modo_cobro is not None:
+                fila.modo_cobro = ins.modo_cobro
+            if ins.dia_corte is not None:
+                fila.dia_corte = ins.dia_corte
+        else:
+            fila = Inscripcion(
+                org_id=org_id,
+                deportista_id=deportista.id,
+                disciplina=ins.disciplina,
+                disciplina_id=ins.disciplina_id,
+                fecha_inscripcion=ins.fecha_inscripcion,
+                monto_mensual=ins.monto_mensual,
+                modo_cobro=ins.modo_cobro,
+                dia_corte=ins.dia_corte,
+                estado=ins.estado,
+            )
+            db.add(fila)
+        db.flush()
+        if fila.estado == "ACTIVA":
+            generacion.reajustar_monto_cuotas_futuras(
+                db, inscripcion_id=fila.id, nuevo_monto=fila.monto_mensual
+            )
+            generacion.generar_cuotas_historicas(db, inscripcion_id=fila.id)
+    # Las existentes que ya no vienen en la lista -> INACTIVA (no se borran).
+    for iid, fila in actuales.items():
+        if iid not in vistos:
+            fila.estado = "INACTIVA"
+    db.flush()
+
+
 def actualizar_deportista(
     db: Session, deportista: Deportista, body: DeportistaUpdate, *, org_id: uuid.UUID
 ) -> Deportista:
@@ -456,11 +524,16 @@ def actualizar_deportista(
         assert body.tutores is not None
         _reconciliar_tutores(db, deportista, body.tutores, org_id=org_id)
 
-    # Inscripción (cobro): UPSERT solo si vino en el body. Se descarta de `data` para
-    # que el bucle de setattr no la trate como columna del deportista.
+    # Inscripción(es) (cobro): si vino la LISTA `inscripciones` (una por disciplina) se
+    # reconcilia por id; si no, UPSERT de la única `inscripcion` (compat). Se descartan
+    # de `data` para que el bucle de setattr no las trate como columnas del deportista.
+    tiene_lista = "inscripciones" in data
+    data.pop("inscripciones", None)
     inscribir = "inscripcion" in data
     data.pop("inscripcion", None)
-    if inscribir and body.inscripcion is not None:
+    if tiene_lista and body.inscripciones is not None:
+        _reconciliar_inscripciones(db, deportista, body.inscripciones, org_id=org_id)
+    elif inscribir and body.inscripcion is not None:
         _upsert_inscripcion(db, deportista, body.inscripcion, org_id=org_id)
 
     if "ficha_medica" in data:

@@ -19,7 +19,13 @@ class Inscripcion(UUIDPkMixin, OrgScoped, TimestampMixin, Base):
     deportista_id: Mapped[uuid.UUID] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("deportista.id"), nullable=False, index=True
     )
+    # Texto legacy (se conserva). La disciplina canónica es `disciplina_id` (FK al
+    # catálogo global), agregada en 0026 para soportar VARIAS inscripciones por
+    # deportista, una por disciplina, cada una con su cuota.
     disciplina: Mapped[str | None] = mapped_column(String, nullable=True)
+    disciplina_id: Mapped[uuid.UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("disciplina.id", ondelete="SET NULL"), nullable=True
+    )
     fecha_inscripcion: Mapped[date] = mapped_column(Date, nullable=False)
     monto_mensual: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     # null -> hereda ORGANIZACION.modo_cobro_default (motor de cuotas, epic posterior)

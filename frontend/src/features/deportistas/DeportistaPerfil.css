@@ -168,6 +168,19 @@
   font-weight: 500;
 }
 
+/* Lista de inscripciones (una por disciplina) en la pestaña "Inscripción" */
+.perfil-insc-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.perfil-insc {
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
 .perfil__empty {
   margin: 0;
   color: var(--color-text-muted);

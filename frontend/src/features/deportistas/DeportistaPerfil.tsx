@@ -587,6 +587,22 @@ export function DeportistaPerfil() {
     ? `${deportista.categoria.nombre} ${nivelLabel(deportista.categoria.nivel)}`.trim()
     : null;
 
+  // Un deportista puede tener VARIAS inscripciones (una por disciplina). La "cuota
+  // mensual" del encabezado es la SUMA de las cuotas de las inscripciones ACTIVAS; y
+  // "Deportista desde" es la fecha de inscripción más temprana entre las activas.
+  const inscripcionesActivas = deportista.inscripciones.filter((i) => i.estado === 'ACTIVA');
+  const cuotaMensualTotal = inscripcionesActivas.reduce(
+    (sum, i) => sum + Number(i.monto_mensual),
+    0,
+  );
+  const fechaDesde =
+    inscripcionesActivas.length > 0
+      ? inscripcionesActivas.reduce(
+          (min, i) => (i.fecha_inscripcion < min ? i.fecha_inscripcion : min),
+          inscripcionesActivas[0].fecha_inscripcion,
+        )
+      : null;
+
   const tabs: TabItem[] = [
     {
       id: 'datos',
@@ -681,28 +697,34 @@ export function DeportistaPerfil() {
       label: 'Inscripción',
       content: (
         <Card>
-          {deportista.inscripcion ? (
-            <dl className="datalist">
-              <DataRow label="Disciplina" value={deportista.inscripcion.disciplina} />
-              <DataRow
-                label="Cuota mensual"
-                value={<span className="tabular">{formatMoney(deportista.inscripcion.monto_mensual)}</span>}
-              />
-              <DataRow
-                label="Fecha de inscripción"
-                value={formatDate(deportista.inscripcion.fecha_inscripcion)}
-              />
-              <DataRow
-                label="Estado"
-                value={
-                  <Badge tone={deportista.inscripcion.estado === 'ACTIVA' ? 'paid' : 'neutral'}>
-                    {deportista.inscripcion.estado === 'ACTIVA' ? 'Activa' : 'Inactiva'}
-                  </Badge>
-                }
-              />
-            </dl>
-          ) : (
+          {deportista.inscripciones.length === 0 ? (
             <p className="perfil__empty">Sin inscripción registrada.</p>
+          ) : (
+            <div className="perfil-insc-list">
+              {deportista.inscripciones.map((insc) => (
+                <div key={insc.id} className="perfil-insc">
+                  <dl className="datalist">
+                    <DataRow label="Disciplina" value={insc.disciplina_nombre ?? '—'} />
+                    <DataRow
+                      label="Cuota mensual"
+                      value={<span className="tabular">{formatMoney(insc.monto_mensual)}</span>}
+                    />
+                    <DataRow
+                      label="Fecha de inscripción"
+                      value={formatDate(insc.fecha_inscripcion)}
+                    />
+                    <DataRow
+                      label="Estado"
+                      value={
+                        <Badge tone={insc.estado === 'ACTIVA' ? 'paid' : 'neutral'}>
+                          {insc.estado === 'ACTIVA' ? 'Activa' : 'Inactiva'}
+                        </Badge>
+                      }
+                    />
+                  </dl>
+                </div>
+              ))}
+            </div>
           )}
         </Card>
       ),
@@ -746,16 +768,16 @@ export function DeportistaPerfil() {
               <dt>CI</dt>
               <dd className="tabular">{deportista.ci}</dd>
             </div>
-            {deportista.inscripcion && (
+            {inscripcionesActivas.length > 0 && (
               <div>
                 <dt>Cuota mensual</dt>
-                <dd className="tabular">{formatMoney(deportista.inscripcion.monto_mensual)}</dd>
+                <dd className="tabular">{formatMoney(cuotaMensualTotal)}</dd>
               </div>
             )}
-            {deportista.inscripcion && (
+            {fechaDesde && (
               <div>
                 <dt>Deportista desde</dt>
-                <dd>{formatDate(deportista.inscripcion.fecha_inscripcion)}</dd>
+                <dd>{formatDate(fechaDesde)}</dd>
               </div>
             )}
           </dl>
