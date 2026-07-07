@@ -272,13 +272,14 @@ class PdfComprobanteService(ComprobanteService):
         self._titulo_seccion(pdf, "DETALLE DE PAGO")
         moneda = _latin1(data.moneda)
 
-        # Encabezado de tabla (navy, texto blanco).
+        # Encabezado de tabla (navy, texto blanco). "Vence" es más ancho porque
+        # ahora muestra la fecha en largo ("12 de Febrero de 2026").
         cols = (
-            ("Período", 45, "L"),
-            ("Vence", 33, "L"),
-            (f"Monto ({moneda})", 34, "R"),
-            ("Aplicado", 34, "R"),
-            ("Saldo", 34, "R"),
+            ("Período", 38, "L"),
+            ("Vence", 48, "L"),
+            (f"Monto ({moneda})", 32, "R"),
+            ("Aplicado", 31, "R"),
+            ("Saldo", 31, "R"),
         )
         pdf.set_x(_ML)
         pdf.set_fill_color(*_NAVY)
@@ -297,13 +298,13 @@ class PdfComprobanteService(ComprobanteService):
                 pdf.set_fill_color(*_LIGHT)
             pdf.set_x(_ML)
             pdf.set_text_color(*_INK)
-            pdf.cell(45, 7.5, _latin1(linea.periodo_inicio), align="L", fill=fill)
+            pdf.cell(38, 7.5, _latin1(linea.periodo_inicio), align="L", fill=fill)
             pdf.set_text_color(*_MUTED)
-            pdf.cell(33, 7.5, _latin1(linea.vence_el), align="L", fill=fill)
+            pdf.cell(48, 7.5, _latin1(linea.vence_el), align="L", fill=fill)
             pdf.set_text_color(*_INK)
-            pdf.cell(34, 7.5, f"{linea.monto:.2f}", align="R", fill=fill)
-            pdf.cell(34, 7.5, f"{aplicado:.2f}", align="R", fill=fill)
-            pdf.cell(34, 7.5, f"{linea.saldo_restante:.2f}", align="R", fill=fill)
+            pdf.cell(32, 7.5, f"{linea.monto:.2f}", align="R", fill=fill)
+            pdf.cell(31, 7.5, f"{aplicado:.2f}", align="R", fill=fill)
+            pdf.cell(31, 7.5, f"{linea.saldo_restante:.2f}", align="R", fill=fill)
             pdf.ln(7.5)
 
         # Total pagado (banda verde destacada).
@@ -417,8 +418,8 @@ def _iniciales(nombre: str) -> str:
 
 
 def _fecha_larga(dt: datetime) -> str:
-    """Fecha en español largo: `25 de mayo de 2026`."""
-    return f"{dt.day} de {_MESES[dt.month]} de {dt.year}"
+    """Fecha en español largo con mes en Título: `25 de Mayo de 2026`."""
+    return f"{dt.day} de {_MESES[dt.month].capitalize()} de {dt.year}"
 
 
 def _logo_centrado(pdf: FPDF, *, w: float) -> None:

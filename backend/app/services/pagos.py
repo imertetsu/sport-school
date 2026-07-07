@@ -197,8 +197,10 @@ def construir_comprobante_data(db: Session, *, pago: Pago, org: Organizacion) ->
 
     lineas = [
         CuotaLinea(
-            periodo_inicio=c.periodo_inicio.isoformat(),
-            vence_el=c.vence_el.isoformat(),
+            # "Período" = mes de la cuota (p.ej. "Febrero 2026") y "Vence" en
+            # largo ("12 de Febrero de 2026"), como en el popup/panel de cobro.
+            periodo_inicio=_periodo_recibo(c.vence_el),
+            vence_el=_vence_recibo(c.vence_el),
             monto=c.monto,
             monto_aplicado=aplicados.get(c.id, c.monto),
             saldo_restante=_saldo(c),
@@ -250,6 +252,25 @@ _METODO_KARDEX = {"EFECTIVO": "Efectivo", "QR": "QR"}
 def _fecha_dma(dt: date | datetime) -> str:
     """Fecha "día mes año" en español, p.ej. `5 junio 2026` (sirve para date/datetime)."""
     return f"{dt.day} {_MESES_LARGO[dt.month]} {dt.year}"
+
+
+def _mes_titulo(dt: date | datetime) -> str:
+    """Mes en Título, p.ej. `Febrero`."""
+    return _MESES_LARGO[dt.month].capitalize()
+
+
+def _periodo_recibo(dt: date | datetime) -> str:
+    """Etiqueta de período del recibo: mes + año, p.ej. `Febrero 2026`.
+
+    Se rotula por el MES de `vence_el` (igual que el popup de cobro y el panel),
+    para que el recibo muestre el mismo mes que el operador ve al cobrar.
+    """
+    return f"{_mes_titulo(dt)} {dt.year}"
+
+
+def _vence_recibo(dt: date | datetime) -> str:
+    """Vencimiento en largo con 'de', p.ej. `12 de Febrero de 2026`."""
+    return f"{dt.day} de {_mes_titulo(dt)} de {dt.year}"
 
 
 def construir_kardex_data(
