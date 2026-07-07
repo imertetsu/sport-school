@@ -125,6 +125,30 @@ describe('RegistrarPago — aviso de sobrepago', () => {
     expect(screen.queryByText(/de más/)).not.toBeInTheDocument();
   });
 
+  it('tras registrar, "Registrar otro pago" vuelve al formulario sin cerrar', async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <RegistrarPago cuotaInicial={CUOTA} onClose={() => {}} />
+      </MemoryRouter>,
+    );
+    await screen.findByLabelText(/Monto recibido/);
+    await user.click(screen.getByRole('button', { name: /Confirmar pago/ }));
+
+    // Aparece el comprobante con la acción para cobrar otro pago.
+    await screen.findByText(/Pago registrado/);
+    const otro = screen.getByRole('button', { name: /Registrar otro pago/ });
+
+    // Al pulsarlo, vuelve el formulario (botón Confirmar) y desaparece el comprobante.
+    await user.click(otro);
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Confirmar pago/ })).toBeInTheDocument(),
+    );
+    expect(
+      screen.queryByRole('button', { name: /Registrar otro pago/ }),
+    ).not.toBeInTheDocument();
+  });
+
   it('envía el método (QR) y la fecha de pago en el body', async () => {
     const user = userEvent.setup();
     render(

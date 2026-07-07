@@ -43,6 +43,19 @@ export function RegistrarPago({ cuotaInicial, onClose, onConfirmado }: Registrar
   const [catalogo, setCatalogo] = useState<CuotaListItem[]>(
     cuotaInicial ? [cuotaInicial] : [],
   );
+  // Fuerza recargar la lista de cuotas tras un pago (para que las ya cobradas
+  // desaparezcan) y remontar el formulario de pago para "Registrar otro pago".
+  const [reloadKey, setReloadKey] = useState(0);
+  const [formKey, setFormKey] = useState(0);
+
+  // "Registrar otro pago": vuelve del comprobante al formulario SIN cerrar el
+  // modal. Limpia la selección, refresca la lista (quita lo ya cobrado) y remonta
+  // PagoManual (con key) para descartar el comprobante y resetear su formulario.
+  function reiniciarParaOtroPago() {
+    setSeleccion([]);
+    setReloadKey((k) => k + 1);
+    setFormKey((k) => k + 1);
+  }
 
   // Cargar cuotas pendientes del deportista de la cuota inicial (para multi-cuota).
   useEffect(() => {
@@ -57,16 +70,22 @@ export function RegistrarPago({ cuotaInicial, onClose, onConfirmado }: Registrar
       )
       .then((res) => {
         if (!active) return;
-        // Solo cobrables (no PAGADO). Mantén la inicial aunque venga filtrada.
+        // Solo cobrables (no PAGADO). Mantén la inicial aunque venga filtrada,
+        // salvo tras un pago (reloadKey>0): ahí, si ya quedó pagada, no la
+        // re-agregamos (evita mostrar como cobrable una cuota ya saldada).
         const cobrables = res.items.filter((c) => c.estado !== 'PAGADO');
-        const merged = cobrables.some((c) => c.id === cuotaInicial.id)
-          ? cobrables
-          : [cuotaInicial, ...cobrables];
+        const inicialSaldada = res.items.some(
+          (c) => c.id === cuotaInicial.id && c.estado === 'PAGADO',
+        );
+        const merged =
+          cobrables.some((c) => c.id === cuotaInicial.id) || (reloadKey > 0 && inicialSaldada)
+            ? cobrables
+            : [cuotaInicial, ...cobrables];
         setCuotasDeportista(merged);
         setCatalogo(merged);
       })
       .catch(() => {
-        if (active) setCuotasDeportista([cuotaInicial]);
+        if (active) setCuotasDeportista(reloadKey > 0 ? [] : [cuotaInicial]);
       })
       .finally(() => {
         if (active) setCargandoCuotas(false);
@@ -75,7 +94,7 @@ export function RegistrarPago({ cuotaInicial, onClose, onConfirmado }: Registrar
       active = false;
       controller.abort();
     };
-  }, [cuotaInicial]);
+  }, [cuotaInicial, reloadKey]);
 
   // Búsqueda de cuotas por nombre de deportista cuando se abre sin cuota inicial.
   useEffect(() => {
@@ -117,7 +136,7 @@ export function RegistrarPago({ cuotaInicial, onClose, onConfirmado }: Registrar
       clearTimeout(t);
       controller.abort();
     };
-  }, [busqueda, cuotaInicial]);
+  }, [busqueda, cuotaInicial, reloadKey]);
 
   const catalogoById = useMemo(
     () => new Map(catalogo.map((c) => [c.id, c])),
@@ -273,6 +292,7 @@ export function RegistrarPago({ cuotaInicial, onClose, onConfirmado }: Registrar
         <div className="rp-modal__body">
           {selector}
           <PagoManual
+            key={formKey}
             cuotaIds={seleccion}
             saldoTotal={saldoTotal}
             cuotasSeleccionadas={cuotasSeleccionadas}
@@ -280,6 +300,8 @@ export function RegistrarPago({ cuotaInicial, onClose, onConfirmado }: Registrar
             deportistaId={deportistaId}
             orgNombre={org?.nombre ?? 'LATINOSPORT'}
             onConfirmado={onConfirmado}
+            onOtroPago={reiniciarParaOtroPago}
+            onCerrar={onClose}
           />
         </div>
       </div>
@@ -296,6 +318,8 @@ function PagoManual({
   deportistaId,
   orgNombre,
   onConfirmado,
+  onOtroPago,
+  onCerrar,
 }: {
   cuotaIds: string[];
   // Σ saldo de lo seleccionado: default del "Monto recibido" (Abonos).
@@ -305,6 +329,10 @@ function PagoManual({
   deportistaId: string | null;
   orgNombre: string;
   onConfirmado?: () => void;
+  // Vuelve al formulario para cobrar otra cuota / a otro deportista (sin cerrar).
+  onOtroPago: () => void;
+  // Cierra el modal por completo.
+  onCerrar: () => void;
 }) {
   const toast = useToast();
   const [pago, setPago] = useState<PagoOut | null>(null);
@@ -374,6 +402,8 @@ function PagoManual({
         deportistaId={deportistaId}
         orgNombre={orgNombre}
         metodo={metodo}
+        onOtroPago={onOtroPago}
+        onCerrar={onCerrar}
       />
     );
   }
@@ -481,6 +511,8 @@ function Comprobante({
   deportistaId,
   orgNombre,
   metodo,
+  onOtroPago,
+  onCerrar,
 }: {
   pago: PagoOut;
   // Cuotas cobradas (con mes/vencimiento) para el texto de WhatsApp.
@@ -489,6 +521,8 @@ function Comprobante({
   deportistaId: string | null;
   orgNombre: string;
   metodo: 'EFECTIVO' | 'QR';
+  onOtroPago: () => void;
+  onCerrar: () => void;
 }) {
   const navigate = useNavigate();
   const [pdfEnVuelo, setPdfEnVuelo] = useState(false);
@@ -744,6 +778,17 @@ function Comprobante({
             Ajustes. Mientras tanto podés descargar el PDF o copiar el mensaje.
           </p>
         )}
+
+        {/* Siguiente paso: cobrar otra cuota / a otro deportista SIN cerrar y
+            reabrir, o terminar. Resuelve el "se queda trabado en el comprobante". */}
+        <div className="rp-comprobante__next">
+          <Button variant="primary" onClick={onOtroPago}>
+            Registrar otro pago
+          </Button>
+          <Button variant="ghost" onClick={onCerrar}>
+            Cerrar
+          </Button>
+        </div>
       </Card>
     </div>
   );
