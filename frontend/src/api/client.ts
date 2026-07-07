@@ -368,6 +368,7 @@ export const api = {
   deportistas(
     params: {
       q?: string;
+      tutor_q?: string;
       sucursal_id?: string;
       disciplina_id?: string;
       categoria_id?: string;

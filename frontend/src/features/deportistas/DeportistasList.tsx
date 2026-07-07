@@ -41,6 +41,9 @@ export function DeportistasList() {
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [disciplinaId, setDisciplinaId] = useState('');
   const [categoriaId, setCategoriaId] = useState('');
+  // Búsqueda por TUTOR (nombre o celular). Debounce como la búsqueda global.
+  const [tutorQuery, setTutorQuery] = useState('');
+  const debouncedTutor = useDebounced(tutorQuery.trim());
 
   // Toggle "Mostrar inactivos" (epic escuela-y-bajas, Fase 2). ESPEJO INVERTIDO
   // del de Entrenadores ("Mostrar solo activos"): aquí el caso común es ver los
@@ -98,6 +101,7 @@ export function DeportistasList() {
       .deportistas(
         {
           q: debouncedQuery || undefined,
+          tutor_q: debouncedTutor || undefined,
           sucursal_id: sucursalId || undefined,
           disciplina_id: disciplinaId || undefined,
           categoria_id: categoriaId || undefined,
@@ -126,7 +130,7 @@ export function DeportistasList() {
       active = false;
       controller.abort();
     };
-  }, [debouncedQuery, sucursalId, disciplinaId, categoriaId, mostrarInactivos]);
+  }, [debouncedQuery, debouncedTutor, sucursalId, disciplinaId, categoriaId, mostrarInactivos]);
 
   const columns = useMemo<Column<DeportistaListItem>[]>(
     () => [
@@ -205,6 +209,16 @@ export function DeportistasList() {
 
       <div className="deportistas-list__filters">
         <label className="deportistas-list__filter">
+          <span className="deportistas-list__filter-label">Tutor (nombre o celular)</span>
+          <input
+            className="field__input"
+            type="search"
+            value={tutorQuery}
+            onChange={(e) => setTutorQuery(e.target.value)}
+            placeholder="Ej: Roxana o 70723756"
+          />
+        </label>
+        <label className="deportistas-list__filter">
           <span className="deportistas-list__filter-label">Sucursal</span>
           <select
             className="field__input"
@@ -269,7 +283,7 @@ export function DeportistasList() {
           loading={loading}
           onRowClick={(a) => navigate(`/deportistas/${a.id}`)}
           emptyMessage={
-            debouncedQuery || sucursalId || disciplinaId || categoriaId
+            debouncedQuery || debouncedTutor || sucursalId || disciplinaId || categoriaId
               ? 'Sin deportistas para este filtro'
               : 'Aún no hay deportistas registrados'
           }
