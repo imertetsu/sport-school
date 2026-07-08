@@ -281,6 +281,7 @@ class PagoListItem(BaseModel):
     estado: str
     monto: Decimal
     deportista_nombre: str | None = None
+    sucursal_nombre: str | None = None
     numero_recibo: str | None = None
     anulable: bool
     motivo_anulacion: str | None = None

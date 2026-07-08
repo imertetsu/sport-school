@@ -34,6 +34,15 @@
   color: var(--color-text-muted);
 }
 
+/* Acciones por pago (recibo / copiar / WhatsApp) en la columna de la derecha. */
+.pago-acciones {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+
 /* --- Modal de anulación --- */
 .pagos-modal-backdrop {
   position: fixed;

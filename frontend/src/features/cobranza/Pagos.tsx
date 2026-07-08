@@ -43,7 +43,7 @@ export function Pagos() {
     setLoading(true);
     setError(null);
     api
-      .listarPagos(page, PAGE_SIZE, controller.signal)
+      .listarPagos(page, PAGE_SIZE, undefined, controller.signal)
       .then((res) => {
         if (!active) return;
         setItems(res.items);

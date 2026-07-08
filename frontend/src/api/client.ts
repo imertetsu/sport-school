@@ -509,13 +509,30 @@ export const api = {
       signal,
     });
   },
+  // POST /cobranza/deportistas/{id}/recordatorio-mora (ADMIN) -> recordatorio de MORA
+  // del deportista: un solo WhatsApp con el TOTAL adeudado + el QR de cobro adjunto.
+  enviarRecordatorioMora(deportistaId: string, signal?: AbortSignal): Promise<RecordatorioOut> {
+    return request<RecordatorioOut>(
+      `/cobranza/deportistas/${deportistaId}/recordatorio-mora`,
+      { method: 'POST', signal },
+    );
+  },
   // ---- Pagos (epic anular-pago, C4) — SOLO ADMIN (el backend impone require_role) ----
   // GET /cobranza/pagos?page=&page_size= -> lista paginada scoped por RLS, orden
   // created_at DESC. Punto de acceso a "Anular": cada item trae `anulable`
   // (efectivo+CONFIRMADO) y, si ya anulado, motivo_anulacion/anulado_en.
-  listarPagos(page = 1, pageSize = 20, signal?: AbortSignal): Promise<PagosListResponse> {
+  listarPagos(
+    page = 1,
+    pageSize = 20,
+    sucursalId?: string,
+    signal?: AbortSignal,
+  ): Promise<PagosListResponse> {
     return request<PagosListResponse>('/cobranza/pagos', {
-      query: { page, page_size: pageSize },
+      query: {
+        page,
+        page_size: pageSize,
+        ...(sucursalId ? { sucursal_id: sucursalId } : {}),
+      },
       signal,
     });
   },

@@ -158,6 +158,7 @@ def enviar_recordatorio_cuota(
     hoy: date,
     port: WhatsAppPort,
     forzar: bool = False,
+    monto_override: Decimal | None = None,
 ) -> RecordatorioResult:
     """Envía (idempotentemente) un recordatorio de cobro de `cuota` por WhatsApp.
 
@@ -242,7 +243,9 @@ def enviar_recordatorio_cuota(
     nombre_escuela = org.nombre if org is not None else "Escuela"
 
     nombre = _nombre_completo(deportista) if deportista is not None else "—"
-    monto: Decimal = cuota.monto
+    # `monto_override` permite que un recordatorio de MORA por deportista muestre el
+    # TOTAL adeudado (suma de sus cuotas vencidas), no solo el de esta cuota ancla.
+    monto: Decimal = monto_override if monto_override is not None else cuota.monto
     vence_el_ddmmyyyy = cuota.vence_el.strftime("%d/%m/%Y")
     cuerpo = _texto_recordatorio(
         tipo,

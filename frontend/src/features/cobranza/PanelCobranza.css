@@ -207,15 +207,30 @@
 
 .moras__item {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
+  flex-direction: column;
+  gap: var(--space-2);
   padding: var(--space-3) 0;
   border-bottom: 1px solid var(--color-border);
 }
 
 .moras__item:last-child {
   border-bottom: none;
+}
+
+/* Fila superior del ítem de mora: datos a la izquierda, monto/días a la derecha. */
+.moras__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+/* Acciones del ítem de mora (copiar / enviar WhatsApp). */
+.moras__acciones {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-1);
+  flex-wrap: wrap;
 }
 
 .moras__text {

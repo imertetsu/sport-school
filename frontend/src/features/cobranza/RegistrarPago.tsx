@@ -752,7 +752,7 @@ function Comprobante({
               onClick={enviarWhatsapp}
               disabled={enviando || envioOk}
             >
-              {envioOk ? '✓ Enviado por WhatsApp' : enviando ? 'Enviando…' : 'Enviar por WhatsApp'}
+              {envioOk ? '✓ Enviado' : enviando ? 'Enviando…' : 'Enviar WhatsApp'}
             </Button>
           ) : (
             <Button variant="primary" onClick={() => navigate('/ajustes')}>

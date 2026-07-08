@@ -448,7 +448,8 @@ def listar_pagos(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     deportista_id: uuid.UUID | None = Query(default=None),
-    _user: CurrentUser = Depends(require_role("ADMIN")),
+    sucursal_id: uuid.UUID | None = Query(default=None),
+    _user: CurrentUser = Depends(require_role("ADMIN", "ENTRENADOR")),
     db: Session = Depends(get_db),
 ) -> PagosListOut:
     """Lista los pagos del org (RLS), `created_at DESC`, paginada (C4).
@@ -471,6 +472,23 @@ def listar_pagos(
             .where(Inscripcion.deportista_id == deportista_id)
         )
         filtros.append(Pago.id.in_(pagos_del_deportista))
+    if sucursal_id is not None:
+        # Un pago cubre cuotas de UN deportista → una sucursal; filtramos por la
+        # sucursal del deportista de las cuotas del pago.
+        pagos_en_sucursal = (
+            select(PagoCuota.pago_id)
+            .join(Cuota, Cuota.id == PagoCuota.cuota_id)
+            .join(Inscripcion, Inscripcion.id == Cuota.inscripcion_id)
+            .join(Deportista, Deportista.id == Inscripcion.deportista_id)
+            .where(Deportista.sucursal_id == sucursal_id)
+        )
+        filtros.append(Pago.id.in_(pagos_en_sucursal))
+
+    # Mapa sucursal_id → nombre (RLS scopea al org) para etiquetar cada pago.
+    sucursal_nombres = {
+        row.id: row.nombre
+        for row in db.execute(select(Sucursal.id, Sucursal.nombre)).all()
+    }
 
     total = db.execute(
         select(func.count()).select_from(Pago).where(*filtros)
@@ -510,6 +528,9 @@ def listar_pagos(
                 estado=pago.estado,
                 monto=pago.monto,
                 deportista_nombre=_nombre_completo(deportista) if deportista else None,
+                sucursal_nombre=(
+                    sucursal_nombres.get(deportista.sucursal_id) if deportista else None
+                ),
                 numero_recibo=pago.numero_recibo,
                 anulable=(pago.registrado_por is not None and pago.estado == "CONFIRMADO"),
                 motivo_anulacion=pago.motivo_anulacion,
@@ -664,6 +685,65 @@ def enviar_recordatorio(
     return RecordatorioOut(
         enviado=result.enviado,
         cuota_id=cuota_id,
+        provider_message_id=result.provider_message_id,
+        motivo=result.motivo,
+    )
+
+
+# --------------------------------------------------------------------------- #
+# POST /cobranza/deportistas/{deportista_id}/recordatorio-mora  (mora, WhatsApp)
+# --------------------------------------------------------------------------- #
+@router.post(
+    "/deportistas/{deportista_id}/recordatorio-mora", response_model=RecordatorioOut
+)
+def enviar_recordatorio_mora(
+    deportista_id: uuid.UUID,
+    _user: CurrentUser = Depends(require_role("ADMIN")),
+    db: Session = Depends(get_db),
+) -> RecordatorioOut:
+    """Envía AHORA un recordatorio de MORA del deportista por WhatsApp (admin).
+
+    Toma TODAS sus cuotas VENCIDO, arma un único mensaje con el TOTAL adeudado y el
+    vencimiento más antiguo, y lo envía al tutor responsable adjuntando el QR de cobro
+    de la escuela (reusa `enviar_recordatorio_cuota` sobre la cuota más antigua con el
+    total como `monto_override`; degrada a texto si la escuela no tiene QR subido).
+    `forzar=True`: es una acción manual del admin (reenvía aunque ya se haya mandado).
+    404 si el deportista no tiene cuotas vencidas. RLS scopea al tenant.
+    """
+    vencidas = (
+        db.execute(
+            select(Cuota)
+            .join(Inscripcion, Inscripcion.id == Cuota.inscripcion_id)
+            .where(
+                Inscripcion.deportista_id == deportista_id,
+                Cuota.estado == "VENCIDO",
+            )
+            .order_by(Cuota.vence_el.asc())
+        )
+        .scalars()
+        .all()
+    )
+    if not vencidas:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="El deportista no tiene cuotas vencidas",
+        )
+
+    anchor = vencidas[0]  # la más antigua define el vencimiento mostrado
+    total = sum((c.monto - c.monto_pagado for c in vencidas), Decimal("0"))
+
+    result = enviar_recordatorio_cuota(
+        db,
+        cuota=anchor,
+        tipo="MOROSIDAD",
+        hoy=date.today(),
+        port=get_whatsapp_port(),
+        forzar=True,
+        monto_override=total,
+    )
+    return RecordatorioOut(
+        enviado=result.enviado,
+        cuota_id=anchor.id,
         provider_message_id=result.provider_message_id,
         motivo=result.motivo,
     )

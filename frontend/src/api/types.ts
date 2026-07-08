@@ -540,6 +540,7 @@ export interface PagoListItem {
   estado: EstadoPago;
   monto: string; // numeric(10,2) serializado como string
   deportista_nombre: string | null;
+  sucursal_nombre: string | null;
   numero_recibo: string | null;
   anulable: boolean;
   motivo_anulacion: string | null;

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import type { CuotasListResponse, PanelCobranza as PanelData } from '@/api/types';
@@ -8,11 +8,13 @@ import type { CuotasListResponse, PanelCobranza as PanelData } from '@/api/types
 const panelMock = vi.fn();
 const cuotasMock = vi.fn();
 const recordatorioMock = vi.fn();
+const recordatorioMoraMock = vi.fn();
 vi.mock('@/api/client', () => ({
   api: {
     panelCobranza: (...args: unknown[]) => panelMock(...args),
     cuotas: (...args: unknown[]) => cuotasMock(...args),
     enviarRecordatorio: (...args: unknown[]) => recordatorioMock(...args),
+    enviarRecordatorioMora: (...args: unknown[]) => recordatorioMoraMock(...args),
   },
   ApiError: class ApiError extends Error {},
 }));
@@ -189,21 +191,24 @@ describe('PanelCobranza', () => {
     expect(screen.getByTestId('registrar-pago-modal')).toBeInTheDocument();
   });
 
-  it('ADMIN ve "Enviar recordatorio" solo en cuotas no pagadas', async () => {
+  it('ADMIN ve "Enviar WhatsApp" solo en cuotas no pagadas', async () => {
     renderPanel();
     await screen.findAllByText('Mateo Quispe Mamani');
-    // q1 (VENCIDO) tiene el botón; q2 (PAGADO) no -> exactamente 1.
+    // q1 (VENCIDO) tiene el botón; q2 (PAGADO) no -> exactamente 1 EN LA TABLA
+    // (la tarjeta de morosidad tiene el suyo aparte; por eso acotamos a la tabla).
+    const tabla = within(screen.getByRole('table', { name: 'Cuotas' }));
     expect(
-      screen.getAllByRole('button', { name: 'Enviar recordatorio' }),
+      tabla.getAllByRole('button', { name: 'Enviar WhatsApp' }),
     ).toHaveLength(1);
   });
 
-  it('ENTRENADOR no ve la acción de recordatorio', async () => {
+  it('ENTRENADOR no ve la acción de recordatorio en la tabla', async () => {
     viewRoleMock = 'ENTRENADOR';
     renderPanel();
     await screen.findAllByText('Mateo Quispe Mamani');
+    const tabla = within(screen.getByRole('table', { name: 'Cuotas' }));
     expect(
-      screen.queryByRole('button', { name: 'Enviar recordatorio' }),
+      tabla.queryByRole('button', { name: 'Enviar WhatsApp' }),
     ).not.toBeInTheDocument();
   });
 
@@ -217,7 +222,8 @@ describe('PanelCobranza', () => {
     const user = userEvent.setup();
     renderPanel();
     await screen.findAllByText('Mateo Quispe Mamani');
-    await user.click(screen.getByRole('button', { name: 'Enviar recordatorio' }));
+    const tabla = within(screen.getByRole('table', { name: 'Cuotas' }));
+    await user.click(tabla.getByRole('button', { name: 'Enviar WhatsApp' }));
     await waitFor(() => expect(recordatorioMock).toHaveBeenCalledWith('q1'));
     expect(await screen.findByText(/Recordatorio enviado\./)).toBeInTheDocument();
   });
@@ -232,7 +238,8 @@ describe('PanelCobranza', () => {
     const user = userEvent.setup();
     renderPanel();
     await screen.findAllByText('Mateo Quispe Mamani');
-    await user.click(screen.getByRole('button', { name: 'Enviar recordatorio' }));
+    const tabla = within(screen.getByRole('table', { name: 'Cuotas' }));
+    await user.click(tabla.getByRole('button', { name: 'Enviar WhatsApp' }));
     expect(
       await screen.findByText(/El tutor no tiene teléfono registrado\./),
     ).toBeInTheDocument();
@@ -248,7 +255,8 @@ describe('PanelCobranza', () => {
     const user = userEvent.setup();
     renderPanel();
     await screen.findAllByText('Mateo Quispe Mamani');
-    await user.click(screen.getByRole('button', { name: 'Enviar recordatorio' }));
+    const tabla = within(screen.getByRole('table', { name: 'Cuotas' }));
+    await user.click(tabla.getByRole('button', { name: 'Enviar WhatsApp' }));
     expect(
       await screen.findByText(/Ya se había enviado este recordatorio\./),
     ).toBeInTheDocument();

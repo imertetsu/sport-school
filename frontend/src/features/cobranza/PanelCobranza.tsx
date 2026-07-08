@@ -4,6 +4,7 @@ import type {
   CuotaListItem,
   EstadoCuota,
   MetodoPago,
+  MorosidadItem,
   MotivoRecordatorio,
   PanelCobranza as PanelCobranzaData,
 } from '@/api/types';
@@ -14,6 +15,7 @@ import {
   Card,
   DataTable,
   EstadoBadge,
+  useToast,
   type Column,
 } from '@/components/ui';
 import { useSucursales } from '@/components/shell/SucursalContext';
@@ -65,11 +67,104 @@ function recordatorioNotice(motivo: MotivoRecordatorio | null, enviado: boolean)
   }
 }
 
+// Texto del recordatorio de mora listo para pegar en un chat de WhatsApp.
+function mensajeMora(m: MorosidadItem, orgNombre: string): string {
+  return [
+    `Recordatorio de pago — ${orgNombre}`,
+    `Deportista: ${m.nombre_completo}`,
+    `Deuda vencida: ${formatMoney(m.monto)} (${m.dias_mora} día${m.dias_mora === 1 ? '' : 's'} de mora)`,
+    'Por favor regularizá el pago. Te compartimos el QR de la escuela para pagar; al pagar, respondé con la captura del comprobante. ¡Gracias!',
+  ].join('\n');
+}
+
+async function copiarAlPortapapeles(texto: string) {
+  try {
+    await navigator.clipboard.writeText(texto);
+  } catch {
+    const ta = document.createElement('textarea');
+    ta.value = texto;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand('copy');
+    } catch {
+      /* si tampoco funciona, no rompemos la UI */
+    }
+    ta.remove();
+  }
+}
+
+// Acciones por deportista en mora: copiar el recordatorio para pegarlo a mano, o
+// enviarlo por WhatsApp (adjunta el QR de cobro de la escuela; solo ADMIN).
+function MoraAcciones({
+  item,
+  orgNombre,
+  isAdmin,
+}: {
+  item: MorosidadItem;
+  orgNombre: string;
+  isAdmin: boolean;
+}) {
+  const toast = useToast();
+  const [enviando, setEnviando] = useState(false);
+  const [enviado, setEnviado] = useState(false);
+
+  async function copiar() {
+    await copiarAlPortapapeles(mensajeMora(item, orgNombre));
+    toast.success('Mensaje copiado');
+  }
+
+  async function enviar() {
+    setEnviando(true);
+    try {
+      const res = await api.enviarRecordatorioMora(item.deportista_id);
+      if (res.enviado) {
+        setEnviado(true);
+        toast.success(`Recordatorio enviado a ${item.nombre_completo}`);
+      } else if (res.motivo === 'sin_telefono') {
+        toast.error('El tutor no tiene un teléfono registrado.');
+      } else {
+        toast.error('No se pudo enviar el recordatorio por WhatsApp.');
+      }
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError && err.isForbidden
+          ? 'No tenés permiso para enviar recordatorios.'
+          : 'No se pudo enviar por WhatsApp.',
+      );
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  return (
+    <div className="moras__acciones">
+      <Button variant="ghost" size="sm" onClick={copiar}>
+        Copiar
+      </Button>
+      {isAdmin && (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={enviar}
+          disabled={enviando || enviado}
+          title="Enviar el recordatorio al tutor por WhatsApp (adjunta el QR de cobro)"
+        >
+          {enviado ? '✓ Enviado' : enviando ? 'Enviando…' : 'Enviar WhatsApp'}
+        </Button>
+      )}
+    </div>
+  );
+}
+
 export function PanelCobranza() {
   const { selected: sucursalId } = useSucursales();
   // viewRole es la verdad de la UI; el backend impone el permiso real (ADMIN).
-  const { viewRole } = useAuth();
+  const { viewRole, org } = useAuth();
   const isAdmin = viewRole === 'ADMIN';
+  const orgNombre = org?.nombre ?? 'LATINOSPORT';
 
   const [panel, setPanel] = useState<PanelCobranzaData | null>(null);
   const [panelError, setPanelError] = useState<string | null>(null);
@@ -277,7 +372,7 @@ export function PanelCobranza() {
                     void enviarRecordatorio(c);
                   }}
                 >
-                  {recordatorioEnvio === c.id ? 'Enviando…' : 'Enviar recordatorio'}
+                  {recordatorioEnvio === c.id ? 'Enviando…' : 'Enviar WhatsApp'}
                 </Button>
               )}
               <Button
@@ -451,16 +546,19 @@ export function PanelCobranza() {
               <ul className="moras">
                 {panel.morosidad.map((m) => (
                   <li key={m.deportista_id} className="moras__item">
-                    <div className="moras__text">
-                      <span className="moras__name">{m.nombre_completo}</span>
-                      <span className="moras__meta">{m.categoria}</span>
+                    <div className="moras__row">
+                      <div className="moras__text">
+                        <span className="moras__name">{m.nombre_completo}</span>
+                        <span className="moras__meta">{m.categoria}</span>
+                      </div>
+                      <div className="moras__right">
+                        <span className="moras__monto tabular">{formatMoney(m.monto)}</span>
+                        <Badge tone="overdue">
+                          {m.dias_mora} día{m.dias_mora === 1 ? '' : 's'}
+                        </Badge>
+                      </div>
                     </div>
-                    <div className="moras__right">
-                      <span className="moras__monto tabular">{formatMoney(m.monto)}</span>
-                      <Badge tone="overdue">
-                        {m.dias_mora} día{m.dias_mora === 1 ? '' : 's'}
-                      </Badge>
-                    </div>
+                    <MoraAcciones item={m} orgNombre={orgNombre} isAdmin={isAdmin} />
                   </li>
                 ))}
               </ul>
