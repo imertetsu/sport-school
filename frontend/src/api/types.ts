@@ -387,6 +387,8 @@ export interface MorosidadItem {
   categoria: string;
   monto: string;
   dias_mora: number;
+  meses: string[]; // meses vencidos (MAYÚSCULAS, cronológico)
+  vence_mas_antiguo: string | null; // date YYYY-MM-DD
 }
 
 export interface PanelCobranza {
@@ -609,6 +611,7 @@ export interface GuardarBody {
   categoria_id: string;
   fecha: string; // date YYYY-MM-DD
   hora?: string | null; // time HH:MM, opcional
+  disciplina_id?: string | null; // filtro de disciplina activo (acota el roster devuelto)
   marcas: MarcaAsistencia[];
 }
 

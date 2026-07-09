@@ -38,6 +38,7 @@ from app.models.conciliacion_pendiente import ConciliacionPendiente
 from app.models.credito import Credito
 from app.models.cuota import Cuota
 from app.models.deportista import Deportista
+from app.models.disciplina import Disciplina
 from app.models.inscripcion import Inscripcion
 from app.models.organizacion import Organizacion
 from app.models.pago import Pago
@@ -176,6 +177,28 @@ def _nombre_completo(a: Deportista) -> str:
     return " ".join(p for p in partes if p).strip() or a.nombres
 
 
+def _disciplina_de_cuotas(
+    db: Session, cuotas: list[Cuota], deportista: Deportista | None
+) -> str | None:
+    """Nombre de la disciplina cobrada: cuota → inscripción.disciplina_id → catálogo.
+
+    Un pago aplica a cuotas de UNA inscripción, así que basta la 1ª. Fallback a la
+    disciplina principal del deportista (FK) y, por último, a su texto legacy.
+    """
+    disciplina_id = None
+    if cuotas:
+        insc = db.get(Inscripcion, cuotas[0].inscripcion_id)
+        if insc is not None:
+            disciplina_id = insc.disciplina_id
+    if disciplina_id is None and deportista is not None:
+        disciplina_id = deportista.disciplina_id
+    if disciplina_id is not None:
+        disc = db.get(Disciplina, disciplina_id)
+        if disc is not None:
+            return disc.nombre
+    return deportista.disciplina if deportista is not None else None
+
+
 def construir_comprobante_data(db: Session, *, pago: Pago, org: Organizacion) -> ComprobanteData:
     """Arma `ComprobanteData` (dominio) a partir del pago y sus cuotas.
 
@@ -225,6 +248,7 @@ def construir_comprobante_data(db: Session, *, pago: Pago, org: Organizacion) ->
         credito_generado=credito_generado,
         numero_recibo=pago.numero_recibo or "—",
         emisor=settings.recibo_emisor,
+        disciplina=_disciplina_de_cuotas(db, cuotas, deportista),
     )
 
 

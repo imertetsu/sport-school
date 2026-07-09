@@ -12,6 +12,8 @@ vi.mock('@/api/client', () => ({
     asistenciaCategorias: (...args: unknown[]) => categoriasMock(...args),
     asistenciaRoster: (...args: unknown[]) => rosterMock(...args),
     asistenciaGuardar: (...args: unknown[]) => guardarMock(...args),
+    // Catálogo de disciplinas para el filtro (se carga al montar).
+    disciplinasCatalogo: vi.fn(() => Promise.resolve([])),
   },
   ApiError: class ApiError extends Error {},
 }));

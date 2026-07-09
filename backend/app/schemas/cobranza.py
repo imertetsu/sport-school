@@ -129,6 +129,10 @@ class MorosidadItem(BaseModel):
     categoria: str | None = None
     monto: Decimal
     dias_mora: int
+    # Desglose para el recordatorio: meses vencidos (MAYÚSCULAS, cronológico) y la
+    # fecha de vencimiento más antigua.
+    meses: list[str] = Field(default_factory=list)
+    vence_mas_antiguo: date | None = None
 
 
 class PanelOut(BaseModel):

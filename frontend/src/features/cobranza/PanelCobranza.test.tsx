@@ -57,6 +57,8 @@ const PANEL: PanelData = {
       categoria: 'Sub-14 Intermedio',
       monto: '250',
       dias_mora: 12,
+      meses: ['MAYO', 'JUNIO'],
+      vence_mas_antiguo: '2026-05-30',
     },
   ],
 };

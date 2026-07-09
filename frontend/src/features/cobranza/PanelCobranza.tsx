@@ -67,14 +67,21 @@ function recordatorioNotice(motivo: MotivoRecordatorio | null, enviado: boolean)
   }
 }
 
-// Texto del recordatorio de mora listo para pegar en un chat de WhatsApp.
+// Texto del recordatorio de mora listo para pegar en un chat de WhatsApp (mismo
+// formato que el mensaje que se envía por WhatsApp desde el servidor).
 function mensajeMora(m: MorosidadItem, orgNombre: string): string {
-  return [
-    `Recordatorio de pago — ${orgNombre}`,
-    `Deportista: ${m.nombre_completo}`,
-    `Deuda vencida: ${formatMoney(m.monto)} (${m.dias_mora} día${m.dias_mora === 1 ? '' : 's'} de mora)`,
-    'Por favor regularizá el pago. Te compartimos el QR de la escuela para pagar; al pagar, respondé con la captura del comprobante. ¡Gracias!',
+  const saludo = `Apreciado Padre y/o Madre de familia de ${m.nombre_completo}, este es un mensajito de recordatorio.`;
+  const meses = m.meses.length > 0 ? m.meses.join(', ') : '—';
+  const vence = m.vence_mas_antiguo ? formatDate(m.vence_mas_antiguo) : '—';
+  const cuerpo = [
+    `Le informamos que en ${orgNombre} tiene cuotas vencidas:`,
+    `- Cuotas: ${meses}`,
+    `- Vencimiento más antiguo: ${vence}`,
+    `- Total adeudado: ${formatMoney(m.monto)}`,
   ].join('\n');
+  const cierre =
+    'Adjuntamos el QR de pago de la escuela; al pagar, responda con la captura del comprobante. ¡Gracias!';
+  return `${saludo}\n\n${cuerpo}\n\n${cierre}`;
 }
 
 async function copiarAlPortapapeles(texto: string) {

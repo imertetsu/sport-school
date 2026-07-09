@@ -111,12 +111,15 @@ def list_categorias(
 def get_roster(
     categoria_id: uuid.UUID = Query(...),
     fecha: date = Query(...),
+    disciplina_id: uuid.UUID | None = Query(default=None),
     user: CurrentUser = Depends(set_tenant_context),
     db: Session = Depends(get_db),
 ) -> RosterOut:
     """Roster de la categoría para una fecha (get-or-create lógico) (C2).
 
     NO crea sesión: si aún no hay, `sesion_id=null` y `estado=null` por deportista.
+    `disciplina_id` (opcional): acota a los deportistas de esa disciplina (una
+    categoría puede mezclar varias).
     """
     try:
         cat, sesion, deportistas, estados = svc.obtener_roster(
@@ -126,6 +129,7 @@ def get_roster(
             role=user.role,
             sucursal_ids=user.sucursal_ids,
             disciplina_ids=_disciplina_scope(db, user),
+            disciplina_filtro=disciplina_id,
         )
     except svc.AsistenciaError as exc:
         raise _http_error(exc) from exc
@@ -179,7 +183,8 @@ def guardar(
     except svc.AsistenciaError as exc:
         raise _http_error(exc) from exc
 
-    # Releer el roster guardado (refleja exactamente el estado persistido).
+    # Releer el roster guardado (refleja exactamente el estado persistido). Mantiene
+    # el filtro de disciplina para que la lista devuelta coincida con la vista actual.
     _cat, _sesion, deportistas, estados = svc.obtener_roster(
         db,
         categoria_id=body.categoria_id,
@@ -187,6 +192,7 @@ def guardar(
         role=user.role,
         sucursal_ids=user.sucursal_ids,
         disciplina_ids=disciplina_ids,
+        disciplina_filtro=body.disciplina_id,
     )
     items = [
         RosterItem(

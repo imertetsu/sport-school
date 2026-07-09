@@ -368,7 +368,7 @@ export const api = {
   deportistas(
     params: {
       q?: string;
-      tutor_q?: string;
+      buscar?: string;
       sucursal_id?: string;
       disciplina_id?: string;
       categoria_id?: string;
@@ -609,10 +609,15 @@ export const api = {
   asistenciaRoster(
     categoriaId: string,
     fecha: string,
+    disciplinaId?: string,
     signal?: AbortSignal,
   ): Promise<RosterOut> {
     return request<RosterOut>('/asistencia/roster', {
-      query: { categoria_id: categoriaId, fecha },
+      query: {
+        categoria_id: categoriaId,
+        fecha,
+        ...(disciplinaId ? { disciplina_id: disciplinaId } : {}),
+      },
       signal,
     });
   },

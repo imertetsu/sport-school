@@ -100,6 +100,8 @@ class GuardarBody(BaseModel):
     categoria_id: uuid.UUID
     fecha: date
     hora: time | None = None
+    # Filtro de disciplina activo en la vista: el roster devuelto se acota igual.
+    disciplina_id: uuid.UUID | None = None
     marcas: list[MarcaIn] = Field(default_factory=list)
 
 

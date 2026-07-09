@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, ApiError } from '@/api/client';
 import type {
   CategoriaAsistencia,
+  DisciplinaRef,
   EstadoAsistencia,
   RosterItem,
 } from '@/api/types';
@@ -38,6 +39,10 @@ export function TomarAsistencia() {
   const [categoriaId, setCategoriaId] = useState('');
   const [fecha, setFecha] = useState(hoyISO);
 
+  // --- Filtro de disciplina (una categoría puede mezclar futsal y voleibol) ---
+  const [disciplinas, setDisciplinas] = useState<DisciplinaRef[]>([]);
+  const [disciplinaId, setDisciplinaId] = useState(''); // '' = todas
+
   // --- Roster (lista de deportistas + marcas) ---
   const [items, setItems] = useState<RosterItem[]>([]);
   const [rosterLoading, setRosterLoading] = useState(false);
@@ -73,7 +78,26 @@ export function TomarAsistencia() {
     };
   }, []);
 
-  // Cargar el roster cuando hay categoría + fecha. Al recargar refleja lo guardado.
+  // Catálogo de disciplinas (global) para el filtro. Se carga una vez.
+  useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+    api
+      .disciplinasCatalogo(controller.signal)
+      .then((d) => {
+        if (active) setDisciplinas(d);
+      })
+      .catch(() => {
+        /* el filtro de disciplina no bloquea la toma de lista */
+      });
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, []);
+
+  // Cargar el roster cuando hay categoría + fecha (+ disciplina). Al recargar refleja
+  // lo guardado.
   useEffect(() => {
     if (!categoriaId || !fecha) {
       setItems([]);
@@ -86,7 +110,7 @@ export function TomarAsistencia() {
     setGuardadoOk(false);
     setGuardarError(null);
     api
-      .asistenciaRoster(categoriaId, fecha, controller.signal)
+      .asistenciaRoster(categoriaId, fecha, disciplinaId || undefined, controller.signal)
       .then((data) => {
         if (active) setItems(data.items);
       })
@@ -105,7 +129,7 @@ export function TomarAsistencia() {
       active = false;
       controller.abort();
     };
-  }, [categoriaId, fecha]);
+  }, [categoriaId, fecha, disciplinaId]);
 
   const setEstado = useCallback((deportistaId: string, estado: EstadoAsistencia) => {
     setItems((prev) =>
@@ -141,6 +165,7 @@ export function TomarAsistencia() {
         {
           categoria_id: categoriaId,
           fecha,
+          disciplina_id: disciplinaId || null,
           marcas: items.map((it) => ({
             deportista_id: it.deportista_id,
             estado: estadoEfectivo(it.estado),
@@ -161,7 +186,7 @@ export function TomarAsistencia() {
         toast.error(msg);
       })
       .finally(() => setGuardando(false));
-  }, [categoriaId, fecha, items]);
+  }, [categoriaId, fecha, items, disciplinaId, toast]);
 
   const meta = categoriaSel
     ? `${nivelLabel(categoriaSel.nivel)} · ${categoriaSel.sucursal.nombre}`
@@ -195,6 +220,20 @@ export function TomarAsistencia() {
           {categorias.map((c) => (
             <option key={c.id} value={c.id}>
               {c.nombre} · {c.sucursal.nombre} ({c.total_deportistas})
+            </option>
+          ))}
+        </SelectField>
+        <SelectField
+          label="Disciplina"
+          value={disciplinaId}
+          onChange={(e) => setDisciplinaId(e.target.value)}
+          disabled={disciplinas.length === 0}
+          hint="Filtra la lista por disciplina."
+        >
+          <option value="">Todas las disciplinas</option>
+          {disciplinas.map((d) => (
+            <option key={d.id} value={d.id}>
+              {d.nombre}
             </option>
           ))}
         </SelectField>
@@ -234,7 +273,9 @@ export function TomarAsistencia() {
         ) : items.length === 0 ? (
           <p className="roster__empty">
             {categoriaId
-              ? 'Esta categoría no tiene deportistas.'
+              ? disciplinaId
+                ? 'No hay deportistas de esa disciplina en esta categoría.'
+                : 'Esta categoría no tiene deportistas.'
               : 'Elige una categoría para tomar lista.'}
           </p>
         ) : (

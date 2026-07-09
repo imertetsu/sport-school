@@ -261,6 +261,9 @@ class PdfComprobanteService(ComprobanteService):
     def _datos_deportista(self, pdf: FPDF, data: ComprobanteData) -> None:
         self._titulo_seccion(pdf, "DATOS DEL DEPORTISTA")
         self._fila_dato(pdf, "Deportista", data.deportista_nombre)
+        # Disciplina cobrada (solo si se pudo resolver); un pago es de una inscripción.
+        if data.disciplina:
+            self._fila_dato(pdf, "Disciplina", data.disciplina)
         metodo = _METODO_LABEL.get(data.metodo, data.metodo)
         self._fila_dato(pdf, "Método de pago", metodo)
         pdf.ln(4)

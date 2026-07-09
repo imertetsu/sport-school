@@ -83,7 +83,7 @@ def _puede_ver_ficha(user: CurrentUser, deportista: Deportista) -> bool:
 @router.get("", response_model=Page[DeportistaListItem])
 def list_deportistas(
     q: str | None = Query(default=None),
-    tutor_q: str | None = Query(default=None),
+    buscar: str | None = Query(default=None),
     sucursal_id: uuid.UUID | None = Query(default=None),
     disciplina_id: uuid.UUID | None = Query(default=None),
     categoria_id: uuid.UUID | None = Query(default=None),
@@ -136,21 +136,25 @@ def list_deportistas(
                 Deportista.ci.ilike(like),
             )
         )
-    # Búsqueda por TUTOR (nombre o celular): deportistas con al menos un tutor que
-    # coincida. El texto matchea el nombre; sus dígitos matchean el teléfono (así
-    # "70723756", "707..." o "591 707..." encuentran igual).
-    if tutor_q and tutor_q.strip():
-        raw = tutor_q.strip()
-        condiciones = [Tutor.nombres.ilike(f"%{raw}%")]
+    # Búsqueda del campo en pantalla: el TEXTO matchea el nombre del DEPORTISTA y los
+    # DÍGITOS matchean el TELÉFONO del TUTOR (así "María" busca al deportista y
+    # "70723756"/"707…"/"591 707…" busca por el celular del tutor responsable).
+    if buscar and buscar.strip():
+        raw = buscar.strip()
+        condiciones = [
+            Deportista.nombres.ilike(f"%{raw}%"),
+            Deportista.ap_paterno.ilike(f"%{raw}%"),
+            Deportista.ap_materno.ilike(f"%{raw}%"),
+        ]
         digitos = "".join(ch for ch in raw if ch.isdigit())
         if digitos:
-            condiciones.append(Tutor.telefono.ilike(f"%{digitos}%"))
-        tutor_sub = (
-            select(DeportistaTutor.deportista_id)
-            .join(Tutor, Tutor.id == DeportistaTutor.tutor_id)
-            .where(or_(*condiciones))
-        )
-        base = base.where(Deportista.id.in_(tutor_sub))
+            tutor_sub = (
+                select(DeportistaTutor.deportista_id)
+                .join(Tutor, Tutor.id == DeportistaTutor.tutor_id)
+                .where(Tutor.telefono.ilike(f"%{digitos}%"))
+            )
+            condiciones.append(Deportista.id.in_(tutor_sub))
+        base = base.where(or_(*condiciones))
 
     total = db.execute(select(func.count()).select_from(base.subquery())).scalar_one()
 

@@ -154,12 +154,20 @@ def _buscar_sesion(
     return db.execute(stmt).scalars().first()
 
 
-def _deportistas_de_categoria(db: Session, categoria_id: uuid.UUID) -> list[Deportista]:
+def _deportistas_de_categoria(
+    db: Session, categoria_id: uuid.UUID, *, disciplina_id: uuid.UUID | None = None
+) -> list[Deportista]:
+    stmt = select(Deportista).where(Deportista.categoria_id == categoria_id)
+    # Filtro opcional por disciplina del deportista (misma convención que la lista
+    # de deportistas): una categoría puede mezclar futsal y voleibol; esto acota a
+    # una sola disciplina para tomar lista de esa clase.
+    if disciplina_id is not None:
+        stmt = stmt.where(Deportista.disciplina_id == disciplina_id)
     return list(
         db.execute(
-            select(Deportista)
-            .where(Deportista.categoria_id == categoria_id)
-            .order_by(Deportista.ap_paterno, Deportista.ap_materno, Deportista.nombres)
+            stmt.order_by(
+                Deportista.ap_paterno, Deportista.ap_materno, Deportista.nombres
+            )
         )
         .scalars()
         .all()
@@ -174,11 +182,16 @@ def obtener_roster(
     role: str,
     sucursal_ids: list[str],
     disciplina_ids: set[uuid.UUID] | None = None,
+    disciplina_filtro: uuid.UUID | None = None,
 ) -> tuple[Categoria, Sesion | None, list[Deportista], dict[uuid.UUID, str]]:
     """Devuelve datos crudos del roster (get-or-create lógico, NO crea sesión).
 
     Retorna `(categoria, sesion|None, deportistas, estados_por_deportista)`. Si no hay
     sesión para (categoria, fecha) -> `sesion=None` y el dict de estados vacío.
+
+    `disciplina_filtro` (opcional, elegido por el usuario): acota el roster a los
+    deportistas de esa disciplina. Es distinto de `disciplina_ids` (red de seguridad
+    del scope del ENTRENADOR, a nivel de categoría).
     """
     cat = _cargar_categoria_con_scope(
         db,
@@ -187,7 +200,9 @@ def obtener_roster(
         sucursal_ids=sucursal_ids,
         disciplina_ids=disciplina_ids,
     )
-    deportistas = _deportistas_de_categoria(db, categoria_id)
+    deportistas = _deportistas_de_categoria(
+        db, categoria_id, disciplina_id=disciplina_filtro
+    )
 
     # Para el roster usamos la sesión "del día" (hora NULL es la canónica); si
     # existe alguna sesión ese día tomamos la primera por hora para reflejar lo

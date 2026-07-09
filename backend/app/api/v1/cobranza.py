@@ -76,6 +76,24 @@ from app.services.recordatorios import enviar_recordatorio_cuota
 
 router = APIRouter(prefix="/cobranza", tags=["cobranza"])
 
+# Meses en MAYÚSCULAS para el desglose de morosidad (la cuota se rotula por su mes
+# de vencimiento, igual que el recordatorio de WhatsApp).
+_MESES_MORA = (
+    "",
+    "ENERO",
+    "FEBRERO",
+    "MARZO",
+    "ABRIL",
+    "MAYO",
+    "JUNIO",
+    "JULIO",
+    "AGOSTO",
+    "SEPTIEMBRE",
+    "OCTUBRE",
+    "NOVIEMBRE",
+    "DICIEMBRE",
+)
+
 
 def _nombre_completo(a: Deportista) -> str:
     partes = [a.ap_paterno, a.ap_materno, a.nombres]
@@ -253,6 +271,7 @@ def panel(
             Categoria.nombre,
             func.sum(saldo_expr),
             func.min(Cuota.vence_el),
+            func.array_agg(Cuota.vence_el),  # vencimientos de sus cuotas vencidas
         )
         .join(Inscripcion, Inscripcion.id == Cuota.inscripcion_id)
         .join(Deportista, Deportista.id == Inscripcion.deportista_id)
@@ -270,10 +289,16 @@ def panel(
     ).all()
 
     morosidad: list[MorosidadItem] = []
-    for al_id, ap_pat, ap_mat, nombres, cat_nombre, monto, vence_min in moros_rows:
+    for al_id, ap_pat, ap_mat, nombres, cat_nombre, monto, vence_min, vences in moros_rows:
         partes = [ap_pat, ap_mat, nombres]
         nombre = " ".join(p for p in partes if p).strip() or nombres
         dias = (hoy - vence_min).days if vence_min else 0
+        # Meses vencidos (MAYÚSCULAS), únicos y en orden cronológico por vencimiento.
+        meses: list[str] = []
+        for v in sorted(vences or []):
+            m = _MESES_MORA[v.month]
+            if m not in meses:
+                meses.append(m)
         morosidad.append(
             MorosidadItem(
                 deportista_id=al_id,
@@ -281,6 +306,8 @@ def panel(
                 categoria=cat_nombre,
                 monto=monto,
                 dias_mora=max(dias, 0),
+                meses=meses,
+                vence_mas_antiguo=vence_min,
             )
         )
 
@@ -740,6 +767,7 @@ def enviar_recordatorio_mora(
         port=get_whatsapp_port(),
         forzar=True,
         monto_override=total,
+        cuotas_desglose=vencidas,
     )
     return RecordatorioOut(
         enviado=result.enviado,

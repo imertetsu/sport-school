@@ -58,6 +58,9 @@ class ComprobanteData:
     credito_generado: Decimal = Decimal("0")
     numero_recibo: str = "—"
     emisor: str = "SnapCoding - LatinoSport"
+    # Disciplina de la inscripción cobrada (un pago aplica a cuotas de UNA
+    # inscripción ⇒ una disciplina). None si no se pudo resolver.
+    disciplina: str | None = None
 
 
 @dataclass(frozen=True)

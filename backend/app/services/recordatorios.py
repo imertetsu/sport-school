@@ -57,26 +57,62 @@ from app.models.tutor import Tutor
 logger = logging.getLogger(__name__)
 
 
-def _texto_recordatorio(
-    tipo: str, *, deportista: str, monto: Decimal, escuela: str, vence: str
-) -> str:
-    """Caption/texto del recordatorio (deportista + monto + escuela + vence).
+_MESES_MAY = (
+    "",
+    "ENERO",
+    "FEBRERO",
+    "MARZO",
+    "ABRIL",
+    "MAYO",
+    "JUNIO",
+    "JULIO",
+    "AGOSTO",
+    "SEPTIEMBRE",
+    "OCTUBRE",
+    "NOVIEMBRE",
+    "DICIEMBRE",
+)
 
-    Mismo cuerpo se usa como caption de la imagen del QR o como texto plano si la
-    escuela no tiene QR subido (degradación). RNF-07: mensaje claro, sin datos
-    sensibles de menores más allá del nombre.
+
+def _mes_may(d: date) -> str:
+    """Mes en MAYÚSCULAS, p.ej. `OCTUBRE` (la cuota se rotula por su vencimiento)."""
+    return _MESES_MAY[d.month]
+
+
+def _texto_recordatorio(
+    tipo: str, *, deportista: str, monto: Decimal, escuela: str, meses: list[str], vence: str
+) -> str:
+    """Caption/texto del recordatorio.
+
+    Empieza con el saludo pedido e incluye el DESGLOSE de las cuotas (por mes) junto
+    a la fecha de vencimiento más antigua y el total. Mismo cuerpo se usa como caption
+    de la imagen del QR o como texto plano si la escuela no tiene QR (degradación).
+    RNF-07: mensaje claro, sin datos sensibles de menores más allá del nombre.
     """
-    if tipo == "MOROSIDAD":
-        return (
-            f"La cuota de {deportista} en {escuela} está vencida: Bs {monto:.2f} "
-            f"(venció el {vence}). Adjuntamos el QR de pago de la escuela; "
-            f"al pagar, responda con la captura del comprobante."
-        )
-    return (
-        f"Recordatorio de cuota de {deportista} en {escuela}: Bs {monto:.2f}, "
-        f"vence el {vence}. Adjuntamos el QR de pago de la escuela; "
-        f"al pagar, responda con la captura del comprobante."
+    saludo = (
+        f"Apreciado Padre y/o Madre de familia de {deportista}, este es un mensajito "
+        f"de recordatorio."
     )
+    lista_meses = ", ".join(meses) if meses else "—"
+    if tipo == "MOROSIDAD":
+        cuerpo = (
+            f"Le informamos que en {escuela} tiene cuotas vencidas:\n"
+            f"- Cuotas: {lista_meses}\n"
+            f"- Vencimiento más antiguo: {vence}\n"
+            f"- Total adeudado: Bs {monto:.2f}"
+        )
+    else:
+        cuerpo = (
+            f"Le recordamos su próximo pago en {escuela}:\n"
+            f"- Cuota(s): {lista_meses}\n"
+            f"- Vencimiento: {vence}\n"
+            f"- Total: Bs {monto:.2f}"
+        )
+    cierre = (
+        "Adjuntamos el QR de pago de la escuela; al pagar, responda con la captura del "
+        "comprobante. ¡Gracias!"
+    )
+    return f"{saludo}\n\n{cuerpo}\n\n{cierre}"
 
 
 class RecordatorioResult(NamedTuple):
@@ -159,6 +195,7 @@ def enviar_recordatorio_cuota(
     port: WhatsAppPort,
     forzar: bool = False,
     monto_override: Decimal | None = None,
+    cuotas_desglose: list[Cuota] | None = None,
 ) -> RecordatorioResult:
     """Envía (idempotentemente) un recordatorio de cobro de `cuota` por WhatsApp.
 
@@ -246,13 +283,23 @@ def enviar_recordatorio_cuota(
     # `monto_override` permite que un recordatorio de MORA por deportista muestre el
     # TOTAL adeudado (suma de sus cuotas vencidas), no solo el de esta cuota ancla.
     monto: Decimal = monto_override if monto_override is not None else cuota.monto
-    vence_el_ddmmyyyy = cuota.vence_el.strftime("%d/%m/%Y")
+    # Desglose: las cuotas a listar (todas las vencidas del deportista en la mora
+    # manual; solo esta cuota en el cron/tabla). Meses únicos y en orden cronológico;
+    # el vencimiento mostrado es el más antiguo.
+    desglose = sorted(cuotas_desglose or [cuota], key=lambda c: c.vence_el)
+    meses: list[str] = []
+    for c in desglose:
+        m = _mes_may(c.vence_el)
+        if m not in meses:
+            meses.append(m)
+    vence_ddmmyyyy = desglose[0].vence_el.strftime("%d/%m/%Y")
     cuerpo = _texto_recordatorio(
         tipo,
         deportista=nombre,
         monto=monto,
         escuela=nombre_escuela,
-        vence=vence_el_ddmmyyyy,
+        meses=meses,
+        vence=vence_ddmmyyyy,
     )
 
     qr = db.execute(select(QrCobro).where(QrCobro.org_id == cuota.org_id)).scalar_one_or_none()
