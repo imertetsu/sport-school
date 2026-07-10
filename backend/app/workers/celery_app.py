@@ -1,7 +1,8 @@
 """App Celery (broker/backend Redis desde el entorno).
 
 Registra las tasks de cobranza y agenda:
-- el cron diario `cobranza_diaria` (C6), idempotente (no duplica cuotas ni reenvía);
+- el cron diario `cobranza_diaria` (C6) a las 11:00 UTC (= 07:00 en Bolivia),
+  idempotente (no duplica cuotas ni reenvía);
 - el cron diario `generar_sesiones_programadas` (C3, Programación de clases), que
   genera las sesiones futuras de cada horario (idempotente, reutiliza Asistencia);
 - el cron horario `recordatorios_clase` (C3), recordatorio N horas antes de cada
@@ -32,13 +33,15 @@ celery_app.conf.update(
 )
 
 # Cron diario de cobranza (C6): genera cuotas, marca VENCIDO, recordatorios y
-# alertas de morosidad. Crontab a las 06:00 UTC; idempotente al re-correr.
+# alertas de morosidad. Corre a las 11:00 UTC = 07:00 en Bolivia (America/La_Paz,
+# UTC-4 todo el año); idempotente al re-correr. Antes iba a las 06:00 UTC, que caía
+# a las 02:00 de la madrugada y despertaba a los tutores.
 # Programación de clases (C3): generación 1×/día (05:00 UTC) + recordatorio cada
 # hora (minuto 0). Ambas iteran todas las orgs fijando contexto; idempotentes.
 celery_app.conf.beat_schedule = {
     "cobranza-diaria": {
         "task": "app.workers.tasks.cobranza_diaria",
-        "schedule": crontab(hour=6, minute=0),
+        "schedule": crontab(hour=11, minute=0),  # 07:00 America/La_Paz
     },
     "generar-sesiones-programadas": {
         "task": "app.workers.tasks.generar_sesiones_programadas",
