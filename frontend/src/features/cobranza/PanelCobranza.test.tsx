@@ -71,6 +71,7 @@ const CUOTAS: CuotasListResponse = {
     {
       id: 'q1',
       deportista: { id: 'a1', nombre_completo: 'Mateo Quispe Mamani' },
+      disciplina: 'Futsal',
       sucursal: { nombre: 'Centro' },
       categoria: { nombre: 'Sub-14 Intermedio' },
       periodo_inicio: '2026-06-01',
@@ -84,6 +85,7 @@ const CUOTAS: CuotasListResponse = {
     {
       id: 'q2',
       deportista: { id: 'a2', nombre_completo: 'Valentina Condori Huanca' },
+      disciplina: 'Voleibol',
       sucursal: { nombre: 'Cala Cala' },
       categoria: { nombre: 'Sub-10 Principiante' },
       periodo_inicio: '2026-06-01',

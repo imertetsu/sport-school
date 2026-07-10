@@ -110,7 +110,19 @@ def list_deportistas(
     if sucursal_id is not None:
         base = base.where(Deportista.sucursal_id == sucursal_id)
     if disciplina_id is not None:
-        base = base.where(Deportista.disciplina_id == disciplina_id)
+        # Un deportista puede tener VARIAS inscripciones (una por disciplina): coincide
+        # si tiene una inscripción ACTIVA en esa disciplina. Se mantiene la disciplina
+        # principal como respaldo (datos viejos sin inscripción con disciplina).
+        insc_en_disciplina = select(Inscripcion.deportista_id).where(
+            Inscripcion.disciplina_id == disciplina_id,
+            Inscripcion.estado == "ACTIVA",
+        )
+        base = base.where(
+            or_(
+                Deportista.disciplina_id == disciplina_id,
+                Deportista.id.in_(insc_en_disciplina),
+            )
+        )
     if categoria_id is not None:
         base = base.where(Deportista.categoria_id == categoria_id)
     if solo_activos:

@@ -79,6 +79,24 @@ class AsistenciaPorCategoria(BaseModel):
     pct_presente: float
 
 
+class DeportistaRefReporte(BaseModel):
+    id: uuid.UUID
+    nombre_completo: str
+
+
+class AsistenciaPorDeportista(BaseModel):
+    """Asistencia de UN deportista en el rango: sus marcas y su % de presencia."""
+
+    deportista: DeportistaRefReporte
+    categoria: str | None = None
+    sucursal: str | None = None
+    sesiones: int
+    presentes: int
+    ausentes: int
+    total_marcas: int
+    pct_presente: float
+
+
 class AsistenciaReporte(BaseModel):
     """`GET /reportes/asistencia?desde&hasta&sucursal_id&categoria_id` (C1)."""
 
@@ -89,3 +107,5 @@ class AsistenciaReporte(BaseModel):
     # Clave JSON `global` (alias) — `global` es reservado en Python.
     global_: AsistenciaGlobal = Field(alias="global")
     por_categoria: list[AsistenciaPorCategoria]
+    # Detalle por deportista del período (una fila por deportista con marcas).
+    por_deportista: list[AsistenciaPorDeportista] = Field(default_factory=list)

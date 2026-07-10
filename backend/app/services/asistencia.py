@@ -29,6 +29,7 @@ from sqlalchemy.orm import Session
 from app.models.asistencia import Asistencia
 from app.models.categoria import Categoria
 from app.models.deportista import Deportista
+from app.models.inscripcion import Inscripcion
 from app.models.sesion import Sesion
 
 
@@ -158,11 +159,21 @@ def _deportistas_de_categoria(
     db: Session, categoria_id: uuid.UUID, *, disciplina_id: uuid.UUID | None = None
 ) -> list[Deportista]:
     stmt = select(Deportista).where(Deportista.categoria_id == categoria_id)
-    # Filtro opcional por disciplina del deportista (misma convención que la lista
-    # de deportistas): una categoría puede mezclar futsal y voleibol; esto acota a
-    # una sola disciplina para tomar lista de esa clase.
+    # Filtro opcional por disciplina: una categoría puede mezclar futsal y voleibol.
+    # Un deportista puede estar inscrito en VARIAS disciplinas, así que coincide si
+    # tiene una inscripción ACTIVA en esa disciplina (o es su disciplina principal,
+    # respaldo para datos viejos sin inscripción con disciplina).
     if disciplina_id is not None:
-        stmt = stmt.where(Deportista.disciplina_id == disciplina_id)
+        insc_en_disciplina = select(Inscripcion.deportista_id).where(
+            Inscripcion.disciplina_id == disciplina_id,
+            Inscripcion.estado == "ACTIVA",
+        )
+        stmt = stmt.where(
+            or_(
+                Deportista.disciplina_id == disciplina_id,
+                Deportista.id.in_(insc_en_disciplina),
+            )
+        )
     return list(
         db.execute(
             stmt.order_by(

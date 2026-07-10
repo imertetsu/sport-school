@@ -29,14 +29,17 @@ from sqlalchemy.orm import Session
 
 from app.models.asistencia import Asistencia
 from app.models.categoria import Categoria
+from app.models.deportista import Deportista
 from app.models.pago import Pago
 from app.models.sesion import Sesion
 from app.models.sucursal import Sucursal
 from app.schemas.reportes import (
     AsistenciaGlobal,
     AsistenciaPorCategoria,
+    AsistenciaPorDeportista,
     AsistenciaReporte,
     CategoriaRefReporte,
+    DeportistaRefReporte,
     IngresosMesItem,
     IngresosReporte,
     SucursalRefReporte,
@@ -241,9 +244,67 @@ def asistencia_reporte(
         ) in cat_rows
     ]
 
+    # Detalle por deportista (una fila por deportista con marcas en el rango).
+    dep_rows = db.execute(
+        base.join(Deportista, Deportista.id == Asistencia.deportista_id)
+        .with_only_columns(
+            Deportista.id,
+            Deportista.ap_paterno,
+            Deportista.ap_materno,
+            Deportista.nombres,
+            Categoria.nombre,
+            Sucursal.nombre,
+            sesiones_expr,
+            presentes_expr,
+            ausentes_expr,
+            total_expr,
+        )
+        .group_by(
+            Deportista.id,
+            Deportista.ap_paterno,
+            Deportista.ap_materno,
+            Deportista.nombres,
+            Categoria.nombre,
+            Sucursal.nombre,
+        )
+        .order_by(Deportista.ap_paterno, Deportista.ap_materno, Deportista.nombres)
+    ).all()
+
+    por_deportista = [
+        AsistenciaPorDeportista(
+            deportista=DeportistaRefReporte(
+                id=dep_id,
+                nombre_completo=" ".join(
+                    p for p in (ap_pat, ap_mat, nombres) if p
+                ).strip()
+                or nombres,
+            ),
+            categoria=cat_nombre,
+            sucursal=suc_nombre,
+            sesiones=int(sesiones),
+            presentes=int(presentes),
+            ausentes=int(ausentes),
+            total_marcas=int(total_marcas),
+            pct_presente=pct_presente(int(presentes), int(total_marcas)),
+        )
+        for (
+            dep_id,
+            ap_pat,
+            ap_mat,
+            nombres,
+            cat_nombre,
+            suc_nombre,
+            sesiones,
+            presentes,
+            ausentes,
+            total_marcas,
+        ) in dep_rows
+    ]
+
     return AsistenciaReporte(
         desde=desde.isoformat(),
         hasta=hasta.isoformat(),
         global_=global_,
         por_categoria=por_categoria,
+        por_deportista=por_deportista,
     )

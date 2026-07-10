@@ -40,6 +40,7 @@ import { RegistrarPago } from './RegistrarPago';
 const CUOTA: CuotaListItem = {
   id: 'c1',
   deportista: { id: 'd1', nombre_completo: 'ANA PEREZ' },
+  disciplina: 'Voleibol',
   sucursal: null,
   categoria: null,
   periodo_inicio: '2026-06-01',

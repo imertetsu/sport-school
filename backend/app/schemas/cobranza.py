@@ -50,6 +50,9 @@ class CuotaItem(BaseModel):
     deportista: DeportistaRef
     sucursal: SucursalNombre | None = None
     categoria: CategoriaNombre | None = None
+    # Disciplina de la INSCRIPCIÓN de esta cuota: distingue cuotas del mismo mes
+    # cuando un deportista está inscrito en varias disciplinas.
+    disciplina: str | None = None
     periodo_inicio: date
     vence_el: date
     monto: Decimal

@@ -373,6 +373,8 @@ function CuotasDeportista({
           <thead>
             <tr>
               <th>Cuota</th>
+              {/* Distingue cuotas del mismo mes cuando hay varias inscripciones. */}
+              <th>Disciplina</th>
               <th>Vencimiento</th>
               <th className="perfil-pagos__num">Monto</th>
               <th>Estado</th>
@@ -389,6 +391,7 @@ function CuotasDeportista({
               return (
                 <tr key={c.id}>
                   <td>{mesLargo(c.vence_el)}</td>
+                  <td>{c.disciplina ?? '—'}</td>
                   <td>{formatDateLarga(c.vence_el)}</td>
                   <td className="perfil-pagos__num tabular">
                     {editandoId === c.id ? (

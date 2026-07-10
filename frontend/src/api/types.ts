@@ -338,6 +338,9 @@ export interface CuotaListItem {
   // categoría/sucursal asignada (p. ej. disciplina NULL) produce cuotas con estos nulos.
   sucursal: CuotaSucursalRef | null;
   categoria: CuotaCategoriaRef | null;
+  // Disciplina de la INSCRIPCIÓN de la cuota: distingue cuotas del mismo mes cuando
+  // el deportista está inscrito en varias disciplinas. null si no se pudo resolver.
+  disciplina: string | null;
   periodo_inicio: string; // date
   vence_el: string; // date
   monto: string; // numeric(10,2) serializado como string
@@ -727,11 +730,24 @@ export interface AsistenciaPorCategoria {
   pct_presente: number;
 }
 
+// Una fila por deportista con marcas en el rango (detalle del período).
+export interface AsistenciaPorDeportista {
+  deportista: { id: string; nombre_completo: string };
+  categoria: string | null;
+  sucursal: string | null;
+  sesiones: number;
+  presentes: number;
+  ausentes: number;
+  total_marcas: number;
+  pct_presente: number;
+}
+
 export interface AsistenciaReporte {
   desde: string; // date YYYY-MM-DD
   hasta: string; // date YYYY-MM-DD
   global: AsistenciaGlobal;
   por_categoria: AsistenciaPorCategoria[];
+  por_deportista: AsistenciaPorDeportista[];
 }
 
 // ============================================================

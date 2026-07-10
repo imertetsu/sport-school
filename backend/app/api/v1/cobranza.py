@@ -29,6 +29,7 @@ from app.models.categoria import Categoria
 from app.models.credito import Credito
 from app.models.cuota import Cuota
 from app.models.deportista import Deportista
+from app.models.disciplina import Disciplina
 from app.models.inscripcion import Inscripcion
 from app.models.organizacion import Organizacion
 from app.models.pago import Pago
@@ -128,11 +129,14 @@ def listar_cuotas(
 ) -> CuotasPage:
     """Lista cuotas de la org con datos de deportista/sucursal/categoría (C4)."""
     base = (
-        select(Cuota, Deportista, Sucursal, Categoria)
+        # La disciplina sale de la INSCRIPCIÓN de la cuota (no del deportista): así
+        # dos cuotas del mismo mes de un deportista multi-disciplina se distinguen.
+        select(Cuota, Deportista, Sucursal, Categoria, Disciplina)
         .join(Inscripcion, Inscripcion.id == Cuota.inscripcion_id)
         .join(Deportista, Deportista.id == Inscripcion.deportista_id)
         .join(Sucursal, Sucursal.id == Deportista.sucursal_id)
         .outerjoin(Categoria, Categoria.id == Deportista.categoria_id)
+        .outerjoin(Disciplina, Disciplina.id == Inscripcion.disciplina_id)
     )
     if estado:
         base = base.where(Cuota.estado == estado)
@@ -153,7 +157,7 @@ def listar_cuotas(
     ).all()
 
     # Último método de pago por cuota (vía puente -> pago).
-    cuota_ids = [c.id for (c, _a, _s, _cat) in rows]
+    cuota_ids = [c.id for (c, _a, _s, _cat, _disc) in rows]
     metodos: dict[uuid.UUID, str] = {}
     if cuota_ids:
         met_rows = db.execute(
@@ -166,7 +170,7 @@ def listar_cuotas(
             metodos.setdefault(cid, metodo)
 
     items: list[CuotaItem] = []
-    for cuota, deportista, sucursal, categoria in rows:
+    for cuota, deportista, sucursal, categoria, disciplina in rows:
         items.append(
             CuotaItem(
                 id=cuota.id,
@@ -175,6 +179,7 @@ def listar_cuotas(
                 ),
                 sucursal=SucursalNombre(nombre=sucursal.nombre) if sucursal else None,
                 categoria=CategoriaNombre(nombre=categoria.nombre) if categoria else None,
+                disciplina=disciplina.nombre if disciplina else None,
                 periodo_inicio=cuota.periodo_inicio,
                 vence_el=cuota.vence_el,
                 monto=cuota.monto,

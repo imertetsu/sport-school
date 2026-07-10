@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import type { AsistenciaReporte, IngresosReporte } from '@/api/types';
@@ -76,6 +76,18 @@ const ASISTENCIA: AsistenciaReporte = {
       pct_presente: 72,
     },
   ],
+  por_deportista: [
+    {
+      deportista: { id: 'a1', nombre_completo: 'Mateo Quispe Mamani' },
+      categoria: 'Sub-14 Intermedio',
+      sucursal: 'Centro',
+      sesiones: 20,
+      presentes: 18,
+      ausentes: 2,
+      total_marcas: 20,
+      pct_presente: 90,
+    },
+  ],
 };
 
 function renderReportes() {
@@ -122,14 +134,27 @@ describe('Reportes', () => {
 
   it('renderiza la tabla de asistencia por categoría con datos mock', async () => {
     renderReportes();
-    expect(await screen.findByText('Sub-14 Intermedio')).toBeInTheDocument();
-    expect(screen.getByText('Sub-10 Principiante')).toBeInTheDocument();
+    await screen.findByRole('table', { name: 'Asistencia por categoría' });
+    // Acotamos a la tabla de categorías: la de deportistas repite % y nombres.
+    const tabla = within(screen.getByRole('table', { name: 'Asistencia por categoría' }));
+    expect(tabla.getByText('Sub-14 Intermedio')).toBeInTheDocument();
+    expect(tabla.getByText('Sub-10 Principiante')).toBeInTheDocument();
     // presentes / total
-    expect(screen.getByText('180 / 200')).toBeInTheDocument();
-    expect(screen.getByText('180 / 250')).toBeInTheDocument();
+    expect(tabla.getByText('180 / 200')).toBeInTheDocument();
+    expect(tabla.getByText('180 / 250')).toBeInTheDocument();
     // % por categoría
-    expect(screen.getByText('90%')).toBeInTheDocument();
-    expect(screen.getByText('72%')).toBeInTheDocument();
+    expect(tabla.getByText('90%')).toBeInTheDocument();
+    expect(tabla.getByText('72%')).toBeInTheDocument();
+  });
+
+  it('renderiza la tabla de asistencia por deportista del período', async () => {
+    renderReportes();
+    await screen.findByRole('table', { name: 'Asistencia por deportista' });
+    const tabla = within(screen.getByRole('table', { name: 'Asistencia por deportista' }));
+    expect(tabla.getByText('Mateo Quispe Mamani')).toBeInTheDocument();
+    expect(tabla.getByText('Sub-14 Intermedio · Centro')).toBeInTheDocument();
+    expect(tabla.getByText('18 / 20')).toBeInTheDocument(); // presentes / total
+    expect(tabla.getByText('90%')).toBeInTheDocument();
   });
 
   it('muestra el % global de asistencia como KPI', async () => {
@@ -140,9 +165,9 @@ describe('Reportes', () => {
   });
 
   it('renderiza barras de progreso por categoría con el ancho del %', async () => {
-    const { container } = renderReportes();
-    await screen.findByText('Sub-14 Intermedio');
-    const fills = container.querySelectorAll<HTMLElement>('.progress__fill');
+    renderReportes();
+    const tabla = await screen.findByRole('table', { name: 'Asistencia por categoría' });
+    const fills = tabla.querySelectorAll<HTMLElement>('.progress__fill');
     expect(fills.length).toBe(2);
     expect(fills[0].style.width).toBe('90%');
     expect(fills[1].style.width).toBe('72%');

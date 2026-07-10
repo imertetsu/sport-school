@@ -254,10 +254,12 @@ export function RegistrarPago({ cuotaInicial, onClose, onConfirmado }: Registrar
                       <EstadoBadge estado={c.estado} />
                     </span>
                     {/* La cuota se etiqueta por el MES en que vence (DICIEMBRE 2025),
-                        junto a la fecha exacta de vencimiento. */}
+                        junto a la fecha exacta de vencimiento. La disciplina distingue
+                        cuotas del mismo mes de un deportista multi-disciplina. */}
                     <span className="rp-cuota__meta">
                       Cuota {mesLargo(c.vence_el)} {c.vence_el.slice(0, 4)} | Vence{' '}
                       {formatDate(c.vence_el)}
+                      {c.disciplina ? ` | ${c.disciplina}` : ''}
                     </span>
                   </span>
                   <span className="rp-cuota__monto tabular">{formatMoney(c.saldo)}</span>

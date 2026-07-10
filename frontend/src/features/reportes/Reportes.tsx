@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api, ApiError } from '@/api/client';
 import type {
   AsistenciaPorCategoria,
+  AsistenciaPorDeportista,
   AsistenciaReporte,
   Categoria,
   IngresosReporte,
@@ -208,6 +209,71 @@ export function Reportes() {
     [],
   );
 
+  // Detalle del período: una fila por deportista con marcas en el rango elegido.
+  const columnasAsistenciaDeportista = useMemo<Column<AsistenciaPorDeportista>[]>(
+    () => [
+      {
+        key: 'deportista',
+        header: 'Deportista',
+        render: (r) => (
+          <div className="asistencia-cat">
+            <span className="asistencia-cat__name">{r.deportista.nombre_completo}</span>
+            <span className="asistencia-cat__meta">
+              {[r.categoria, r.sucursal].filter(Boolean).join(' · ') || '—'}
+            </span>
+          </div>
+        ),
+      },
+      {
+        key: 'sesiones',
+        header: 'Sesiones',
+        align: 'right',
+        hideOnNarrow: true,
+        render: (r) => <span className="tabular">{r.sesiones}</span>,
+      },
+      {
+        key: 'presentes',
+        header: 'Presentes / Total',
+        align: 'right',
+        render: (r) => (
+          <span className="tabular">
+            {r.presentes} / {r.total_marcas}
+          </span>
+        ),
+      },
+      {
+        key: 'ausentes',
+        header: 'Ausentes',
+        align: 'right',
+        hideOnNarrow: true,
+        render: (r) => <span className="tabular">{r.ausentes}</span>,
+      },
+      {
+        key: 'pct',
+        header: 'Asistencia',
+        render: (r) => (
+          <div
+            className="progress"
+            role="progressbar"
+            aria-valuenow={r.pct_presente}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label={`Asistencia de ${r.deportista.nombre_completo}`}
+          >
+            <span className="progress__track">
+              <span
+                className="progress__fill"
+                style={{ width: `${Math.min(100, Math.max(0, r.pct_presente))}%` }}
+              />
+            </span>
+            <span className="progress__pct tabular">{r.pct_presente}%</span>
+          </div>
+        ),
+      },
+    ],
+    [],
+  );
+
   return (
     <div className="reportes">
       <header className="page-head">
@@ -363,6 +429,18 @@ export function Reportes() {
           columns={columnasAsistencia}
           rows={asistencia?.por_categoria ?? []}
           rowKey={(r) => r.categoria.id}
+          loading={asistenciaLoading}
+          emptyMessage="Sin marcas de asistencia en el rango seleccionado"
+        />
+      </Card>
+
+      {/* Detalle por deportista del mismo rango/filtros (p. ej. todo julio). */}
+      <Card title="Asistencia por deportista" padded={false}>
+        <DataTable
+          ariaLabel="Asistencia por deportista"
+          columns={columnasAsistenciaDeportista}
+          rows={asistencia?.por_deportista ?? []}
+          rowKey={(r) => r.deportista.id}
           loading={asistenciaLoading}
           emptyMessage="Sin marcas de asistencia en el rango seleccionado"
         />
