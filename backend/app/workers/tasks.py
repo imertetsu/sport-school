@@ -22,6 +22,7 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 
 from sqlalchemy import select, text, update
 
@@ -30,6 +31,7 @@ from app.core.db import SessionLocal
 from app.core.org_context import set_current_org_id
 from app.models.aviso import Aviso
 from app.models.cuota import Cuota
+from app.models.inscripcion import Inscripcion
 from app.models.organizacion import Organizacion
 from app.services import aviso_notificacion as aviso_notif_svc
 from app.services import horarios as horarios_svc
@@ -47,6 +49,50 @@ def _set_org(db, org_id: uuid.UUID) -> None:
     set_current_org_id(str(org_id))
 
 
+def _agrupar_por_deportista(db, cuotas: list[Cuota]) -> dict[uuid.UUID, list[Cuota]]:
+    """Agrupa cuotas por deportista (cuota → inscripción → deportista), ordenadas
+    por vencimiento (la más antigua primero: es la que ancla el recordatorio)."""
+    if not cuotas:
+        return {}
+    ins_a_dep = dict(
+        db.execute(
+            select(Inscripcion.id, Inscripcion.deportista_id).where(
+                Inscripcion.id.in_({c.inscripcion_id for c in cuotas})
+            )
+        ).all()
+    )
+    grupos: dict[uuid.UUID, list[Cuota]] = {}
+    for c in cuotas:
+        dep_id = ins_a_dep.get(c.inscripcion_id)
+        if dep_id is not None:
+            grupos.setdefault(dep_id, []).append(c)
+    for lista in grupos.values():
+        lista.sort(key=lambda c: c.vence_el)
+    return grupos
+
+
+def _recordar_por_deportista(db, *, cuotas: list[Cuota], tipo: str, hoy: date, port) -> None:
+    """Envía UN recordatorio por DEPORTISTA con el total y el desglose de sus cuotas.
+
+    Antes se mandaba uno por CUOTA: un deportista con 11 meses vencidos recibía 11
+    mensajes con 11 QRs. Ahora se agrupa y se ancla en la cuota más antigua (que es
+    la que deduplica en `recordatorio_pago` por (cuota,tipo,ciclo)) ⇒ un solo mensaje
+    con el total adeudado, el desglose de meses y un único QR.
+    """
+    for cuotas_dep in _agrupar_por_deportista(db, cuotas).values():
+        anchor = cuotas_dep[0]  # la más antigua
+        total = sum((c.monto - c.monto_pagado for c in cuotas_dep), Decimal("0"))
+        enviar_recordatorio_cuota(
+            db,
+            cuota=anchor,
+            tipo=tipo,
+            hoy=hoy,
+            port=port,
+            monto_override=total,
+            cuotas_desglose=cuotas_dep,
+        )
+
+
 def _procesar_org(db, *, org_id: uuid.UUID, hoy: date) -> int:
     """Procesa una org (contexto ya fijado). Devuelve cuántas cuotas creó."""
     # 1) Generación incremental idempotente.
@@ -62,23 +108,26 @@ def _procesar_org(db, *, org_id: uuid.UUID, hoy: date) -> int:
     db.flush()
 
     # 3) Recordatorio PROXIMO_VENCIMIENTO: PENDIENTE que vence en exactamente N días
-    #    (`recordatorio_qr_dias_antes`). El envío adjunta un QR de cobro reconciliable
-    #    y se deduplica en `recordatorio_pago` (cuota,tipo,ciclo): re-correr no reenvía.
+    #    (`recordatorio_qr_dias_antes`). UN mensaje por deportista (un multi-disciplina
+    #    tiene varias cuotas con el mismo vencimiento); adjunta el QR una sola vez y se
+    #    deduplica en `recordatorio_pago` (cuota,tipo,ciclo): re-correr no reenvía.
     port = get_whatsapp_port()
     objetivo = hoy + timedelta(days=settings.recordatorio_qr_dias_antes)
-    por_recordar = (
+    por_recordar = list(
         db.execute(select(Cuota).where(Cuota.estado == "PENDIENTE", Cuota.vence_el == objetivo))
         .scalars()
         .all()
     )
-    for cuota in por_recordar:
-        enviar_recordatorio_cuota(db, cuota=cuota, tipo="PROXIMO_VENCIMIENTO", hoy=hoy, port=port)
+    _recordar_por_deportista(
+        db, cuotas=por_recordar, tipo="PROXIMO_VENCIMIENTO", hoy=hoy, port=port
+    )
 
-    # 4) Recordatorio de MOROSIDAD para vencidas (máx. 1 por cuota por mes — dedup en
-    #    `recordatorio_pago` con ciclo=YYYY-MM). También adjunta QR reconciliable.
-    vencidas = db.execute(select(Cuota).where(Cuota.estado == "VENCIDO")).scalars().all()
-    for cuota in vencidas:
-        enviar_recordatorio_cuota(db, cuota=cuota, tipo="MOROSIDAD", hoy=hoy, port=port)
+    # 4) Recordatorio de MOROSIDAD: UN mensaje por DEPORTISTA con el total adeudado, el
+    #    desglose de meses vencidos y UN solo QR (antes iba uno por cuota ⇒ un QR por
+    #    cada mes en mora). Dedup sobre la cuota más antigua con ciclo=YYYY-MM ⇒ máx. 1
+    #    recordatorio de mora por deportista por mes.
+    vencidas = list(db.execute(select(Cuota).where(Cuota.estado == "VENCIDO")).scalars().all())
+    _recordar_por_deportista(db, cuotas=vencidas, tipo="MOROSIDAD", hoy=hoy, port=port)
 
     return creadas
 
