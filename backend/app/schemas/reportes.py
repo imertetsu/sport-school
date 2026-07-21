@@ -24,24 +24,42 @@ from pydantic import BaseModel, ConfigDict, Field
 # GET /reportes/ingresos
 # --------------------------------------------------------------------------- #
 class IngresosMesItem(BaseModel):
-    """Un mes del reporte de ingresos (siempre los 12; `monto` "0.00" si vacío)."""
+    """Un mes del reporte financiero (siempre los 12; montos "0.00" si vacío).
+
+    `monto` conserva el nombre del contrato C1 original (= **ingresos** del mes);
+    se le suman `egresos` y `utilidad` para poder graficar las tres series.
+    """
 
     mes: int  # 1..12
     etiqueta: str  # "ene", "feb", ...
-    monto: str  # numeric como string, p. ej. "1500.00"
+    monto: str  # ingresos del mes; numeric como string, p. ej. "1500.00"
     n_pagos: int
+    egresos: str = "0.00"
+    n_egresos: int = 0
+    utilidad: str = "0.00"  # monto - egresos (negativo si el mes cerró en pérdida)
 
 
 class IngresosReporte(BaseModel):
-    """`GET /reportes/ingresos?anio=YYYY` (C1).
+    """`GET /reportes/ingresos?anio=YYYY&sucursal_id=` (C1 + egresos/utilidad).
 
-    `total` = suma del año (string). `n_pagos` = nº de pagos CONFIRMADO del año
-    (se cuenta el `pago`, no las cuotas, para no doblar). `meses` siempre trae 12.
+    `total` = ingresos del año (string). `n_pagos` = nº de pagos CONFIRMADO del
+    año (se cuenta el `pago`, no las cuotas, para no doblar). `total_egresos` /
+    `n_egresos` son el espejo del lado de salidas, y `utilidad` = total -
+    total_egresos. `meses` siempre trae 12.
+
+    Con `sucursal_id` los ingresos se acotan a los pagos de deportistas de esa
+    sucursal y los egresos a los gastos de esa sucursal — los egresos a nivel
+    organización (sucursal NULL) quedan **fuera**, porque no son atribuibles.
     """
 
     anio: int
     total: str
     n_pagos: int
+    total_egresos: str = "0.00"
+    n_egresos: int = 0
+    utilidad: str = "0.00"
+    # Eco del filtro aplicado (None = toda la organización).
+    sucursal_id: uuid.UUID | None = None
     meses: list[IngresosMesItem]
 
 
@@ -84,6 +102,17 @@ class DeportistaRefReporte(BaseModel):
     nombre_completo: str
 
 
+class MarcaAsistencia(BaseModel):
+    """Una marca concreta: en qué fecha y con qué estado quedó el deportista.
+
+    Es lo que permite responderle a un padre "faltó el 3 y el 10 de julio" en vez
+    de solo "80%".
+    """
+
+    fecha: str  # YYYY-MM-DD (fecha de la sesión)
+    estado: str  # PRESENTE | AUSENTE | (lo que registre asistencia)
+
+
 class AsistenciaPorDeportista(BaseModel):
     """Asistencia de UN deportista en el rango: sus marcas y su % de presencia."""
 
@@ -95,6 +124,8 @@ class AsistenciaPorDeportista(BaseModel):
     ausentes: int
     total_marcas: int
     pct_presente: float
+    # Detalle día por día, en orden cronológico (para el desglose de la UI).
+    marcas: list[MarcaAsistencia] = Field(default_factory=list)
 
 
 class AsistenciaReporte(BaseModel):

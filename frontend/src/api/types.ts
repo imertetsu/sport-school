@@ -373,6 +373,25 @@ export interface PanelIngresosMes {
   qr: string;
 }
 
+// Egresos y utilidad del mes: misma forma que los ingresos (total + desglose por
+// método). La utilidad = ingresos - egresos y PUEDE SER NEGATIVA (mes en pérdida).
+export interface PanelMontoPorMetodo {
+  monto: string;
+  efectivo: string;
+  qr: string;
+}
+
+// Una fila del desglose del mes por sucursal. `sucursal_id` es null en la fila
+// de egresos cargados a nivel organización (sin sucursal): existe para que las
+// filas SUMEN los totales del panel y no se pierda plata por el camino.
+export interface PanelSucursalItem {
+  sucursal_id: string | null;
+  nombre: string;
+  ingresos: PanelMontoPorMetodo;
+  egresos: PanelMontoPorMetodo;
+  utilidad: PanelMontoPorMetodo;
+}
+
 export interface PanelDeportistasActivos {
   count: number;
   sucursales: number;
@@ -396,6 +415,9 @@ export interface MorosidadItem {
 
 export interface PanelCobranza {
   ingresos_mes: PanelIngresosMes;
+  egresos_mes: PanelMontoPorMetodo;
+  utilidad_mes: PanelMontoPorMetodo;
+  por_sucursal: PanelSucursalItem[];
   deportistas_activos: PanelDeportistasActivos;
   // Abonos: cuotas_pendientes/cuotas_vencidas suman SALDO (no monto nominal); el
   // backend ya lo calcula así. credito_total = Σ credito.saldo de la org.
@@ -645,6 +667,7 @@ export interface EgresoItem {
   fecha: string; // date YYYY-MM-DD
   categoria_gasto: string;
   monto: string; // numeric(10,2) serializado como string
+  metodo: MetodoPago; // con qué se pagó (mismos literales que pago.metodo)
   sucursal: SucursalRef | null; // null = gasto a nivel organización
   descripcion: string | null;
   registrado_por_nombre: string | null;
@@ -672,6 +695,7 @@ export interface EgresoCreate {
   sucursal_id?: string | null; // null/omitido = gasto a nivel org
   categoria_gasto: string;
   monto: string; // numeric > 0 (el backend valida; 422 si <= 0)
+  metodo?: MetodoPago; // omitido => EFECTIVO (default del backend)
   fecha: string; // YYYY-MM-DD
   descripcion?: string | null;
 }
@@ -691,21 +715,31 @@ export interface EgresoResumenItem {
 // campos; si falta algo, es hand-off a backend-dev.
 // ============================================================
 
-// --- GET /reportes/ingresos?anio=YYYY ---
-// {anio, total, n_pagos, meses:[{mes:1..12, etiqueta:"ene"…, monto, n_pagos}]}
-// Fuente: pago CONFIRMADO agrupado por mes del año. Devuelve los 12 meses
-// (monto "0" si no hay). total = suma del año.
+// --- GET /reportes/ingresos?anio=YYYY&sucursal_id= ---
+// {anio, total, n_pagos, total_egresos, n_egresos, utilidad, sucursal_id,
+//  meses:[{mes:1..12, etiqueta:"ene"…, monto, n_pagos, egresos, n_egresos, utilidad}]}
+// Fuente: pago CONFIRMADO + egreso, agrupados por mes del año. Devuelve los 12
+// meses (montos "0.00" si no hay). `monto` = ingresos (nombre histórico C1).
+// Con sucursal_id ambas series se acotan a esa sucursal; los egresos a nivel
+// organización (sucursal NULL) quedan FUERA porque no son atribuibles.
 export interface IngresosMesItem {
   mes: number; // 1..12
   etiqueta: string; // "ene", "feb", …
-  monto: string; // numeric(10,2) serializado como string
+  monto: string; // ingresos del mes; numeric(10,2) serializado como string
   n_pagos: number;
+  egresos: string;
+  n_egresos: number;
+  utilidad: string; // monto - egresos; negativo si el mes cerró en pérdida
 }
 
 export interface IngresosReporte {
   anio: number;
-  total: string; // suma del año (numeric serializado como string)
+  total: string; // ingresos del año (numeric serializado como string)
   n_pagos: number;
+  total_egresos: string;
+  n_egresos: number;
+  utilidad: string; // total - total_egresos
+  sucursal_id: string | null; // eco del filtro (null = toda la organización)
   meses: IngresosMesItem[]; // siempre 12
 }
 
@@ -730,11 +764,21 @@ export interface AsistenciaPorCategoria {
   pct_presente: number;
 }
 
+// Una marca concreta del deportista en el reporte: en qué fecha y con qué estado
+// quedó. Distinta de `MarcaAsistencia` (el body de POST /asistencia/guardar, que
+// va por deportista_id y sin fecha).
+export interface MarcaAsistenciaReporte {
+  fecha: string; // YYYY-MM-DD (fecha de la sesión)
+  estado: string; // PRESENTE | AUSENTE
+}
+
 // Una fila por deportista con marcas en el rango (detalle del período).
 export interface AsistenciaPorDeportista {
   deportista: { id: string; nombre_completo: string };
   categoria: string | null;
   sucursal: string | null;
+  // Detalle día por día, cronológico: permite decirle al padre QUÉ día faltó.
+  marcas: MarcaAsistenciaReporte[];
   sesiones: number;
   presentes: number;
   ausentes: number;

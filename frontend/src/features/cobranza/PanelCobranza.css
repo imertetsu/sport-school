@@ -294,3 +294,34 @@
 .kpi-metodo--qr {
   color: #2563eb;
 }
+
+/* ============================================================
+   Del mes por sucursal — total + desglose Efectivo/QR por celda
+   ============================================================ */
+.panel-fin__sucursal {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.panel-fin__celda {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.panel-fin__total {
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+/* Utilidad negativa: la sucursal cerró el mes en pérdida. */
+.panel-fin__total--perdida {
+  color: var(--state-overdue-text, #b91c1c);
+}
+
+.panel-fin__metodos {
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}

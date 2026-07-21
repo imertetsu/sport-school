@@ -7,6 +7,8 @@ import type {
   MorosidadItem,
   MotivoRecordatorio,
   PanelCobranza as PanelCobranzaData,
+  PanelMontoPorMetodo,
+  PanelSucursalItem,
 } from '@/api/types';
 import {
   Avatar,
@@ -39,6 +41,32 @@ const METODO_LABEL: Record<MetodoPago, string> = {
   EFECTIVO: 'Efectivo',
   QR: 'QR',
 };
+
+// Hint de una KPI financiera: el desglose Efectivo/QR debajo del total.
+function MetodoHint({ efectivo, qr }: { efectivo: string; qr: string }) {
+  return (
+    <>
+      <span className="kpi-metodo kpi-metodo--efectivo">Efectivo {formatMoney(efectivo)}</span>
+      {' · '}
+      <span className="kpi-metodo kpi-metodo--qr">QR {formatMoney(qr)}</span>
+    </>
+  );
+}
+
+// Celda del desglose por sucursal: total arriba, Efectivo/QR abajo.
+function CeldaMonto({ dato }: { dato: PanelMontoPorMetodo }) {
+  const perdida = Number(dato.monto) < 0;
+  return (
+    <div className="panel-fin__celda">
+      <span className={`panel-fin__total tabular${perdida ? ' panel-fin__total--perdida' : ''}`}>
+        {formatMoney(dato.monto)}
+      </span>
+      <span className="panel-fin__metodos tabular">
+        Efectivo {formatMoney(dato.efectivo)} · QR {formatMoney(dato.qr)}
+      </span>
+    </div>
+  );
+}
 
 // Aviso transitorio del recordatorio de cobro (no hay sistema de toasts: usamos
 // una nota inline arriba de la tabla, con tono según el resultado del backend).
@@ -401,6 +429,10 @@ export function PanelCobranza() {
 
   const ingresos = panel?.ingresos_mes.monto;
   const ingresosMes = panel?.ingresos_mes;
+  const egresosMes = panel?.egresos_mes;
+  const utilidadMes = panel?.utilidad_mes;
+  // El desglose por sucursal solo aporta si hay más de una fila que mostrar.
+  const porSucursal = panel?.por_sucursal ?? [];
   const activos = panel?.deportistas_activos;
   const pendientes = panel?.cuotas_pendientes;
   const vencidas = panel?.cuotas_vencidas;
@@ -408,6 +440,35 @@ export function PanelCobranza() {
   // si hay crédito; si es 0/ausente no aporta y no abulta la grilla.
   const creditoTotal = panel?.credito_total;
   const tieneCredito = creditoTotal != null && Number(creditoTotal) > 0;
+
+  const columnasSucursal = useMemo<Column<PanelSucursalItem>[]>(
+    () => [
+      {
+        key: 'sucursal',
+        header: 'Sucursal',
+        render: (r) => <span className="panel-fin__sucursal">{r.nombre}</span>,
+      },
+      {
+        key: 'ingresos',
+        header: 'Ingresos',
+        align: 'right',
+        render: (r) => <CeldaMonto dato={r.ingresos} />,
+      },
+      {
+        key: 'egresos',
+        header: 'Egresos',
+        align: 'right',
+        render: (r) => <CeldaMonto dato={r.egresos} />,
+      },
+      {
+        key: 'utilidad',
+        header: 'Utilidad',
+        align: 'right',
+        render: (r) => <CeldaMonto dato={r.utilidad} />,
+      },
+    ],
+    [],
+  );
 
   return (
     <div className="panel-cobranza">
@@ -435,17 +496,31 @@ export function PanelCobranza() {
           value={formatMoney(ingresos)}
           hint={
             ingresosMes ? (
-              <>
-                <span className="kpi-metodo kpi-metodo--efectivo">
-                  Efectivo {formatMoney(ingresosMes.efectivo)}
-                </span>
-                {' · '}
-                <span className="kpi-metodo kpi-metodo--qr">
-                  QR {formatMoney(ingresosMes.qr)}
-                </span>
-              </>
+              <MetodoHint efectivo={ingresosMes.efectivo} qr={ingresosMes.qr} />
             ) : undefined
           }
+          loading={!panel && !panelError}
+        />
+        <KPICard
+          label="Egresos del mes"
+          value={formatMoney(egresosMes?.monto)}
+          hint={
+            egresosMes ? (
+              <MetodoHint efectivo={egresosMes.efectivo} qr={egresosMes.qr} />
+            ) : undefined
+          }
+          loading={!panel && !panelError}
+        />
+        <KPICard
+          label="Utilidad del mes"
+          value={formatMoney(utilidadMes?.monto)}
+          hint={
+            utilidadMes ? (
+              <MetodoHint efectivo={utilidadMes.efectivo} qr={utilidadMes.qr} />
+            ) : undefined
+          }
+          // Mes en pérdida: se resalta en rojo, igual que las cuotas vencidas.
+          tone={utilidadMes && Number(utilidadMes.monto) < 0 ? 'overdue' : 'default'}
           loading={!panel && !panelError}
         />
         <KPICard
@@ -482,6 +557,22 @@ export function PanelCobranza() {
           />
         )}
       </div>
+
+      {/* Las mismas 3 métricas del mes, abiertas por sucursal. Las filas suman
+          exactamente los totales de arriba (los gastos sin sucursal van en su
+          propia fila, no se reparten ni se descartan). */}
+      {porSucursal.length > 0 && (
+        <Card title="Del mes por sucursal" padded={false}>
+          <DataTable
+            ariaLabel="Resumen del mes por sucursal"
+            columns={columnasSucursal}
+            rows={porSucursal}
+            rowKey={(r) => r.sucursal_id ?? 'sin-sucursal'}
+            loading={!panel && !panelError}
+            emptyMessage="Sin movimiento este mes"
+          />
+        </Card>
+      )}
 
       <div className="panel-cobranza__cols">
         <div className="panel-cobranza__main">

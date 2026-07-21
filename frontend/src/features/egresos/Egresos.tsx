@@ -125,6 +125,18 @@ export function Egresos() {
           ),
       },
       {
+        key: 'metodo',
+        header: 'Método',
+        hideOnNarrow: true,
+        render: (e) => (
+          <span
+            className={`egreso-metodo egreso-metodo--${e.metodo === 'QR' ? 'qr' : 'efectivo'}`}
+          >
+            {e.metodo === 'QR' ? 'QR' : 'Efectivo'}
+          </span>
+        ),
+      },
+      {
         key: 'registrado_por',
         header: 'Registrado por',
         hideOnNarrow: true,

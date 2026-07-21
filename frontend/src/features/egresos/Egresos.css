@@ -79,6 +79,17 @@
   color: var(--color-text-subtle);
 }
 
+/* Método de pago del gasto — mismos colores que el desglose del panel. */
+.egreso-metodo {
+  font-weight: 600;
+}
+.egreso-metodo--efectivo {
+  color: var(--state-paid-text, #137a3a);
+}
+.egreso-metodo--qr {
+  color: #2563eb;
+}
+
 /* Paginación */
 .egresos__pager {
   display: flex;

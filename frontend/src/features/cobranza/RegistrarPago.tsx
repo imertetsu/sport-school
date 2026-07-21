@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { api, ApiError } from '@/api/client';
 import type {
   CuotaListItem,
+  DeportistaListItem,
   PagoOut,
   RegistrarPagoEfectivoBody,
   WhatsAppEstado,
@@ -31,6 +32,7 @@ export interface RegistrarPagoProps {
 export function RegistrarPago({ cuotaInicial, onClose, onConfirmado }: RegistrarPagoProps) {
   // Nombre de la escuela (login C1) para el mensaje de WhatsApp del comprobante.
   const { org } = useAuth();
+  const toast = useToast();
   // --- Selección de deportista + cuotas ---
   const [busqueda, setBusqueda] = useState('');
   const [cuotasDeportista, setCuotasDeportista] = useState<CuotaListItem[]>([]);
@@ -47,6 +49,11 @@ export function RegistrarPago({ cuotaInicial, onClose, onConfirmado }: Registrar
   // desaparezcan) y remontar el formulario de pago para "Registrar otro pago".
   const [reloadKey, setReloadKey] = useState(0);
   const [formKey, setFormKey] = useState(0);
+  // Deportistas que matchean la búsqueda (para poder adelantar cuotas aunque no
+  // tenga ninguna por cobrar: es justo el caso "ya pagó y quiere adelantar").
+  const [candidatos, setCandidatos] = useState<DeportistaListItem[]>([]);
+  const [mesesAdelanto, setMesesAdelanto] = useState(2);
+  const [adelantando, setAdelantando] = useState(false);
 
   // "Registrar otro pago": vuelve del comprobante al formulario SIN cerrar el
   // modal. Limpia la selección, refresca la lista (quita lo ya cobrado) y remonta
@@ -96,40 +103,55 @@ export function RegistrarPago({ cuotaInicial, onClose, onConfirmado }: Registrar
     };
   }, [cuotaInicial, reloadKey]);
 
-  // Búsqueda de cuotas por nombre de deportista cuando se abre sin cuota inicial.
+  // Búsqueda cuando se abre sin cuota inicial: resuelve primero el DEPORTISTA y
+  // luego trae SUS cuotas por id. Antes pedía la primera página de cuotas de toda
+  // la escuela (100) y filtraba por nombre en el cliente: un deportista cuyas
+  // cuotas caían fuera de esa ventana aparecía como "sin cuotas por cobrar".
   useEffect(() => {
     if (cuotaInicial) return;
     const q = busqueda.trim();
     if (!q) {
       setCuotasDeportista([]);
+      setCandidatos([]);
       return;
     }
     const controller = new AbortController();
     let active = true;
-    const t = setTimeout(() => {
+    const t = setTimeout(async () => {
       setCargandoCuotas(true);
-      api
-        .cuotas({ page: 1, page_size: 100 }, controller.signal)
-        .then((res) => {
-          if (!active) return;
-          const cobrables = res.items.filter(
-            (c) =>
-              c.estado !== 'PAGADO' &&
-              c.deportista.nombre_completo.toLowerCase().includes(q.toLowerCase()),
-          );
-          setCuotasDeportista(cobrables);
-          setCatalogo((prev) => {
-            const byId = new Map(prev.map((c) => [c.id, c]));
-            for (const c of cobrables) byId.set(c.id, c);
-            return [...byId.values()];
-          });
-        })
-        .catch(() => {
-          if (active) setCuotasDeportista([]);
-        })
-        .finally(() => {
-          if (active) setCargandoCuotas(false);
+      try {
+        const encontrados = await api.deportistas(
+          { buscar: q, page: 1, page_size: 5 },
+          controller.signal,
+        );
+        if (!active) return;
+        setCandidatos(encontrados.items);
+        const listas = await Promise.all(
+          encontrados.items.map((d) =>
+            api.cuotas(
+              { deportista_id: d.id, page: 1, page_size: 50 },
+              controller.signal,
+            ),
+          ),
+        );
+        if (!active) return;
+        const cobrables = listas
+          .flatMap((r) => r.items)
+          .filter((c) => c.estado !== 'PAGADO');
+        setCuotasDeportista(cobrables);
+        setCatalogo((prev) => {
+          const byId = new Map(prev.map((c) => [c.id, c]));
+          for (const c of cobrables) byId.set(c.id, c);
+          return [...byId.values()];
         });
+      } catch {
+        if (active) {
+          setCuotasDeportista([]);
+          setCandidatos([]);
+        }
+      } finally {
+        if (active) setCargandoCuotas(false);
+      }
     }, 300);
     return () => {
       active = false;
@@ -181,6 +203,53 @@ export function RegistrarPago({ cuotaInicial, onClose, onConfirmado }: Registrar
   }, [seleccion, catalogoById]);
 
   const listaCuotas = cuotasDeportista;
+
+  // A quién adelantarle cuotas. Sale de la cuota inicial, del deportista ya
+  // anclado por la selección, o de una búsqueda que resolvió a UNA sola persona
+  // (con varias coincidencias no adivinamos: primero que elija).
+  const objetivoAdelanto = useMemo<{ id: string; nombre: string } | null>(() => {
+    if (cuotaInicial) {
+      return {
+        id: cuotaInicial.deportista.id,
+        nombre: cuotaInicial.deportista.nombre_completo,
+      };
+    }
+    if (deportistaSeleccionadoId) {
+      const c = cuotasDeportista.find((x) => x.deportista.id === deportistaSeleccionadoId);
+      if (c) return { id: c.deportista.id, nombre: c.deportista.nombre_completo };
+    }
+    if (candidatos.length === 1) {
+      return { id: candidatos[0].id, nombre: candidatos[0].nombre_completo };
+    }
+    return null;
+  }, [cuotaInicial, deportistaSeleccionadoId, cuotasDeportista, candidatos]);
+
+  // Genera los meses que falten por delante y refresca la lista de cuotas.
+  async function adelantarCuotas() {
+    if (!objetivoAdelanto) return;
+    setAdelantando(true);
+    try {
+      const res = await api.adelantarCuotas(objetivoAdelanto.id, mesesAdelanto);
+      if (res.creadas > 0) {
+        toast.success(
+          `Se generaron ${res.creadas} cuota${res.creadas === 1 ? '' : 's'} por adelantado.`,
+        );
+      } else {
+        toast.info(
+          `${objetivoAdelanto.nombre} ya tiene ${mesesAdelanto} mes${
+            mesesAdelanto === 1 ? '' : 'es'
+          } generado${mesesAdelanto === 1 ? '' : 's'} por delante.`,
+        );
+      }
+      setReloadKey((k) => k + 1);
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError ? err.message : 'No se pudieron generar las cuotas.',
+      );
+    } finally {
+      setAdelantando(false);
+    }
+  }
 
   // Cuotas efectivamente seleccionadas (para el comprobante / mensaje de WhatsApp).
   const cuotasSeleccionadas = seleccion
@@ -268,6 +337,39 @@ export function RegistrarPago({ cuotaInicial, onClose, onConfirmado }: Registrar
             );
           })}
         </ul>
+      )}
+
+      {/* Las cuotas futuras recién se generan cuando llega el mes, así que una
+          familia al día no tiene nada que seleccionar para pagar adelantado.
+          Este bloque las crea a pedido. */}
+      {objetivoAdelanto && (
+        <div className="rp-adelanto">
+          <span className="rp-section-label">Cobrar por adelantado</span>
+          <p className="rp-adelanto__hint">
+            Genera los próximos meses de {objetivoAdelanto.nombre} para poder cobrarlos
+            ahora. Si ya están generados, no se duplican.
+          </p>
+          <div className="rp-adelanto__row">
+            <label className="rp-adelanto__campo">
+              <span className="rp-adelanto__label">Meses</span>
+              <select
+                className="field__input"
+                value={mesesAdelanto}
+                onChange={(e) => setMesesAdelanto(Number(e.target.value))}
+                disabled={adelantando}
+              >
+                {[1, 2, 3, 4, 5, 6].map((n) => (
+                  <option key={n} value={n}>
+                    {n} {n === 1 ? 'mes' : 'meses'}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <Button variant="secondary" onClick={adelantarCuotas} disabled={adelantando}>
+              {adelantando ? 'Generando…' : 'Generar cuotas'}
+            </Button>
+          </div>
+        </div>
       )}
 
       <div className="rp-total">

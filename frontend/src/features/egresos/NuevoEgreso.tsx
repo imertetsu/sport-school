@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { api, ApiError } from '@/api/client';
-import type { EgresoCreate, EgresoCreated, Sucursal } from '@/api/types';
+import type { EgresoCreate, EgresoCreated, MetodoPago, Sucursal } from '@/api/types';
 import { Button, Card, Field, SelectField, useToast } from '@/components/ui';
 
 // Fecha de hoy en formato YYYY-MM-DD (local), valor por defecto del campo.
@@ -26,6 +26,8 @@ export function NuevoEgreso({ sucursales, onClose, onCreated }: NuevoEgresoProps
   const [sucursalId, setSucursalId] = useState('');
   const [categoria, setCategoria] = useState('');
   const [monto, setMonto] = useState('');
+  // Con qué se pagó el gasto: alimenta el desglose Efectivo/QR del panel.
+  const [metodo, setMetodo] = useState<MetodoPago>('EFECTIVO');
   const [fecha, setFecha] = useState(hoyISO);
   const [descripcion, setDescripcion] = useState('');
 
@@ -73,6 +75,7 @@ export function NuevoEgreso({ sucursales, onClose, onCreated }: NuevoEgresoProps
       categoria_gasto: categoria.trim(),
       // El monto se manda como string (numeric serializado); el backend decide.
       monto: monto.trim(),
+      metodo,
       fecha,
       descripcion: descripcion.trim() || null,
     };
@@ -139,6 +142,16 @@ export function NuevoEgreso({ sucursales, onClose, onCreated }: NuevoEgresoProps
               placeholder="1500.00"
               required
             />
+            <SelectField
+              label="Método de pago"
+              value={metodo}
+              onChange={(e) => setMetodo(e.target.value as MetodoPago)}
+              error={fieldErrors.metodo}
+              hint="Con qué se pagó el gasto (desglosa Egresos y Utilidad en el panel)."
+            >
+              <option value="EFECTIVO">Efectivo</option>
+              <option value="QR">QR / transferencia</option>
+            </SelectField>
             <Field
               label="Fecha"
               type="date"

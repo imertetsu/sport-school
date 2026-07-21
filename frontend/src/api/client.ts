@@ -444,6 +444,20 @@ export const api = {
   generarCuotas(signal?: AbortSignal): Promise<GenerarCuotasResponse> {
     return request<GenerarCuotasResponse>('/cobranza/generar', { method: 'POST', signal });
   },
+  // POST /cobranza/deportistas/{id}/cuotas-adelantadas (ADMIN) -> asegura que
+  // existan `meses` cuotas futuras para poder cobrarlas por adelantado. El
+  // generador diario solo llega al período corriente. "Asegura", no "agrega":
+  // re-llamar con el mismo número devuelve creadas: 0.
+  adelantarCuotas(
+    deportistaId: string,
+    meses: number,
+    signal?: AbortSignal,
+  ): Promise<GenerarCuotasResponse> {
+    return request<GenerarCuotasResponse>(
+      `/cobranza/deportistas/${deportistaId}/cuotas-adelantadas`,
+      { method: 'POST', body: { meses }, signal },
+    );
+  },
   // DELETE /cobranza/cuotas/{cuota_id} (ADMIN) -> borra una cuota SIN pago aplicado
   // (limpieza de migración: cuotas "fantasma" de un deportista que se fue y volvió).
   // 409 si la cuota tiene un pago aplicado (hay que anular el pago primero).
@@ -655,10 +669,15 @@ export const api = {
     return request<EgresoResumenItem[]>('/egresos/resumen', { query: params, signal });
   },
   // ---- Reportes (C1) — solo ADMIN ----
-  // GET /reportes/ingresos?anio=YYYY -> 12 meses + total del año.
-  reportesIngresos(anio?: number, signal?: AbortSignal): Promise<IngresosReporte> {
+  // GET /reportes/ingresos?anio=YYYY&sucursal_id= -> 12 meses con ingresos,
+  // egresos y utilidad + totales del año. Sin sucursal_id: toda la organización.
+  reportesIngresos(
+    anio?: number,
+    signal?: AbortSignal,
+    sucursalId?: string,
+  ): Promise<IngresosReporte> {
     return request<IngresosReporte>('/reportes/ingresos', {
-      query: { anio },
+      query: { anio, sucursal_id: sucursalId || undefined },
       signal,
     });
   },

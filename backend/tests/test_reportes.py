@@ -32,7 +32,8 @@ from sqlalchemy.orm import Session
 def test_armar_meses_devuelve_12_meses() -> None:
     """Siempre 12 meses; los ausentes se rellenan con "0.00" / 0."""
     datos = {3: (Decimal("1500"), 2), 12: (Decimal("300.5"), 1)}
-    meses, total, n_pagos = svc.armar_meses(2026, datos)
+    resumen = svc.armar_meses(2026, datos)
+    meses = resumen.meses
 
     assert len(meses) == 12
     assert [m.mes for m in meses] == list(range(1, 13))
@@ -45,8 +46,36 @@ def test_armar_meses_devuelve_12_meses() -> None:
     assert meses[2].monto == "1500.00"
     assert meses[2].n_pagos == 2
     # Totales.
-    assert total == Decimal("1800.5")
-    assert n_pagos == 3
+    assert resumen.total_ingresos == Decimal("1800.5")
+    assert resumen.n_pagos == 3
+    # Sin egresos: la utilidad iguala a los ingresos y los totales quedan en 0.
+    assert meses[2].egresos == "0.00"
+    assert meses[2].utilidad == "1500.00"
+    assert resumen.total_egresos == Decimal("0")
+    assert resumen.n_egresos == 0
+
+
+def test_armar_meses_calcula_utilidad_por_mes() -> None:
+    """Utilidad = ingresos - egresos mes a mes; negativa si el mes cierra en pérdida."""
+    ingresos = {3: (Decimal("1500"), 2), 4: (Decimal("100"), 1)}
+    egresos = {3: (Decimal("400"), 3), 4: (Decimal("250"), 1), 5: (Decimal("60"), 1)}
+    resumen = svc.armar_meses(2026, ingresos, egresos)
+    meses = resumen.meses
+
+    # Marzo cierra en positivo.
+    assert meses[2].monto == "1500.00"
+    assert meses[2].egresos == "400.00"
+    assert meses[2].n_egresos == 3
+    assert meses[2].utilidad == "1100.00"
+    # Abril cierra en pérdida -> utilidad negativa.
+    assert meses[3].utilidad == "-150.00"
+    # Mayo solo tiene egresos.
+    assert meses[4].monto == "0.00"
+    assert meses[4].utilidad == "-60.00"
+    # Totales del año.
+    assert resumen.total_ingresos == Decimal("1600")
+    assert resumen.total_egresos == Decimal("710")
+    assert resumen.n_egresos == 5
 
 
 def test_pct_presente_total_cero_es_cero() -> None:
@@ -142,6 +171,24 @@ def rep_fixture(owner_engine: Engine) -> Iterator[dict]:
                 "reg": str(usuario),
             },
         )
+        # Egresos de marzo 2026: uno de la sucursal (100) y uno a nivel org
+        # (sucursal NULL, 50) -> el filtro por sucursal debe dejar fuera el 2º.
+        for monto, suc_id in ((Decimal("100.00"), str(suc)), (Decimal("50.00"), None)):
+            conn.execute(
+                text(
+                    "INSERT INTO egreso (id, org_id, sucursal_id, categoria_gasto, monto, "
+                    "fecha, registrado_por, created_at) "
+                    "VALUES (:id,:org,:suc,'Alquiler',:monto,:fecha,:reg,now())"
+                ),
+                {
+                    "id": str(uuid.uuid4()),
+                    "org": str(org),
+                    "suc": suc_id,
+                    "monto": monto,
+                    "fecha": date(2026, 3, 20),
+                    "reg": str(usuario),
+                },
+            )
         # Sesión + asistencia (1 PRESENTE, 1 AUSENTE) en marzo 2026.
         conn.execute(
             text(
@@ -179,6 +226,7 @@ def rep_fixture(owner_engine: Engine) -> Iterator[dict]:
     with owner_engine.begin() as conn:
         conn.execute(text("DELETE FROM asistencia WHERE org_id = :o"), {"o": str(org)})
         conn.execute(text("DELETE FROM sesion WHERE org_id = :o"), {"o": str(org)})
+        conn.execute(text("DELETE FROM egreso WHERE org_id = :o"), {"o": str(org)})
         conn.execute(text("DELETE FROM pago WHERE org_id = :o"), {"o": str(org)})
         conn.execute(text("DELETE FROM deportista WHERE org_id = :o"), {"o": str(org)})
         conn.execute(text("DELETE FROM categoria WHERE org_id = :o"), {"o": str(org)})
@@ -226,7 +274,52 @@ def test_ingresos_otro_anio_vacio(app_engine: Engine, rep_fixture: dict) -> None
     assert len(rep.meses) == 12
     assert rep.total == "0.00"
     assert rep.n_pagos == 0
+    assert rep.total_egresos == "0.00"
+    assert rep.utilidad == "0.00"
     assert all(m.monto == "0.00" for m in rep.meses)
+    assert all(m.egresos == "0.00" and m.utilidad == "0.00" for m in rep.meses)
+
+
+@pytest.mark.db
+def test_ingresos_incluye_egresos_y_utilidad(app_engine: Engine, rep_fixture: dict) -> None:
+    """Marzo: 300 de ingresos - 150 de egresos (100 sucursal + 50 org) = 150."""
+    org = rep_fixture["org"]
+    with Session(app_engine) as db:
+        _set_org(db, org)
+        rep = svc.ingresos_por_mes(db, anio=2026)
+
+    marzo = rep.meses[2]
+    assert marzo.monto == "300.00"
+    assert marzo.egresos == "150.00"
+    assert marzo.n_egresos == 2
+    assert marzo.utilidad == "150.00"
+    # Totales del año.
+    assert rep.total_egresos == "150.00"
+    assert rep.n_egresos == 2
+    assert rep.utilidad == "150.00"
+    assert rep.sucursal_id is None
+
+
+@pytest.mark.db
+def test_ingresos_filtro_sucursal_excluye_egreso_de_org(
+    app_engine: Engine, rep_fixture: dict
+) -> None:
+    """Con sucursal: solo su egreso (100); el de nivel org (NULL) queda fuera.
+
+    El pago sembrado no tiene `pago_cuota`, así que tampoco es atribuible a una
+    sucursal -> ingresos 0 y la utilidad de la sucursal queda negativa.
+    """
+    org, suc = rep_fixture["org"], rep_fixture["suc"]
+    with Session(app_engine) as db:
+        _set_org(db, org)
+        rep = svc.ingresos_por_mes(db, anio=2026, sucursal_id=suc)
+
+    assert rep.sucursal_id == suc
+    assert rep.total_egresos == "100.00"
+    assert rep.n_egresos == 1
+    assert rep.total == "0.00"
+    assert rep.utilidad == "-100.00"
+    assert rep.meses[2].utilidad == "-100.00"
 
 
 @pytest.mark.db
@@ -250,6 +343,27 @@ def test_asistencia_pct_coherente(app_engine: Engine, rep_fixture: dict) -> None
     assert fila.sucursal.nombre == "Suc Central"
     assert fila.total_marcas == 2
     assert fila.pct_presente == 50.0
+
+
+@pytest.mark.db
+def test_asistencia_incluye_las_fechas_de_cada_deportista(
+    app_engine: Engine, rep_fixture: dict
+) -> None:
+    """Cada deportista trae sus marcas con FECHA y estado (para informar al padre).
+
+    Sin esto el reporte solo da porcentajes y no se puede decir qué día faltó.
+    """
+    org = rep_fixture["org"]
+    with Session(app_engine) as db:
+        _set_org(db, org)
+        rep = svc.asistencia_reporte(db, desde=date(2026, 3, 1), hasta=date(2026, 3, 31))
+
+    por_dep = {d.deportista.id: d for d in rep.por_deportista}
+    ana = por_dep[rep_fixture["al1"]]
+    bruno = por_dep[rep_fixture["al2"]]
+
+    assert [(m.fecha, m.estado) for m in ana.marcas] == [("2026-03-15", "PRESENTE")]
+    assert [(m.fecha, m.estado) for m in bruno.marcas] == [("2026-03-15", "AUSENTE")]
 
 
 @pytest.mark.db

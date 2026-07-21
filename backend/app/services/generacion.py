@@ -14,7 +14,7 @@ import uuid
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.domain.cobranza.cuota_engine import (
@@ -215,6 +215,115 @@ def generar_cuotas_historicas(
     return _generar_cadena_completa(
         db, org_id=insc.org_id, insc=insc, org_cfg=_org_config(org), hoy=hoy
     )
+
+
+# --------------------------------------------------------------------------- #
+# Cobro por adelantado: proyectar cuotas MÁS ALLÁ del período corriente
+# --------------------------------------------------------------------------- #
+# Tope de meses que se pueden adelantar de una vez. Existe para que un dedazo en
+# el formulario no genere años de cuotas PENDIENTE que después haya que borrar
+# una por una (`DELETE /cobranza/cuotas/{id}` es de a una).
+MAX_MESES_ADELANTO = 12
+
+
+def generar_cuotas_adelantadas(
+    db: Session, *, deportista_id: uuid.UUID, meses: int, hoy: date | None = None
+) -> int:
+    """Asegura que haya `meses` cuotas FUTURAS disponibles por inscripción ACTIVA.
+
+    El generador normal (`generar_cuotas_org`) corta en el período corriente: no
+    existe la cuota de agosto hasta que agosto llega, así que una familia que
+    quiere pagar por adelantado no tiene nada que seleccionar. Esto crea esas
+    cuotas a pedido, arrancando desde la última existente y usando el MISMO motor
+    (`siguiente_cuota`), de modo que respeta el modo de cobro (FIJO/ANIVERSARIO),
+    el día de corte y el monto vigente de la inscripción.
+
+    Semántica **"asegurar N", no "agregar N"**: si ya hay cuotas futuras, solo
+    crea las que faltan para llegar a `meses`. Es deliberado — llamarlo dos veces
+    con 2 dejaría 4 meses generados, y deshacerlo obliga a borrar cuota por cuota.
+
+    Antes de proyectar se completa la cadena hasta hoy: si faltaba la cuota del
+    período corriente, adelantar no debe saltársela.
+
+    Un deportista puede tener VARIAS inscripciones (una por disciplina): se
+    asegura el mismo colchón de `meses` en cada una, porque debe las dos.
+
+    Corre bajo el `app.current_org` fijado por el llamador (RLS). Devuelve cuántas
+    cuotas creó (0 si ya estaban todas).
+    """
+    hoy = hoy or date.today()
+    meses = max(0, min(int(meses), MAX_MESES_ADELANTO))
+    if meses == 0:
+        return 0
+
+    inscripciones = (
+        db.execute(
+            select(Inscripcion).where(
+                Inscripcion.deportista_id == deportista_id,
+                Inscripcion.estado == "ACTIVA",
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not inscripciones:
+        return 0
+
+    org = db.execute(
+        select(Organizacion).where(Organizacion.id == inscripciones[0].org_id)
+    ).scalar_one_or_none()
+    if org is None:
+        return 0
+    org_cfg = _org_config(org)
+
+    creadas = 0
+    for insc in inscripciones:
+        # 1) Poner la cadena al día (incluye el período corriente si faltaba).
+        creadas += _generar_cadena_completa(
+            db, org_id=insc.org_id, insc=insc, org_cfg=org_cfg, hoy=hoy
+        )
+
+        # 2) Contar el colchón que YA existe: cuotas cuyo período todavía no
+        # empezó. Solo se crean las que falten para llegar a `meses`.
+        futuras = db.execute(
+            select(func.count())
+            .select_from(Cuota)
+            .where(Cuota.inscripcion_id == insc.id, Cuota.periodo_inicio > hoy)
+        ).scalar_one()
+        faltan = meses - int(futuras)
+        if faltan <= 0:
+            continue
+
+        # 3) Proyectar los períodos que faltan, desde la última cuota.
+        insc_cfg = _insc_config(insc)
+        ultima = (
+            db.execute(
+                select(Cuota)
+                .where(Cuota.inscripcion_id == insc.id)
+                .order_by(Cuota.periodo_inicio.desc())
+            )
+            .scalars()
+            .first()
+        )
+        if ultima is None:
+            continue  # inscripción sin config suficiente para generar; se salta
+        ultimo_inicio, ultimo_vence = ultima.periodo_inicio, ultima.vence_el
+        for _ in range(faltan):
+            periodo = siguiente_cuota(
+                insc_cfg,
+                org_cfg,
+                ultimo_periodo_inicio=ultimo_inicio,
+                ultimo_vence_el=ultimo_vence,
+            )
+            if periodo.periodo_inicio == ultimo_inicio:
+                break  # el motor no avanza -> evita bucle infinito
+            if _insertar_si_no_existe(
+                db, org_id=insc.org_id, inscripcion_id=insc.id, periodo=periodo
+            ):
+                creadas += 1
+            ultimo_inicio, ultimo_vence = periodo.periodo_inicio, periodo.vence_el
+
+    return creadas
 
 
 def reajustar_monto_cuotas_futuras(

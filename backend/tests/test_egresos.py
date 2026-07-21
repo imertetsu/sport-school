@@ -80,6 +80,34 @@ def test_egreso_create_categoria_vacia_falla() -> None:
         )
 
 
+def test_egreso_create_metodo_default_efectivo() -> None:
+    """Sin `metodo`, el egreso cae en EFECTIVO (mismo supuesto que el backfill 0027)."""
+    obj = EgresoCreate(categoria_gasto="X", monto=Decimal("100.00"), fecha=date(2026, 6, 1))
+    assert obj.metodo == "EFECTIVO"
+
+
+def test_egreso_create_metodo_normaliza_a_mayusculas() -> None:
+    """`metodo` se normaliza (trim + upper) para respetar ck_egreso_metodo."""
+    obj = EgresoCreate(
+        categoria_gasto="X",
+        monto=Decimal("100.00"),
+        fecha=date(2026, 6, 1),
+        metodo="  qr ",
+    )
+    assert obj.metodo == "QR"
+
+
+def test_egreso_create_metodo_invalido_falla() -> None:
+    """Un método fuera de EFECTIVO|QR -> ValidationError (=> 422, no viola el CHECK)."""
+    with pytest.raises(ValidationError):
+        EgresoCreate(
+            categoria_gasto="X",
+            monto=Decimal("100.00"),
+            fecha=date(2026, 6, 1),
+            metodo="TARJETA",
+        )
+
+
 def test_egreso_create_descripcion_blanca_a_none() -> None:
     """`descripcion` en blanco se normaliza a None (no string vacío)."""
     obj = EgresoCreate(

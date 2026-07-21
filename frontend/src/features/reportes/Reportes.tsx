@@ -5,6 +5,7 @@ import type {
   AsistenciaPorDeportista,
   AsistenciaReporte,
   Categoria,
+  IngresosMesItem,
   IngresosReporte,
 } from '@/api/types';
 import {
@@ -16,7 +17,7 @@ import {
   type Column,
 } from '@/components/ui';
 import { useSucursales } from '@/components/shell/SucursalContext';
-import { formatMoney } from '@/lib/format';
+import { formatDate, formatMoney } from '@/lib/format';
 import './Reportes.css';
 
 // --- Año: selector con los últimos N años (incl. el actual). ---
@@ -41,11 +42,53 @@ function tonoPct(pct: number): 'paid' | 'pending' | 'overdue' {
   return 'overdue';
 }
 
+// Las 3 series del gráfico financiero. `monto` es el nombre histórico de los
+// ingresos en el contrato C1; la utilidad puede ser negativa (mes en pérdida).
+const SERIES = [
+  { key: 'monto', label: 'Ingresos', modificador: 'ingreso' },
+  { key: 'egresos', label: 'Egresos', modificador: 'egreso' },
+  { key: 'utilidad', label: 'Utilidad', modificador: 'utilidad' },
+] as const;
+
+// Escala compartida por las 3 series: una sola línea de cero para que las
+// alturas sean comparables entre sí. Si alguna utilidad es negativa, el cero
+// sube dentro del área de dibujo y esas barras crecen hacia abajo.
+interface EscalaChart {
+  span: number; // rango total (max positivo + |min negativo|)
+  zeroPct: number; // posición de la línea de cero, en % desde abajo
+}
+
+function calcularEscala(meses: IngresosMesItem[]): EscalaChart {
+  const valores = meses.flatMap((m) => [
+    Number(m.monto) || 0,
+    Number(m.egresos) || 0,
+    Number(m.utilidad) || 0,
+  ]);
+  const maxPos = Math.max(0, ...valores);
+  const minNeg = Math.min(0, ...valores);
+  const span = maxPos - minNeg;
+  return { span, zeroPct: span > 0 ? (-minNeg / span) * 100 : 0 };
+}
+
+// Posición/altura de una barra respecto de la línea de cero (crece hacia arriba
+// si el valor es positivo, hacia abajo si es negativo).
+function estiloBarra(valor: number, escala: EscalaChart): { bottom: string; height: string } {
+  if (escala.span <= 0 || valor === 0) {
+    return { bottom: `${escala.zeroPct}%`, height: '0%' };
+  }
+  const alto = (Math.abs(valor) / escala.span) * 100;
+  return valor > 0
+    ? { bottom: `${escala.zeroPct}%`, height: `${alto}%` }
+    : { bottom: `${escala.zeroPct - alto}%`, height: `${alto}%` };
+}
+
 export function Reportes() {
   const { sucursales, selected: sucursalGlobal } = useSucursales();
 
-  // ---- Ingresos por mes ----
+  // ---- Finanzas por mes (ingresos / egresos / utilidad) ----
   const [anio, setAnio] = useState<number>(ANIO_ACTUAL);
+  // Sucursal del gráfico financiero, independiente del filtro de asistencia.
+  const [sucursalFin, setSucursalFin] = useState(sucursalGlobal);
   const [ingresos, setIngresos] = useState<IngresosReporte | null>(null);
   const [ingresosError, setIngresosError] = useState<string | null>(null);
   const [ingresosLoading, setIngresosLoading] = useState(true);
@@ -56,7 +99,7 @@ export function Reportes() {
     setIngresosLoading(true);
     setIngresosError(null);
     api
-      .reportesIngresos(anio, controller.signal)
+      .reportesIngresos(anio, controller.signal, sucursalFin || undefined)
       .then((data) => {
         if (active) setIngresos(data);
       })
@@ -74,7 +117,7 @@ export function Reportes() {
       active = false;
       controller.abort();
     };
-  }, [anio]);
+  }, [anio, sucursalFin]);
 
   // ---- Asistencia global ----
   const inicial = useMemo(rangoPorDefecto, []);
@@ -84,6 +127,8 @@ export function Reportes() {
   const [sucursalId, setSucursalId] = useState(sucursalGlobal);
   const [categoriaId, setCategoriaId] = useState('');
 
+  // Deportista cuyo detalle de fechas está desplegado (uno a la vez).
+  const [detalleAbierto, setDetalleAbierto] = useState<string | null>(null);
   const [asistencia, setAsistencia] = useState<AsistenciaReporte | null>(null);
   const [asistenciaError, setAsistenciaError] = useState<string | null>(null);
   const [asistenciaLoading, setAsistenciaLoading] = useState(true);
@@ -148,11 +193,11 @@ export function Reportes() {
     };
   }, [desde, hasta, sucursalId, categoriaId]);
 
-  // Máximo del año para escalar la altura de las barras (evita /0).
-  const maxMonto = useMemo(() => {
-    if (!ingresos) return 0;
-    return ingresos.meses.reduce((max, m) => Math.max(max, Number(m.monto) || 0), 0);
-  }, [ingresos]);
+  // Escala común a las 3 series (evita /0 y ubica la línea de cero).
+  const escala = useMemo(
+    () => calcularEscala(ingresos?.meses ?? []),
+    [ingresos],
+  );
 
   const columnasAsistencia = useMemo<Column<AsistenciaPorCategoria>[]>(
     () => [
@@ -210,19 +255,60 @@ export function Reportes() {
   );
 
   // Detalle del período: una fila por deportista con marcas en el rango elegido.
+  // La primera columna despliega las fechas exactas (para informar al padre).
   const columnasAsistenciaDeportista = useMemo<Column<AsistenciaPorDeportista>[]>(
     () => [
       {
         key: 'deportista',
         header: 'Deportista',
-        render: (r) => (
-          <div className="asistencia-cat">
-            <span className="asistencia-cat__name">{r.deportista.nombre_completo}</span>
-            <span className="asistencia-cat__meta">
-              {[r.categoria, r.sucursal].filter(Boolean).join(' · ') || '—'}
-            </span>
-          </div>
-        ),
+        render: (r) => {
+          const abierto = detalleAbierto === r.deportista.id;
+          return (
+            <div className="asistencia-cat">
+              <button
+                type="button"
+                className="asistencia-cat__toggle"
+                aria-expanded={abierto}
+                onClick={() =>
+                  setDetalleAbierto(abierto ? null : r.deportista.id)
+                }
+              >
+                <span className="asistencia-cat__caret" aria-hidden="true">
+                  {abierto ? '▾' : '▸'}
+                </span>
+                <span className="asistencia-cat__name">
+                  {r.deportista.nombre_completo}
+                </span>
+              </button>
+              <span className="asistencia-cat__meta">
+                {[r.categoria, r.sucursal].filter(Boolean).join(' · ') || '—'}
+              </span>
+              {abierto && (
+                <ul className="marcas">
+                  {r.marcas.length === 0 ? (
+                    <li className="marcas__empty">Sin marcas registradas</li>
+                  ) : (
+                    r.marcas.map((m, i) => (
+                      <li
+                        key={`${m.fecha}-${i}`}
+                        className={`marcas__item marcas__item--${
+                          m.estado === 'PRESENTE' ? 'presente' : 'ausente'
+                        }`}
+                      >
+                        <span className="marcas__fecha tabular">
+                          {formatDate(m.fecha)}
+                        </span>
+                        <span className="marcas__estado">
+                          {m.estado === 'PRESENTE' ? 'Presente' : 'Ausente'}
+                        </span>
+                      </li>
+                    ))
+                  )}
+                </ul>
+              )}
+            </div>
+          );
+        },
       },
       {
         key: 'sesiones',
@@ -271,7 +357,7 @@ export function Reportes() {
         ),
       },
     ],
-    [],
+    [detalleAbierto],
   );
 
   return (
@@ -280,26 +366,40 @@ export function Reportes() {
         <div>
           <h1 className="page-head__title">Reportes</h1>
           <p className="page-head__subtitle">
-            Ingresos por mes y asistencia global — vista gerencial
+            Ingresos, egresos y utilidad por mes + asistencia global — vista gerencial
           </p>
         </div>
       </header>
 
-      {/* ===== Ingresos por mes ===== */}
+      {/* ===== Ingresos, egresos y utilidad por mes ===== */}
       <Card
-        title="Ingresos por mes"
+        title="Ingresos, egresos y utilidad"
         actions={
-          <SelectField
-            label="Año"
-            value={anio}
-            onChange={(e) => setAnio(Number(e.target.value))}
-          >
-            {ANIOS.map((a) => (
-              <option key={a} value={a}>
-                {a}
-              </option>
-            ))}
-          </SelectField>
+          <div className="reportes__acciones">
+            <SelectField
+              label="Sucursal"
+              value={sucursalFin}
+              onChange={(e) => setSucursalFin(e.target.value)}
+            >
+              <option value="">Todas</option>
+              {sucursales.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.nombre}
+                </option>
+              ))}
+            </SelectField>
+            <SelectField
+              label="Año"
+              value={anio}
+              onChange={(e) => setAnio(Number(e.target.value))}
+            >
+              {ANIOS.map((a) => (
+                <option key={a} value={a}>
+                  {a}
+                </option>
+              ))}
+            </SelectField>
+          </div>
         }
       >
         {ingresosError && (
@@ -308,11 +408,41 @@ export function Reportes() {
           </div>
         )}
 
-        <div className="reportes__total">
-          <span className="reportes__total-label">Total {anio}</span>
-          <span className="reportes__total-value tabular">
-            {ingresosLoading ? '…' : formatMoney(ingresos?.total)}
-          </span>
+        {/* Totales del año: ingresos, egresos y la utilidad resultante. */}
+        <div className="reportes__totales">
+          <div className="reportes__total">
+            <span className="reportes__total-label">Ingresos {anio}</span>
+            <span className="reportes__total-value reportes__total-value--ingreso tabular">
+              {ingresosLoading ? '…' : formatMoney(ingresos?.total)}
+            </span>
+          </div>
+          <div className="reportes__total">
+            <span className="reportes__total-label">Egresos {anio}</span>
+            <span className="reportes__total-value reportes__total-value--egreso tabular">
+              {ingresosLoading ? '…' : formatMoney(ingresos?.total_egresos)}
+            </span>
+          </div>
+          <div className="reportes__total">
+            <span className="reportes__total-label">Utilidad {anio}</span>
+            <span
+              className={`reportes__total-value tabular ${
+                Number(ingresos?.utilidad ?? 0) < 0
+                  ? 'reportes__total-value--perdida'
+                  : 'reportes__total-value--utilidad'
+              }`}
+            >
+              {ingresosLoading ? '…' : formatMoney(ingresos?.utilidad)}
+            </span>
+          </div>
+        </div>
+
+        <div className="barchart__legend">
+          {SERIES.map((s) => (
+            <span className="barchart__legend-item" key={s.key}>
+              <span className={`barchart__swatch barchart__swatch--${s.modificador}`} />
+              {s.label}
+            </span>
+          ))}
         </div>
 
         {ingresosLoading ? (
@@ -321,24 +451,40 @@ export function Reportes() {
           <div
             className="barchart"
             role="img"
-            aria-label={`Ingresos por mes del año ${anio}`}
+            aria-label={`Ingresos, egresos y utilidad por mes del año ${anio}`}
           >
             {ingresos.meses.map((m) => {
-              const monto = Number(m.monto) || 0;
-              const altura = maxMonto > 0 ? Math.round((monto / maxMonto) * 100) : 0;
+              const utilidad = Number(m.utilidad) || 0;
               return (
                 <div className="barchart__col" key={m.mes}>
-                  <span className="barchart__value tabular">
-                    {monto > 0 ? formatMoney(m.monto) : ''}
+                  <span
+                    className={`barchart__value tabular${
+                      utilidad < 0 ? ' barchart__value--perdida' : ''
+                    }`}
+                  >
+                    {utilidad !== 0 ? formatMoney(m.utilidad) : ''}
                   </span>
-                  <span className="barchart__bar-track">
+                  <span className="barchart__plot">
+                    {/* Línea de cero: solo se ve cuando hay meses en pérdida. */}
                     <span
-                      className={`barchart__bar${monto === 0 ? ' barchart__bar--empty' : ''}`}
-                      style={{ height: `${monto === 0 ? 0 : altura}%` }}
-                      title={`${m.etiqueta}: ${formatMoney(m.monto)} (${m.n_pagos} pago${
-                        m.n_pagos === 1 ? '' : 's'
-                      })`}
+                      className="barchart__zero"
+                      style={{ bottom: `${escala.zeroPct}%` }}
+                      aria-hidden="true"
                     />
+                    {SERIES.map((s) => {
+                      const valor = Number(m[s.key]) || 0;
+                      return (
+                        <span className="barchart__slot" key={s.key}>
+                          <span
+                            className={`barchart__bar barchart__bar--${s.modificador}${
+                              valor === 0 ? ' barchart__bar--empty' : ''
+                            }`}
+                            style={estiloBarra(valor, escala)}
+                            title={`${m.etiqueta} · ${s.label}: ${formatMoney(m[s.key])}`}
+                          />
+                        </span>
+                      );
+                    })}
                   </span>
                   <span className="barchart__label">{m.etiqueta}</span>
                 </div>
@@ -346,6 +492,13 @@ export function Reportes() {
             })}
           </div>
         ) : null}
+
+        {sucursalFin && (
+          <p className="reportes__nota">
+            Filtrado por sucursal: no se incluyen los egresos registrados a nivel de
+            organización (sin sucursal asignada).
+          </p>
+        )}
       </Card>
 
       {/* ===== Asistencia global ===== */}

@@ -23,6 +23,17 @@ class GenerarOut(BaseModel):
     creadas: int
 
 
+class AdelantarCuotasIn(BaseModel):
+    """Body de `POST /cobranza/deportistas/{id}/cuotas-adelantadas`.
+
+    `meses` = cuántos períodos FUTUROS debe haber disponibles (más allá del
+    corriente) para poder cobrarlos por adelantado. El tope evita generar años de
+    cuotas por un dedazo, que después habría que borrar una por una.
+    """
+
+    meses: int = Field(ge=1, le=12)
+
+
 # --------------------------------------------------------------------------- #
 # Cuotas (lista paginada)
 # --------------------------------------------------------------------------- #
@@ -115,6 +126,34 @@ class IngresosMes(BaseModel):
     qr: Decimal = Decimal("0")
 
 
+class MontoPorMetodo(BaseModel):
+    """Un importe con su desglose por método (misma forma que `IngresosMes`).
+
+    Se usa para egresos y utilidad del mes: `egreso.metodo` (0027) usa los mismos
+    literales que `pago.metodo`, así que la utilidad se puede restar método a
+    método. La utilidad puede ser **negativa** (mes en pérdida).
+    """
+
+    monto: Decimal
+    efectivo: Decimal = Decimal("0")
+    qr: Decimal = Decimal("0")
+
+
+class PanelSucursalItem(BaseModel):
+    """Fila del desglose del mes por sucursal (ingresos / egresos / utilidad).
+
+    `sucursal_id` es null en la fila agregada de egresos a nivel organización
+    (los que se cargaron sin sucursal): así las filas SUMAN el total del panel y
+    no se pierde plata por el camino.
+    """
+
+    sucursal_id: uuid.UUID | None = None
+    nombre: str
+    ingresos: MontoPorMetodo
+    egresos: MontoPorMetodo
+    utilidad: MontoPorMetodo
+
+
 class DeportistasActivos(BaseModel):
     count: int
     sucursales: int
@@ -143,9 +182,16 @@ class PanelOut(BaseModel):
 
     Abonos: `cuotas_pendientes`/`cuotas_vencidas` suman **saldos** (no montos
     nominales); morosidad por saldo. `credito_total` = Σ `credito.saldo` de la org.
+
+    `egresos_mes` y `utilidad_mes` acompañan a `ingresos_mes` con el mismo
+    desglose efectivo/QR; `utilidad = ingresos - egresos` (puede ser negativa).
+    `por_sucursal` repite las tres métricas abiertas por sucursal.
     """
 
     ingresos_mes: IngresosMes
+    egresos_mes: MontoPorMetodo
+    utilidad_mes: MontoPorMetodo
+    por_sucursal: list[PanelSucursalItem] = Field(default_factory=list)
     deportistas_activos: DeportistasActivos
     cuotas_pendientes: CuotasAgg
     cuotas_vencidas: CuotasAgg

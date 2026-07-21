@@ -14,6 +14,10 @@ from decimal import Decimal
 
 from pydantic import BaseModel, field_validator
 
+# Métodos de pago aceptados. MISMOS literales que `pago.metodo` para que el panel
+# desglose ingresos y egresos con el mismo vocabulario (CHECK ck_egreso_metodo).
+METODOS_EGRESO: tuple[str, ...] = ("EFECTIVO", "QR")
+
 
 # --------------------------------------------------------------------------- #
 # Sub-objetos anidados
@@ -40,7 +44,18 @@ class EgresoCreate(BaseModel):
     categoria_gasto: str
     monto: Decimal
     fecha: date
+    # Default EFECTIVO: los clientes viejos que no envíen el campo siguen andando
+    # y caen en el mismo supuesto que el backfill de 0027.
+    metodo: str = "EFECTIVO"
     descripcion: str | None = None
+
+    @field_validator("metodo")
+    @classmethod
+    def _metodo_valido(cls, v: str) -> str:
+        v = (v or "").strip().upper()
+        if v not in METODOS_EGRESO:
+            raise ValueError(f"metodo debe ser uno de {', '.join(METODOS_EGRESO)}")
+        return v
 
     @field_validator("categoria_gasto")
     @classmethod
@@ -79,6 +94,7 @@ class EgresoItem(BaseModel):
     fecha: date
     categoria_gasto: str
     monto: Decimal
+    metodo: str  # EFECTIVO | QR
     sucursal: SucursalRefEgreso | None = None
     descripcion: str | None = None
     registrado_por_nombre: str | None = None

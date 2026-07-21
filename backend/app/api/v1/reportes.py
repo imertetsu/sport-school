@@ -1,7 +1,7 @@
 """Router de Reportes (contrato C1). Bearer + contexto de tenant (RLS).
 
 Endpoints (**solo ADMIN**; ENTRENADOR -> 403):
-- GET /reportes/ingresos?anio=YYYY
+- GET /reportes/ingresos?anio=YYYY&sucursal_id  (ingresos + egresos + utilidad)
 - GET /reportes/asistencia?desde&hasta&sucursal_id&categoria_id
 
 Ambos exigen `Depends(require_role("ADMIN"))`, que se encadena sobre
@@ -35,12 +35,16 @@ router = APIRouter(prefix="/reportes", tags=["reportes"])
 @router.get("/ingresos", response_model=IngresosReporte)
 def reporte_ingresos(
     anio: int | None = Query(default=None, ge=2000, le=2100),
+    sucursal_id: uuid.UUID | None = Query(default=None),
     _user: CurrentUser = Depends(require_role("ADMIN")),
     db: Session = Depends(get_db),
 ) -> IngresosReporte:
-    """Ingresos confirmados por mes del año (default: año actual) (C1)."""
+    """Ingresos, egresos y utilidad por mes del año (default: año actual) (C1).
+
+    `sucursal_id` acota ambas series a esa sucursal (sin él, toda la org).
+    """
     year = anio if anio is not None else datetime.now(UTC).year
-    return svc.ingresos_por_mes(db, anio=year)
+    return svc.ingresos_por_mes(db, anio=year, sucursal_id=sucursal_id)
 
 
 # --------------------------------------------------------------------------- #

@@ -17,6 +17,7 @@ import uuid
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
+from dateutil.relativedelta import relativedelta
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import Response
 from sqlalchemy import func, select
@@ -30,12 +31,14 @@ from app.models.credito import Credito
 from app.models.cuota import Cuota
 from app.models.deportista import Deportista
 from app.models.disciplina import Disciplina
+from app.models.egreso import Egreso
 from app.models.inscripcion import Inscripcion
 from app.models.organizacion import Organizacion
 from app.models.pago import Pago
 from app.models.pago_cuota import PagoCuota
 from app.models.sucursal import Sucursal
 from app.schemas.cobranza import (
+    AdelantarCuotasIn,
     AnularPagoIn,
     CategoriaNombre,
     CuotaAplicada,
@@ -51,6 +54,7 @@ from app.schemas.cobranza import (
     DeportistasActivos,
     GenerarOut,
     IngresosMes,
+    MontoPorMetodo,
     MorosidadItem,
     PagoAnuladoOut,
     PagoEfectivoIn,
@@ -59,6 +63,7 @@ from app.schemas.cobranza import (
     PagoQrIn,
     PagosListOut,
     PanelOut,
+    PanelSucursalItem,
     QrOut,
     RecordatorioIn,
     RecordatorioOut,
@@ -72,7 +77,7 @@ from app.services.deps import (
     get_payment_provider,
     get_whatsapp_port,
 )
-from app.services.generacion import generar_cuotas_org
+from app.services.generacion import generar_cuotas_adelantadas, generar_cuotas_org
 from app.services.recordatorios import enviar_recordatorio_cuota
 
 router = APIRouter(prefix="/cobranza", tags=["cobranza"])
@@ -196,12 +201,32 @@ def listar_cuotas(
 # --------------------------------------------------------------------------- #
 # GET /cobranza/panel
 # --------------------------------------------------------------------------- #
+def _monto_por_metodo(por_metodo: dict[str, Decimal]) -> MontoPorMetodo:
+    """Arma un `MontoPorMetodo` desde `{metodo: monto}` (total = Σ de métodos)."""
+    efectivo = por_metodo.get("EFECTIVO", Decimal("0"))
+    qr = por_metodo.get("QR", Decimal("0"))
+    return MontoPorMetodo(monto=efectivo + qr, efectivo=efectivo, qr=qr)
+
+
+def _utilidad(
+    ingresos: dict[str, Decimal], egresos: dict[str, Decimal]
+) -> MontoPorMetodo:
+    """Utilidad = ingresos - egresos, método a método. Puede ser negativa."""
+    efectivo = ingresos.get("EFECTIVO", Decimal("0")) - egresos.get("EFECTIVO", Decimal("0"))
+    qr = ingresos.get("QR", Decimal("0")) - egresos.get("QR", Decimal("0"))
+    return MontoPorMetodo(monto=efectivo + qr, efectivo=efectivo, qr=qr)
+
+
 @router.get("/panel", response_model=PanelOut)
 def panel(
     _user: CurrentUser = Depends(set_tenant_context),
     db: Session = Depends(get_db),
 ) -> PanelOut:
-    """KPIs + morosidad del Panel de cobranza (C4)."""
+    """KPIs + morosidad del Panel de cobranza (C4).
+
+    Además de los ingresos, devuelve egresos y utilidad del mes con el mismo
+    desglose efectivo/QR, y las tres métricas abiertas por sucursal.
+    """
     hoy = datetime.now(UTC).date()
     inicio_mes = hoy.replace(day=1)
 
@@ -216,10 +241,88 @@ def panel(
         )
         .group_by(Pago.metodo)
     ).all()
-    ingresos_por_metodo = {metodo: monto for metodo, monto in ingresos_rows}
+    ingresos_por_metodo = dict(ingresos_rows)
     ingresos_efectivo = ingresos_por_metodo.get("EFECTIVO", Decimal("0"))
     ingresos_qr = ingresos_por_metodo.get("QR", Decimal("0"))
     ingresos = sum(ingresos_por_metodo.values(), Decimal("0"))
+
+    # Egresos del mes, mismo desglose por método (`egreso.metodo`, 0027). A
+    # diferencia de los ingresos, aquí SÍ se acota el mes por arriba: `egreso.fecha`
+    # la escribe una persona a mano y un mes tipeado de más inflaría el KPI en
+    # silencio (`pago.pagado_en` en cambio lo fija el sistema al cobrar).
+    inicio_mes_sig = inicio_mes + relativedelta(months=1)
+    egresos_rows = db.execute(
+        select(Egreso.metodo, func.coalesce(func.sum(Egreso.monto), 0))
+        .where(Egreso.fecha >= inicio_mes, Egreso.fecha < inicio_mes_sig)
+        .group_by(Egreso.metodo)
+    ).all()
+    egresos_por_metodo = dict(egresos_rows)
+    egresos_efectivo = egresos_por_metodo.get("EFECTIVO", Decimal("0"))
+    egresos_qr = egresos_por_metodo.get("QR", Decimal("0"))
+    egresos = sum(egresos_por_metodo.values(), Decimal("0"))
+
+    # Desglose por sucursal. Los ingresos se atribuyen por la sucursal del
+    # deportista de las cuotas del pago; el DISTINCT evita contar dos veces un
+    # pago que cubre varias cuotas (un pago cubre cuotas de UN deportista).
+    pago_sucursal = (
+        select(
+            PagoCuota.pago_id.label("pago_id"),
+            Deportista.sucursal_id.label("sucursal_id"),
+        )
+        .join(Cuota, Cuota.id == PagoCuota.cuota_id)
+        .join(Inscripcion, Inscripcion.id == Cuota.inscripcion_id)
+        .join(Deportista, Deportista.id == Inscripcion.deportista_id)
+        .distinct()
+        .subquery()
+    )
+    ing_suc_rows = db.execute(
+        select(
+            pago_sucursal.c.sucursal_id,
+            Pago.metodo,
+            func.coalesce(func.sum(Pago.monto), 0),
+        )
+        .join(pago_sucursal, pago_sucursal.c.pago_id == Pago.id)
+        .where(
+            Pago.estado == "CONFIRMADO",
+            Pago.pagado_en >= datetime(inicio_mes.year, inicio_mes.month, 1, tzinfo=UTC),
+        )
+        .group_by(pago_sucursal.c.sucursal_id, Pago.metodo)
+    ).all()
+    egr_suc_rows = db.execute(
+        select(Egreso.sucursal_id, Egreso.metodo, func.coalesce(func.sum(Egreso.monto), 0))
+        .where(Egreso.fecha >= inicio_mes, Egreso.fecha < inicio_mes_sig)
+        .group_by(Egreso.sucursal_id, Egreso.metodo)
+    ).all()
+
+    # sucursal_id (None = "a nivel organización") -> {EFECTIVO: x, QR: y}
+    ing_por_suc: dict[uuid.UUID | None, dict[str, Decimal]] = {}
+    for suc_id, metodo, monto in ing_suc_rows:
+        ing_por_suc.setdefault(suc_id, {})[metodo] = monto
+    egr_por_suc: dict[uuid.UUID | None, dict[str, Decimal]] = {}
+    for suc_id, metodo, monto in egr_suc_rows:
+        egr_por_suc.setdefault(suc_id, {})[metodo] = monto
+
+    sucursales_org = db.execute(
+        select(Sucursal.id, Sucursal.nombre).order_by(Sucursal.nombre)
+    ).all()
+    # Todas las sucursales (aunque no tengan movimiento este mes) + la fila de
+    # egresos a nivel org, solo si existen: así las filas SUMAN el total del panel.
+    claves: list[tuple[uuid.UUID | None, str]] = [(s.id, s.nombre) for s in sucursales_org]
+    if None in ing_por_suc or None in egr_por_suc:
+        claves.append((None, "Sin sucursal (organización)"))
+
+    por_sucursal = [
+        PanelSucursalItem(
+            sucursal_id=suc_id,
+            nombre=nombre,
+            ingresos=_monto_por_metodo(ing_por_suc.get(suc_id, {})),
+            egresos=_monto_por_metodo(egr_por_suc.get(suc_id, {})),
+            utilidad=_utilidad(
+                ing_por_suc.get(suc_id, {}), egr_por_suc.get(suc_id, {})
+            ),
+        )
+        for suc_id, nombre in claves
+    ]
 
     # Deportistas activos: con inscripción ACTIVA. Sucursales/disciplinas distintas.
     activos = db.execute(
@@ -262,8 +365,17 @@ def panel(
         )
     ).one()
 
-    # Crédito a favor: Σ saldos de crédito de la org (KPI nuevo, abonos).
-    credito_total = db.execute(select(func.coalesce(func.sum(Credito.saldo), 0))).scalar_one()
+    # Crédito a favor: Σ saldos de crédito de la org (KPI nuevo, abonos). Solo de
+    # inscripciones ACTIVA de deportistas activos, MISMA regla que cuotas
+    # pendientes/vencidas: el saldo a favor de un alumno dado de baja ya no es
+    # plata aplicable y sumarlo mostraba un KPI que no correspondía a nadie.
+    credito_total = db.execute(
+        select(func.coalesce(func.sum(Credito.saldo), 0))
+        .select_from(Credito)
+        .join(Inscripcion, Inscripcion.id == Credito.inscripcion_id)
+        .join(Deportista, Deportista.id == Inscripcion.deportista_id)
+        .where(Inscripcion.estado == "ACTIVA", Deportista.activo.is_(True))
+    ).scalar_one()
 
     # Morosidad: por deportista, cuotas VENCIDO, con SALDO total adeudado (no monto
     # nominal) y días de mora (desde el vencimiento más antiguo).
@@ -318,6 +430,15 @@ def panel(
 
     return PanelOut(
         ingresos_mes=IngresosMes(monto=ingresos, efectivo=ingresos_efectivo, qr=ingresos_qr),
+        egresos_mes=MontoPorMetodo(
+            monto=egresos, efectivo=egresos_efectivo, qr=egresos_qr
+        ),
+        utilidad_mes=MontoPorMetodo(
+            monto=ingresos - egresos,
+            efectivo=ingresos_efectivo - egresos_efectivo,
+            qr=ingresos_qr - egresos_qr,
+        ),
+        por_sucursal=por_sucursal,
         deportistas_activos=DeportistasActivos(
             count=activos, sucursales=sucursales_count, disciplinas=disciplinas_count
         ),
@@ -720,6 +841,51 @@ def enviar_recordatorio(
         provider_message_id=result.provider_message_id,
         motivo=result.motivo,
     )
+
+
+# --------------------------------------------------------------------------- #
+# POST /cobranza/deportistas/{deportista_id}/cuotas-adelantadas  (pago adelantado)
+# --------------------------------------------------------------------------- #
+@router.post(
+    "/deportistas/{deportista_id}/cuotas-adelantadas", response_model=GenerarOut
+)
+def adelantar_cuotas(
+    deportista_id: uuid.UUID,
+    body: AdelantarCuotasIn,
+    _user: CurrentUser = Depends(require_role("ADMIN")),
+    db: Session = Depends(get_db),
+) -> GenerarOut:
+    """Asegura `meses` cuotas futuras del deportista para poder cobrarlas ya.
+
+    El generador diario solo llega hasta el período corriente, así que una familia
+    que quiere pagar meses por adelantado no tiene cuotas que seleccionar. Esto las
+    crea a pedido con el mismo motor (respeta modo de cobro, día de corte y monto
+    vigente) y en TODAS sus inscripciones ACTIVA (una por disciplina).
+
+    "Asegurar", no "agregar": si ya hay cuotas futuras solo crea las que faltan, así
+    que re-llamar con el mismo `meses` devuelve `creadas: 0` (un doble clic no debe
+    dejar meses de más, que habría que borrar uno por uno). 404 si el deportista no
+    tiene inscripciones activas. RLS scopea al tenant.
+    """
+    activas = db.execute(
+        select(func.count())
+        .select_from(Inscripcion)
+        .where(
+            Inscripcion.deportista_id == deportista_id,
+            Inscripcion.estado == "ACTIVA",
+        )
+    ).scalar_one()
+    if not activas:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="El deportista no tiene inscripciones activas.",
+        )
+
+    creadas = generar_cuotas_adelantadas(
+        db, deportista_id=deportista_id, meses=body.meses
+    )
+    db.commit()  # `get_db` commitea tras la respuesta; aquí ya devolvemos el conteo
+    return GenerarOut(creadas=creadas)
 
 
 # --------------------------------------------------------------------------- #

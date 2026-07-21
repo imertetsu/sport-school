@@ -32,23 +32,46 @@ import { Reportes } from './Reportes';
 
 const ANIO = new Date().getFullYear();
 
+// Helper: arma un mes con sus 3 series (utilidad = ingresos - egresos).
+function mes(
+  n: number,
+  etiqueta: string,
+  monto: string,
+  egresos = '0',
+  n_pagos = 0,
+): IngresosReporte['meses'][number] {
+  return {
+    mes: n,
+    etiqueta,
+    monto,
+    n_pagos,
+    egresos,
+    n_egresos: egresos === '0' ? 0 : 1,
+    utilidad: String(Number(monto) - Number(egresos)),
+  };
+}
+
 const INGRESOS: IngresosReporte = {
   anio: ANIO,
   total: '12400',
   n_pagos: 31,
+  total_egresos: '2400',
+  n_egresos: 4,
+  utilidad: '10000',
+  sucursal_id: null,
   meses: [
-    { mes: 1, etiqueta: 'ene', monto: '0', n_pagos: 0 },
-    { mes: 2, etiqueta: 'feb', monto: '0', n_pagos: 0 },
-    { mes: 3, etiqueta: 'mar', monto: '1500', n_pagos: 4 },
-    { mes: 4, etiqueta: 'abr', monto: '2000', n_pagos: 5 },
-    { mes: 5, etiqueta: 'may', monto: '3400', n_pagos: 8 },
-    { mes: 6, etiqueta: 'jun', monto: '5500', n_pagos: 14 },
-    { mes: 7, etiqueta: 'jul', monto: '0', n_pagos: 0 },
-    { mes: 8, etiqueta: 'ago', monto: '0', n_pagos: 0 },
-    { mes: 9, etiqueta: 'sep', monto: '0', n_pagos: 0 },
-    { mes: 10, etiqueta: 'oct', monto: '0', n_pagos: 0 },
-    { mes: 11, etiqueta: 'nov', monto: '0', n_pagos: 0 },
-    { mes: 12, etiqueta: 'dic', monto: '0', n_pagos: 0 },
+    mes(1, 'ene', '0'),
+    mes(2, 'feb', '0'),
+    mes(3, 'mar', '1500', '400', 4),
+    mes(4, 'abr', '2000', '500', 5),
+    mes(5, 'may', '3400', '900', 8),
+    mes(6, 'jun', '5500', '600', 14),
+    mes(7, 'jul', '0'),
+    mes(8, 'ago', '0'),
+    mes(9, 'sep', '0'),
+    mes(10, 'oct', '0'),
+    mes(11, 'nov', '0'),
+    mes(12, 'dic', '0'),
   ],
 };
 
@@ -86,6 +109,11 @@ const ASISTENCIA: AsistenciaReporte = {
       ausentes: 2,
       total_marcas: 20,
       pct_presente: 90,
+      marcas: [
+        { fecha: '2026-03-02', estado: 'PRESENTE' },
+        { fecha: '2026-03-09', estado: 'AUSENTE' },
+        { fecha: '2026-03-16', estado: 'PRESENTE' },
+      ],
     },
   ],
 };
@@ -109,27 +137,101 @@ describe('Reportes', () => {
   });
   afterEach(() => vi.clearAllMocks());
 
-  it('renderiza las 12 barras de ingresos con altura proporcional al monto', async () => {
+  it('renderiza 12 columnas con las 3 series y altura proporcional al monto', async () => {
     const { container } = renderReportes();
-    await screen.findByText(`Total ${ANIO}`);
+    await screen.findByText(`Ingresos ${ANIO}`);
 
-    const barras = container.querySelectorAll<HTMLElement>('.barchart__bar');
-    expect(barras.length).toBe(12);
+    const columnas = container.querySelectorAll<HTMLElement>('.barchart__col');
+    expect(columnas.length).toBe(12);
+    // Cada mes dibuja ingresos, egresos y utilidad.
+    expect(columnas[0].querySelectorAll('.barchart__bar').length).toBe(3);
 
-    // El mes pico (jun, 5500 = max) llega al 100%; los meses sin ingresos a 0%.
-    const junio = barras[5];
-    expect(junio.style.height).toBe('100%');
-    expect(barras[0].style.height).toBe('0%');
-    // Los meses vacíos llevan la clase placeholder.
-    expect(barras[0].className).toContain('barchart__bar--empty');
+    // El pico del año (jun, 5500 de ingresos) llega al 100% de la escala.
+    const junio = columnas[5].querySelector<HTMLElement>('.barchart__bar--ingreso');
+    expect(junio?.style.height).toBe('100%');
+    // Su egreso (600) y su utilidad (4900) escalan contra el mismo máximo.
+    const junioEgreso = columnas[5].querySelector<HTMLElement>('.barchart__bar--egreso');
+    expect(junioEgreso?.style.height).toBe(`${(600 / 5500) * 100}%`);
+    const junioUtil = columnas[5].querySelector<HTMLElement>('.barchart__bar--utilidad');
+    expect(junioUtil?.style.height).toBe(`${(4900 / 5500) * 100}%`);
+
+    // Mes sin movimiento: las 3 barras a 0% y con la clase placeholder.
+    const enero = columnas[0].querySelectorAll<HTMLElement>('.barchart__bar');
+    enero.forEach((b) => {
+      expect(b.style.height).toBe('0%');
+      expect(b.className).toContain('barchart__bar--empty');
+    });
   });
 
-  it('muestra el total del año formateado', async () => {
+  it('sin meses en pérdida, la línea de cero queda en el piso del gráfico', async () => {
     const { container } = renderReportes();
-    await screen.findByText(`Total ${ANIO}`);
-    const total = container.querySelector('.reportes__total-value');
-    // Total formateado por org (incluye "12.400" en es-BO; no comprobamos símbolo).
-    expect(total?.textContent).toMatch(/12.?400/);
+    await screen.findByText(`Ingresos ${ANIO}`);
+    const cero = container.querySelector<HTMLElement>('.barchart__zero');
+    expect(cero?.style.bottom).toBe('0%');
+  });
+
+  it('dibuja la utilidad negativa por debajo de la línea de cero', async () => {
+    // Un solo mes: 100 de ingresos y 300 de egresos -> utilidad -200.
+    ingresosMock.mockResolvedValue({
+      ...INGRESOS,
+      total: '100',
+      total_egresos: '300',
+      utilidad: '-200',
+      meses: [mes(1, 'ene', '100', '300', 1), ...INGRESOS.meses.slice(1).map((m) => ({ ...m, monto: '0', egresos: '0', utilidad: '0', n_pagos: 0, n_egresos: 0 }))],
+    });
+    const { container } = renderReportes();
+    await screen.findByText(`Ingresos ${ANIO}`);
+
+    // Escala: max 300 (egresos), min -200 (utilidad) -> span 500, cero al 40%.
+    const cero = container.querySelector<HTMLElement>('.barchart__zero');
+    expect(cero?.style.bottom).toBe('40%');
+
+    const enero = container.querySelectorAll<HTMLElement>('.barchart__col')[0];
+    const utilidad = enero.querySelector<HTMLElement>('.barchart__bar--utilidad');
+    // 200/500 = 40% de alto, arrancando 40% por debajo del cero -> bottom 0%.
+    expect(utilidad?.style.height).toBe('40%');
+    expect(utilidad?.style.bottom).toBe('0%');
+  });
+
+  it('muestra los totales del año de ingresos, egresos y utilidad', async () => {
+    const { container } = renderReportes();
+    await screen.findByText(`Ingresos ${ANIO}`);
+    // Montos formateados por org (es-BO usa "12.400"; no comprobamos símbolo).
+    expect(
+      container.querySelector('.reportes__total-value--ingreso')?.textContent,
+    ).toMatch(/12.?400/);
+    expect(container.querySelector('.reportes__total-value--egreso')?.textContent).toMatch(
+      /2.?400/,
+    );
+    expect(
+      container.querySelector('.reportes__total-value--utilidad')?.textContent,
+    ).toMatch(/10.?000/);
+  });
+
+  it('marca la utilidad anual negativa con el estilo de pérdida', async () => {
+    ingresosMock.mockResolvedValue({ ...INGRESOS, utilidad: '-500' });
+    const { container } = renderReportes();
+    await screen.findByText(`Ingresos ${ANIO}`);
+    expect(container.querySelector('.reportes__total-value--perdida')).not.toBeNull();
+    expect(container.querySelector('.reportes__total-value--utilidad')).toBeNull();
+  });
+
+  it('recarga las finanzas al filtrar por sucursal', async () => {
+    const user = userEvent.setup();
+    renderReportes();
+    await screen.findByText(`Ingresos ${ANIO}`);
+    ingresosMock.mockClear();
+
+    // El selector de sucursal del gráfico financiero (el primero de la página).
+    const [sucursalFin] = screen.getAllByLabelText('Sucursal');
+    await user.selectOptions(sucursalFin, 's1');
+    await waitFor(() =>
+      expect(ingresosMock).toHaveBeenCalledWith(ANIO, expect.anything(), 's1'),
+    );
+    // Al filtrar se avisa que los egresos a nivel org quedan fuera.
+    expect(
+      await screen.findByText(/no se incluyen los egresos registrados a nivel de/i),
+    ).toBeInTheDocument();
   });
 
   it('renderiza la tabla de asistencia por categoría con datos mock', async () => {
@@ -157,6 +259,34 @@ describe('Reportes', () => {
     expect(tabla.getByText('90%')).toBeInTheDocument();
   });
 
+  it('despliega las fechas de asistencia de un deportista', async () => {
+    const user = userEvent.setup();
+    renderReportes();
+    const tabla = await screen.findByRole('table', { name: 'Asistencia por deportista' });
+    const scoped = within(tabla);
+    // Colapsado: no se ven las fechas todavía.
+    expect(scoped.queryByText('Ausente')).not.toBeInTheDocument();
+
+    await user.click(scoped.getByRole('button', { name: /Mateo Quispe Mamani/ }));
+
+    // Desplegado: cada marca con su fecha y su estado.
+    expect(scoped.getAllByText('Presente')).toHaveLength(2);
+    expect(scoped.getByText('Ausente')).toBeInTheDocument();
+  });
+
+  it('vuelve a colapsar el detalle al pulsar de nuevo', async () => {
+    const user = userEvent.setup();
+    renderReportes();
+    const tabla = await screen.findByRole('table', { name: 'Asistencia por deportista' });
+    const scoped = within(tabla);
+    const toggle = scoped.getByRole('button', { name: /Mateo Quispe Mamani/ });
+
+    await user.click(toggle);
+    expect(scoped.getByText('Ausente')).toBeInTheDocument();
+    await user.click(toggle);
+    expect(scoped.queryByText('Ausente')).not.toBeInTheDocument();
+  });
+
   it('muestra el % global de asistencia como KPI', async () => {
     const { container } = renderReportes();
     await screen.findByText('% Asistencia global');
@@ -176,13 +306,13 @@ describe('Reportes', () => {
   it('recarga ingresos al cambiar el año seleccionado', async () => {
     const user = userEvent.setup();
     renderReportes();
-    await screen.findByText(`Total ${ANIO}`);
+    await screen.findByText(`Ingresos ${ANIO}`);
     ingresosMock.mockClear();
 
     const select = screen.getByLabelText('Año');
     await user.selectOptions(select, String(ANIO - 1));
     await waitFor(() =>
-      expect(ingresosMock).toHaveBeenCalledWith(ANIO - 1, expect.anything()),
+      expect(ingresosMock).toHaveBeenCalledWith(ANIO - 1, expect.anything(), undefined),
     );
   });
 

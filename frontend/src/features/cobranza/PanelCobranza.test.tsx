@@ -46,6 +46,32 @@ import { PanelCobranza } from './PanelCobranza';
 
 const PANEL: PanelData = {
   ingresos_mes: { monto: '28450', efectivo: '20000', qr: '8450' },
+  egresos_mes: { monto: '6450', efectivo: '5000', qr: '1450' },
+  utilidad_mes: { monto: '22000', efectivo: '15000', qr: '7000' },
+  por_sucursal: [
+    {
+      sucursal_id: 's1',
+      nombre: 'Centro',
+      ingresos: { monto: '18450', efectivo: '13000', qr: '5450' },
+      egresos: { monto: '4000', efectivo: '3000', qr: '1000' },
+      utilidad: { monto: '14450', efectivo: '10000', qr: '4450' },
+    },
+    {
+      sucursal_id: 's2',
+      nombre: 'Cala Cala',
+      ingresos: { monto: '10000', efectivo: '7000', qr: '3000' },
+      egresos: { monto: '2000', efectivo: '1550', qr: '450' },
+      utilidad: { monto: '8000', efectivo: '5450', qr: '2550' },
+    },
+    // Gastos cargados sin sucursal: fila propia, cierra en pérdida.
+    {
+      sucursal_id: null,
+      nombre: 'Sin sucursal (organización)',
+      ingresos: { monto: '0', efectivo: '0', qr: '0' },
+      egresos: { monto: '450', efectivo: '450', qr: '0' },
+      utilidad: { monto: '-450', efectivo: '-450', qr: '0' },
+    },
+  ],
   deportistas_activos: { count: 142, sucursales: 2, disciplinas: 3 },
   cuotas_pendientes: { count: 23, monto: '5290' },
   cuotas_vencidas: { count: 7, monto: '1680' },
@@ -131,6 +157,56 @@ describe('PanelCobranza', () => {
     expect(screen.getByText('en 2 sucursales · 3 disciplinas')).toBeInTheDocument();
   });
 
+  it('muestra las KPIs de Egresos y Utilidad del mes con su desglose', async () => {
+    const { container } = renderPanel();
+    expect(await screen.findByText('Egresos del mes')).toBeInTheDocument();
+    expect(screen.getByText('Utilidad del mes')).toBeInTheDocument();
+    // Las 3 KPIs financieras (ingresos, egresos, utilidad) llevan desglose.
+    expect(container.querySelectorAll('.kpi-metodo--efectivo')).toHaveLength(3);
+    expect(container.querySelectorAll('.kpi-metodo--qr')).toHaveLength(3);
+  });
+
+  it('resalta la Utilidad del mes en rojo cuando el mes cierra en pérdida', async () => {
+    panelMock.mockResolvedValue({
+      ...PANEL,
+      utilidad_mes: { monto: '-1200', efectivo: '-1200', qr: '0' },
+      // Sin cuotas vencidas, para que la única card roja sea la de utilidad.
+      cuotas_vencidas: { count: 0, monto: '0' },
+    });
+    const { container } = renderPanel();
+    await screen.findByText('Utilidad del mes');
+    const rojas = container.querySelectorAll('.kpi-card--overdue');
+    // Cuotas vencidas (siempre roja) + Utilidad en pérdida.
+    expect(rojas.length).toBe(2);
+    expect(
+      Array.from(rojas).some((c) => c.textContent?.includes('Utilidad del mes')),
+    ).toBe(true);
+  });
+
+  it('renderiza el resumen del mes por sucursal con las 3 métricas', async () => {
+    renderPanel();
+    const tabla = await screen.findByRole('table', { name: 'Resumen del mes por sucursal' });
+    const scoped = within(tabla);
+    expect(scoped.getByText('Centro')).toBeInTheDocument();
+    expect(scoped.getByText('Cala Cala')).toBeInTheDocument();
+    // Los gastos sin sucursal tienen su propia fila (para que las filas sumen).
+    expect(scoped.getByText('Sin sucursal (organización)')).toBeInTheDocument();
+    expect(scoped.getAllByRole('columnheader').map((h) => h.textContent)).toEqual([
+      'Sucursal',
+      'Ingresos',
+      'Egresos',
+      'Utilidad',
+    ]);
+  });
+
+  it('marca en rojo la utilidad negativa de una fila por sucursal', async () => {
+    const { container } = renderPanel();
+    await screen.findByRole('table', { name: 'Resumen del mes por sucursal' });
+    // Solo la fila "Sin sucursal" cierra en pérdida (-450).
+    const perdidas = container.querySelectorAll('.panel-fin__total--perdida');
+    expect(perdidas.length).toBe(1);
+  });
+
   it('resalta en rojo la card de Cuotas vencidas', async () => {
     const { container } = renderPanel();
     await screen.findByText('Cuotas vencidas');
@@ -156,10 +232,12 @@ describe('PanelCobranza', () => {
       expect(screen.getAllByText('Mateo Quispe Mamani').length).toBeGreaterThan(0),
     );
     expect(screen.getByText('Valentina Condori Huanca')).toBeInTheDocument();
-    expect(screen.getByText('Centro')).toBeInTheDocument();
-    expect(screen.getByText('Cala Cala')).toBeInTheDocument();
+    // Acotado a la tabla de cuotas: el resumen por sucursal repite los nombres.
+    const cuotas = within(screen.getByRole('table', { name: 'Cuotas' }));
+    expect(cuotas.getByText('Centro')).toBeInTheDocument();
+    expect(cuotas.getByText('Cala Cala')).toBeInTheDocument();
     // método de la cuota pagada
-    expect(screen.getByText('QR')).toBeInTheDocument();
+    expect(cuotas.getByText('QR')).toBeInTheDocument();
   });
 
   it('lista las alertas de morosidad', async () => {
