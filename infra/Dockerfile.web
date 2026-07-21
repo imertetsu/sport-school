@@ -59,10 +59,37 @@ server {
     location /docs           { set $api_upstream api; proxy_pass http://$api_upstream:8000$request_uri; proxy_set_header Host $host; }
     location /redoc          { set $api_upstream api; proxy_pass http://$api_upstream:8000$request_uri; proxy_set_header Host $host; }
 
+    # Assets del build (Vite les pone un hash en el nombre: index-RhhgbB1A.js).
+    # El contenido de esa URL no cambia nunca -> se cachean para siempre. Un
+    # deploy genera nombres nuevos, asi que no hay riesgo de servir algo viejo.
+    location /assets/ {
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        try_files $uri =404;
+    }
+
+    # HTML de entrada: SIEMPRE revalidar. Es el archivo que apunta a los assets
+    # con hash, asi que si el navegador se queda con una copia vieja sigue
+    # cargando el bundle anterior despues de un deploy (el clasico "no veo los
+    # cambios hasta que hago Ctrl+Shift+R").
+    # `no-cache` no es "no guardes": guarda, pero pregunta antes de usar. Con el
+    # ETag el servidor suele responder 304, asi que casi no cuesta trafico.
+    location = /index.html {
+        add_header Cache-Control "no-cache";
+    }
+    location = /landing.html {
+        add_header Cache-Control "no-cache";
+    }
+
     # Landing page (marketing) en la RAIZ. Es lo primero que ve un visitante;
     # los botones "Probar demo"/"Iniciar sesion" navegan a /login (la SPA).
     # `location = /` (match exacto) gana sobre el prefijo `location /`.
+    # El Cache-Control va REPETIDO aca a proposito: este try_files termina en
+    # `=404`, asi que sirve /landing.html como archivo sin volver a evaluar
+    # locations (no pasa por el `location = /landing.html` de arriba). El
+    # `location /` de la SPA si redirige internamente a /index.html y por eso
+    # alli no hace falta.
     location = / {
+        add_header Cache-Control "no-cache";
         try_files /landing.html =404;
     }
 
