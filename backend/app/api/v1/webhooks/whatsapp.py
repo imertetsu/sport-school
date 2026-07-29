@@ -104,4 +104,17 @@ async def whatsapp_status(request: Request) -> Response | dict[str, str]:
                     entrantes[0].get("from"),
                 )
 
+            # Alta/aprobación/rechazo de una PLANTILLA (campo
+            # `message_template_status_update`). Es el aviso de que el canal
+            # oficial quedó habilitado para el cron de cobranza, que no puede
+            # salir hasta que Meta apruebe. Sin esto habría que ir a preguntar.
+            if change.get("field") == "message_template_status_update":
+                logger.info(
+                    "webhook whatsapp PLANTILLA: %s [%s] -> %s%s",
+                    value.get("message_template_name"),
+                    value.get("message_template_language"),
+                    value.get("event"),
+                    f" (motivo: {value['reason']})" if value.get("reason") else "",
+                )
+
     return {"status": "ok"}
