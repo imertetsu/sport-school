@@ -79,6 +79,11 @@ async def whatsapp_status(request: Request) -> Response | dict[str, str]:
 
     # Estructura Meta: entry[].changes[].value.statuses[] = [{id, status, ...}].
     for entry in payload.get("entry", []) or []:
+        # `entry.id` es el WABA (la cuenta de WhatsApp Business) que originó el
+        # evento. Se loguea porque es el ÚNICO lugar donde el sistema lo ve: la
+        # Graph API no deja llegar a la WABA desde el id del número ni desde el
+        # de la app, y es el dato que hace falta para consultar las plantillas.
+        logger.info("webhook whatsapp: waba_id=%s", entry.get("id"))
         for change in entry.get("changes", []) or []:
             value = change.get("value", {}) or {}
             for estado in value.get("statuses", []) or []:
@@ -86,6 +91,17 @@ async def whatsapp_status(request: Request) -> Response | dict[str, str]:
                     "webhook whatsapp estado: message_id=%s status=%s",
                     estado.get("id"),
                     estado.get("status"),
+                )
+            # Mensajes ENTRANTES (el tutor escribe). No se procesan aquí —de eso
+            # se ocupa `/webhooks/whatsapp-inbound`—, pero dejar rastro de que
+            # llegaron distingue "el webhook no está suscrito" de "no escribió
+            # nadie", que sin esto se ven igual: un 200 mudo.
+            entrantes = value.get("messages") or []
+            if entrantes:
+                logger.info(
+                    "webhook whatsapp: %d mensaje(s) entrante(s) de %s",
+                    len(entrantes),
+                    entrantes[0].get("from"),
                 )
 
     return {"status": "ok"}
