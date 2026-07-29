@@ -4,7 +4,16 @@ Envía recordatorios de cuota a los tutores responsables de pago vía el puerto
 `WhatsAppPort`. **Epic pagos-qr-comprobante (C7):** adjunta el **QR estático de la
 escuela** (`qr_cobro`, subido por el ADMIN) como **imagen** (`send_image`) con un
 caption (deportista + monto + escuela + vence); si la escuela **no** tiene QR subido,
-**degrada al texto** (`send_text`) — sin romper el flujo. La conciliación de este pago
+**degrada al texto** (`send_text`) — sin romper el flujo.
+
+**Canal oficial (Meta):** cuando el puerto declara `requiere_plantilla()`, el envío
+sale como **plantilla pre-aprobada** (`send_template`) con el QR en la **cabecera**.
+Motivo: este recordatorio INICIA la conversación y Meta solo acepta texto/imagen
+libres dentro de la ventana de 24 h desde el último mensaje del tutor. El texto de
+la plantilla aprobada debe decir lo MISMO que `_texto_recordatorio` para que el
+tutor reciba el mismo mensaje por cualquiera de los dos canales.
+
+La conciliación de este pago
 es **asistida-manual** (el tutor responde con la captura → cola "Pagos por verificar");
 por eso este recordatorio **ya NO crea** el `crear_pago_qr` reconciliable OpenBCB
 (OpenBCB fuera de este epic).
@@ -41,8 +50,10 @@ from sqlalchemy.orm import Session
 
 from app.core.org_context import set_current_org_id
 from app.domain.ports.whatsapp import (
+    WhatsAppImage,
     WhatsAppImageMessage,
     WhatsAppPort,
+    WhatsAppTemplateMessage,
     WhatsAppTextMessage,
 )
 from app.models.cuota import Cuota
@@ -77,6 +88,34 @@ _MESES_MAY = (
 def _mes_may(d: date) -> str:
     """Mes en MAYÚSCULAS, p.ej. `OCTUBRE` (la cuota se rotula por su vencimiento)."""
     return _MESES_MAY[d.month]
+
+
+# --------------------------------------------------------------------------- #
+# Plantillas del canal OFICIAL (Meta)
+# --------------------------------------------------------------------------- #
+# Nombres de las plantillas aprobadas en Meta. El canal oficial no deja escribir
+# primero con texto libre (ventana de 24 h), así que el cron sale por aquí. El
+# texto vive aprobado del lado de Meta; el de `_texto_recordatorio` debe decir lo
+# MISMO para que el tutor reciba el mismo mensaje por cualquiera de los dos
+# canales. Los 5 parámetros van en este orden EXACTO:
+#   {{1}} deportista · {{2}} escuela · {{3}} meses · {{4}} vencimiento · {{5}} monto
+# La cabecera es una IMAGEN: el QR de cobro de la escuela.
+TEMPLATE_MORA = "recordatorio_mora"
+TEMPLATE_PROXIMO = "recordatorio_proximo_vencimiento"
+TEMPLATE_LANG = "es"
+
+
+def _template_params(
+    *, deportista: str, escuela: str, meses: list[str], vence: str, monto: Decimal
+) -> list[str]:
+    """Los 5 parámetros posicionales de la plantilla, en el orden aprobado."""
+    return [
+        deportista,
+        escuela,
+        ", ".join(meses) if meses else "—",
+        vence,
+        f"{monto:.2f}",
+    ]
 
 
 def _texto_recordatorio(
@@ -303,18 +342,43 @@ def enviar_recordatorio_cuota(
     )
 
     qr = db.execute(select(QrCobro).where(QrCobro.org_id == cuota.org_id)).scalar_one_or_none()
-    if qr is not None:
-        # QR subido: se reenvía tal cual como imagen (no se decodifica) + caption.
+    qr_b64 = base64.b64encode(qr.imagen).decode("ascii") if qr is not None else None
+
+    if port.requiere_plantilla() and qr_b64 is not None:
+        # Canal OFICIAL (Meta): el recordatorio ARRANCA la conversación, así que el
+        # texto libre no llega (ventana de 24 h). Sale como plantilla aprobada, con
+        # el QR en la cabecera: es el único modo de que la imagen viaje en un
+        # mensaje iniciado por la escuela.
+        result = port.send_template(
+            WhatsAppTemplateMessage(
+                to=telefono,
+                template_name=(TEMPLATE_MORA if tipo == "MOROSIDAD" else TEMPLATE_PROXIMO),
+                lang_code=TEMPLATE_LANG,
+                body_params=_template_params(
+                    deportista=nombre,
+                    escuela=nombre_escuela,
+                    meses=meses,
+                    vence=vence_ddmmyyyy,
+                    monto=monto,
+                ),
+                header_image=WhatsAppImage(data_url=f"data:{qr.mime};base64,{qr_b64}"),
+            )
+        )
+    elif qr_b64 is not None:
+        # Canal libre (sidecar/mock): QR tal cual como imagen (no se decodifica) + caption.
         result = port.send_image(
             WhatsAppImageMessage(
                 to=telefono,
-                image_b64=base64.b64encode(qr.imagen).decode("ascii"),
+                image_b64=qr_b64,
                 mime=qr.mime,
                 caption=cuerpo,
             )
         )
     else:
-        # Sin QR: degrada al texto (no rompe el flujo).
+        # Sin QR: degrada al texto (no rompe el flujo). En el canal oficial este
+        # texto solo llega si el tutor escribió en las últimas 24 h — la plantilla
+        # exige la cabecera y sin QR no se puede rellenar. Queda FALLIDO y logueado,
+        # que es más honesto que fingir un envío: la escuela debe subir su QR.
         result = port.send_text(WhatsAppTextMessage(to=telefono, body=cuerpo))
 
     # 5) Resultado: ENVIADO solo si el proveedor aceptó.

@@ -46,6 +46,15 @@ def _partir_data_url(data_url: str) -> tuple[str, str]:
 class MetaCloudWhatsAppAdapter(WhatsAppPort):
     """Cliente de la Cloud API de WhatsApp (Meta Graph)."""
 
+    def requiere_plantilla(self) -> bool:
+        """True: Meta exige plantilla aprobada fuera de la ventana de 24 h.
+
+        `send_text`/`send_image` solo llegan si el tutor escribió en las últimas
+        24 h; si no, Meta rechaza con el error 131047. El cron de cobranza escribe
+        primero, así que debe salir por `send_template`.
+        """
+        return True
+
     def _post(self, body: dict[str, Any]) -> WhatsAppSendResult:
         """POST `/messages` con `body` ya armado. No lanza: reporta vía `ok`/`error`.
 

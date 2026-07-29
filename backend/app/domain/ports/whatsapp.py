@@ -102,6 +102,23 @@ class WhatsAppSendResult:
 class WhatsAppPort(Protocol):
     """Envía mensajes de plantilla pre-aprobada vía WhatsApp."""
 
+    def requiere_plantilla(self) -> bool:
+        """¿El canal exige una plantilla pre-aprobada para INICIAR la conversación?
+
+        La API oficial de Meta solo deja mandar texto/imagen libres dentro de la
+        ventana de servicio al cliente (24 h desde el último mensaje DEL tutor).
+        Para escribirle primero a alguien —que es exactamente lo que hace el cron
+        de cobranza— hace falta una plantilla aprobada. Los canales no-oficiales
+        no tienen esa restricción.
+
+        El dominio consulta esta capacidad para elegir CÓMO enviar; sigue sin
+        saber qué proveedor hay detrás (eso lo resuelve la fábrica por config).
+
+        Default `False` (canal libre). Solo el adaptador de Meta lo sobreescribe;
+        como los adaptadores heredan de este Protocol, no hace falta tocarlos.
+        """
+        return False
+
     def send_template(self, msg: WhatsAppTemplateMessage) -> WhatsAppSendResult:
         """Envía `msg` y devuelve el resultado (no lanza; reporta vía `ok`/`error`)."""
         ...

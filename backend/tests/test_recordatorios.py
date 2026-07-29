@@ -552,6 +552,201 @@ def test_c7_sin_qr_degrada_a_texto(app_engine: Engine, recordatorio_proximo: dic
 
 
 # --------------------------------------------------------------------------- #
+# 5-bis) Canal OFICIAL (Meta): el recordatorio sale por PLANTILLA
+#
+# El recordatorio INICIA la conversación y Meta solo acepta texto/imagen libres
+# dentro de la ventana de 24 h. Con un puerto que declara `requiere_plantilla()`,
+# el envío debe salir como plantilla aprobada con el QR en la CABECERA.
+# --------------------------------------------------------------------------- #
+class _MockOficial(MockWhatsAppAdapter):
+    """Mock que se comporta como el canal oficial (exige plantilla)."""
+
+    def requiere_plantilla(self) -> bool:
+        return True
+
+
+def test_mock_libre_no_requiere_plantilla() -> None:
+    """El default del puerto es canal libre: solo Meta lo sobreescribe (sin BD)."""
+    assert MockWhatsAppAdapter().requiere_plantilla() is False
+
+
+def test_meta_requiere_plantilla() -> None:
+    """El adaptador de Meta sí exige plantilla (sin BD, no toca la red)."""
+    from app.adapters.whatsapp.meta import MetaCloudWhatsAppAdapter
+
+    assert MetaCloudWhatsAppAdapter().requiere_plantilla() is True
+
+
+@pytest.mark.db
+def test_canal_oficial_envia_plantilla_con_qr_en_cabecera(
+    app_engine: Engine, recordatorio_morosidad: dict
+) -> None:
+    """Con QR y canal oficial: send_template (no imagen libre) + QR de cabecera."""
+    from app.services.recordatorios import (
+        TEMPLATE_MORA,
+        enviar_recordatorio_cuota,
+    )
+
+    org = recordatorio_morosidad["org"]
+    cuota_id = recordatorio_morosidad["cuota"]
+    port = _MockOficial()
+
+    with app_engine.begin() as conn:
+        _set_org(conn, org)
+        conn.execute(
+            text(
+                "INSERT INTO qr_cobro (id, org_id, imagen, mime, tamano_bytes, "
+                "created_at, updated_at) VALUES (:id,:org,:img,'image/png',3,now(),now())"
+            ),
+            {"id": str(uuid.uuid4()), "org": str(org), "img": b"PNG"},
+        )
+
+    with Session(app_engine, expire_on_commit=False) as db:
+        _set_org(db, org)
+        cuota = _get_cuota(db, cuota_id)
+        res = enviar_recordatorio_cuota(
+            db, cuota=cuota, tipo="MOROSIDAD", hoy=date(2026, 6, 20), port=port
+        )
+        db.commit()
+
+    assert res.enviado is True and res.motivo == "ok"
+    # Sale por plantilla, NO por los canales libres (que Meta rechazaría).
+    assert len(port.sent) == 1, "canal oficial ⇒ send_template"
+    assert port.sent_image == [] and port.sent_text == []
+
+    msg = port.sent[0]
+    assert msg.template_name == TEMPLATE_MORA
+    # El QR viaja en la CABECERA: es el único modo de adjuntar imagen a un
+    # mensaje iniciado por la escuela.
+    assert msg.header_image is not None
+    assert msg.header_image.data_url is not None
+    assert msg.header_image.data_url.startswith("data:image/png;base64,")
+    assert base64.b64decode(msg.header_image.data_url.split(",", 1)[1]) == b"PNG"
+    # 5 parámetros en el orden aprobado: deportista, escuela, meses, vence, monto.
+    assert len(msg.body_params) == 5
+    # Apellido primero, como en todo el resto de la app ("ANTEZANA RODRÍGUEZ LUIS…").
+    assert msg.body_params[0] == "Rojas Camila"
+    assert msg.body_params[4] == "250.00"
+
+
+@pytest.mark.db
+def test_canal_oficial_usa_la_plantilla_del_tipo(
+    app_engine: Engine, recordatorio_proximo: dict
+) -> None:
+    """PROXIMO_VENCIMIENTO usa su propia plantilla, no la de mora."""
+    from app.services.recordatorios import (
+        TEMPLATE_MORA,
+        TEMPLATE_PROXIMO,
+        enviar_recordatorio_cuota,
+    )
+
+    org = recordatorio_proximo["org"]
+    cuota_id = recordatorio_proximo["cuota"]
+    port = _MockOficial()
+
+    with app_engine.begin() as conn:
+        _set_org(conn, org)
+        conn.execute(
+            text(
+                "INSERT INTO qr_cobro (id, org_id, imagen, mime, tamano_bytes, "
+                "created_at, updated_at) VALUES (:id,:org,:img,'image/png',3,now(),now())"
+            ),
+            {"id": str(uuid.uuid4()), "org": str(org), "img": b"PNG"},
+        )
+
+    with Session(app_engine, expire_on_commit=False) as db:
+        _set_org(db, org)
+        cuota = _get_cuota(db, cuota_id)
+        enviar_recordatorio_cuota(
+            db, cuota=cuota, tipo="PROXIMO_VENCIMIENTO", hoy=date(2026, 6, 7), port=port
+        )
+        db.commit()
+
+    assert port.sent[0].template_name == TEMPLATE_PROXIMO != TEMPLATE_MORA
+
+
+@pytest.mark.db
+def test_canal_libre_sigue_usando_imagen(app_engine: Engine, recordatorio_proximo: dict) -> None:
+    """Regresión: el sidecar no-oficial NO cambia — sigue mandando imagen + caption."""
+    from app.services.recordatorios import enviar_recordatorio_cuota
+
+    org = recordatorio_proximo["org"]
+    cuota_id = recordatorio_proximo["cuota"]
+    port = MockWhatsAppAdapter()  # canal libre (requiere_plantilla() == False)
+
+    with app_engine.begin() as conn:
+        _set_org(conn, org)
+        conn.execute(
+            text(
+                "INSERT INTO qr_cobro (id, org_id, imagen, mime, tamano_bytes, "
+                "created_at, updated_at) VALUES (:id,:org,:img,'image/png',3,now(),now())"
+            ),
+            {"id": str(uuid.uuid4()), "org": str(org), "img": b"PNG"},
+        )
+
+    with Session(app_engine, expire_on_commit=False) as db:
+        _set_org(db, org)
+        cuota = _get_cuota(db, cuota_id)
+        enviar_recordatorio_cuota(
+            db, cuota=cuota, tipo="PROXIMO_VENCIMIENTO", hoy=date(2026, 6, 7), port=port
+        )
+        db.commit()
+
+    assert len(port.sent_image) == 1 and port.sent == []
+
+
+@pytest.mark.db
+def test_canal_oficial_sin_qr_degrada_a_texto(
+    app_engine: Engine, recordatorio_proximo: dict
+) -> None:
+    """Sin QR no se puede rellenar la cabecera: degrada a texto (no inventa plantilla).
+
+    En producción ese texto Meta lo rechazaría fuera de la ventana de 24 h y la fila
+    quedaría FALLIDO — la señal correcta para que la escuela suba su QR.
+    """
+    from app.services.recordatorios import enviar_recordatorio_cuota
+
+    org = recordatorio_proximo["org"]
+    cuota_id = recordatorio_proximo["cuota"]
+    port = _MockOficial()
+
+    with Session(app_engine, expire_on_commit=False) as db:
+        _set_org(db, org)
+        cuota = _get_cuota(db, cuota_id)
+        enviar_recordatorio_cuota(
+            db, cuota=cuota, tipo="PROXIMO_VENCIMIENTO", hoy=date(2026, 6, 7), port=port
+        )
+        db.commit()
+
+    assert port.sent == [], "sin QR no se manda plantilla (la cabecera es obligatoria)"
+    assert len(port.sent_text) == 1
+
+
+def test_texto_libre_y_plantilla_dicen_lo_mismo() -> None:
+    """El tutor debe recibir el MISMO mensaje por cualquiera de los dos canales.
+
+    El texto de la plantilla vive aprobado en Meta, así que no se puede comparar
+    carácter a carácter desde acá; sí se comprueba que los 5 parámetros que la
+    rellenan aparezcan tal cual en el texto libre. Si alguien cambia el wording de
+    uno solo de los dos caminos, este test lo delata (sin BD).
+    """
+    from app.services.recordatorios import _template_params, _texto_recordatorio
+
+    datos: dict[str, object] = {
+        "deportista": "Rojas Camila",
+        "escuela": "Escuela Águilas",
+        "meses": ["MAYO", "JUNIO"],
+        "vence": "30/05/2026",
+    }
+    monto = Decimal("250.00")
+    texto = _texto_recordatorio("MOROSIDAD", monto=monto, **datos)
+    params = _template_params(monto=monto, **datos)
+
+    for p in params:
+        assert p in texto, f"el parámetro {p!r} de la plantilla no está en el texto libre"
+
+
+# --------------------------------------------------------------------------- #
 # 6) Webhook GET verify (SIN BD): challenge si coincide el token, 403 si no
 # --------------------------------------------------------------------------- #
 def _client():
