@@ -39,6 +39,22 @@ router = APIRouter(prefix="/mi-escuela/whatsapp", tags=["mi-escuela"])
 _TIMEOUT_SECONDS = 15.0
 
 
+def _canal_oficial_activo() -> bool:
+    """¿Está operativo el canal OFICIAL (Meta Cloud API) para toda la plataforma?
+
+    En el canal oficial NO hay vinculación por QR ni sesión por escuela: un único
+    número de plataforma envía por todas. Así que "¿puede esta escuela mandar
+    WhatsApp?" no depende de un pairing, sino de que el proveedor sea `meta` y las
+    credenciales estén puestas — el mismo criterio que usa `get_whatsapp_port`
+    para construir el adaptador real en vez de degradar al mock.
+    """
+    return (
+        (settings.whatsapp_provider or "").strip().lower() == "meta"
+        and bool((settings.whatsapp_phone_number_id or "").strip())
+        and bool((settings.whatsapp_access_token or "").strip())
+    )
+
+
 # --------------------------------------------------------------------------- #
 # Helper del sidecar (el browser NUNCA ve token/URL; este es el único punto)
 # --------------------------------------------------------------------------- #
@@ -92,9 +108,23 @@ def estado(
 ) -> WhatsAppEstadoOut:
     """Estado reconciliado de la sesión de la escuela del usuario.
 
-    Lee/crea la fila, consulta `GET /sessions/{org}/status` del sidecar y reconcilia. Si
-    el sidecar no responde, degrada al **último estado conocido** de la BD (no 500).
+    Con el canal OFICIAL activo responde `CONECTADA` sin consultar al sidecar: no hay
+    sesión que vincular. El frontend usa este estado para habilitar los botones de
+    envío, así que atarlo al pairing de Baileys los dejaría deshabilitados para
+    siempre tras la migración, con el canal oficial funcionando.
+
+    Si no, comportamiento de siempre: lee/crea la fila, consulta
+    `GET /sessions/{org}/status` del sidecar y reconcilia. Si el sidecar no responde,
+    degrada al **último estado conocido** de la BD (no 500).
     """
+    if _canal_oficial_activo():
+        return WhatsAppEstadoOut(
+            estado="CONECTADA",
+            numero=settings.whatsapp_display_number,
+            vinculado_en=None,
+            canal="OFICIAL",
+        )
+
     fila = _get_or_create_fila(db, user.org_id)
     try:
         data = _sidecar_request("GET", user.org_id, "/status")

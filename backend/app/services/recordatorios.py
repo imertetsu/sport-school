@@ -23,6 +23,11 @@ ciclo)` (UNIQUE). El INSERT usa `ON CONFLICT DO NOTHING` (mismo patrón que
 `_asignar_numero_recibo`): re-correr el cron el mismo día NO reenvía. `estado` se marca
 `ENVIADO` solo tras `result.ok`; si el proveedor falla queda `FALLIDO`.
 
+La dedup vale para lo **entregado**: si la fila quedó `FALLIDO`, el siguiente intento
+del ciclo **REINTENTA**. Un envío que falló no es un mensaje entregado, y darlo por
+enviado dejaba al tutor sin aviso hasta el ciclo siguiente (un mes entero en
+`MOROSIDAD`). En cuanto uno se entrega, el dedup lo congela como antes.
+
 Ciclo por tipo:
 - `PROXIMO_VENCIMIENTO` → `cuota.vence_el.isoformat()` (1 recordatorio por
   vencimiento de la cuota).
@@ -297,11 +302,7 @@ def enviar_recordatorio_cuota(
         estado="ENVIADO",
     )
 
-    if inserted_id is None and not forzar:
-        # Ya existía y no se fuerza: no reenvía.
-        return RecordatorioResult(enviado=False, provider_message_id=None, motivo="ya_enviado")
-
-    # Fila sobre la que operar: la recién insertada o la existente (forzar=True).
+    # Fila sobre la que operar: la recién insertada o la que ya existía.
     fila = db.execute(
         select(RecordatorioPago).where(
             RecordatorioPago.cuota_id == cuota.id,
@@ -309,6 +310,17 @@ def enviar_recordatorio_cuota(
             RecordatorioPago.ciclo == ciclo,
         )
     ).scalar_one()
+
+    if inserted_id is None and not forzar and fila.estado != "FALLIDO":
+        # Ya se entregó en este ciclo y no se fuerza: no reenvía.
+        return RecordatorioResult(enviado=False, provider_message_id=None, motivo="ya_enviado")
+
+    # Si la fila existente quedó FALLIDA se REINTENTA (no se devuelve "ya_enviado"): un
+    # envío que falló no es un mensaje entregado, y tratarlo como tal dejaba al tutor sin
+    # aviso hasta el ciclo siguiente —un mes entero en el caso de MOROSIDAD—. Al caerse el
+    # canal en julio quedaron 41 recordatorios FALLIDO que nunca se habrían reintentado.
+    # La garantía anti-spam se mantiene: el dedup sigue firme para las filas ENVIADO, así
+    # que en cuanto uno se entrega deja de reintentarse.
 
     # 4) QR estático de la escuela (C7). Lo lee de `qr_cobro`; si existe, se adjunta como
     #    imagen (send_image) con el caption; si NO, degrada a texto (send_text). NO crea

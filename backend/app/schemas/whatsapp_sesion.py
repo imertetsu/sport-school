@@ -21,6 +21,10 @@ class WhatsAppEstadoOut(BaseModel):
     estado: Literal["DESVINCULADA", "PENDIENTE_QR", "CONECTADA"]
     numero: str | None = None
     vinculado_en: datetime | None = None
+    # Qué canal responde: `OFICIAL` = Meta Cloud API (número de plataforma, sin QR
+    # que vincular); `SIDECAR` = el no-oficial, que sí se vincula por QR. El front
+    # lo usa para no ofrecer un "Vincular" que en el canal oficial no aplica.
+    canal: Literal["OFICIAL", "SIDECAR"] = "SIDECAR"
 
 
 class WhatsAppQrOut(BaseModel):

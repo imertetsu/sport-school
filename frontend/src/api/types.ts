@@ -1070,10 +1070,16 @@ export type WhatsAppEstado = 'DESVINCULADA' | 'PENDIENTE_QR' | 'CONECTADA';
 // --- GET /mi-escuela/whatsapp/estado -> estado reconciliado ---
 // numero: dígitos E.164 sin "+" (null si no hay sesión conectada).
 // vinculado_en: timestamptz del pareo (null si nunca se vinculó).
+// canal: OFICIAL = Meta Cloud API (un número de plataforma para todas las
+// escuelas, sin QR que vincular; siempre llega como CONECTADA). SIDECAR = el
+// no-oficial, que sí se vincula escaneando un QR.
+export type WhatsAppCanal = 'OFICIAL' | 'SIDECAR';
+
 export interface WhatsAppEstadoOut {
   estado: WhatsAppEstado;
   numero: string | null;
   vinculado_en: string | null; // timestamptz
+  canal: WhatsAppCanal;
 }
 
 // --- POST /mi-escuela/whatsapp/vincular  y  GET /mi-escuela/whatsapp/qr ---

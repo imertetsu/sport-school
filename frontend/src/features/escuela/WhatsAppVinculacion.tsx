@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '@/api/client';
 import { Button, Card, useToast } from '@/components/ui';
 import { formatDate } from '@/lib/format';
-import type { WhatsAppEstado } from '@/api/types';
+import type { WhatsAppCanal, WhatsAppEstado } from '@/api/types';
 import './WhatsAppVinculacion.css';
 
 // WhatsApp de la escuela (epic whatsapp-multitenant) — SOLO ADMIN. Se monta en
@@ -26,6 +26,10 @@ const QR_TIMEOUT_MS = 120000; // ~2min: el QR expira -> pedir reintento
 export function WhatsAppVinculacion() {
   const toast = useToast();
   const [estado, setEstado] = useState<WhatsAppEstado | null>(null);
+  // Canal que responde. Con el OFICIAL (Meta) no hay nada que vincular: el número
+  // es de la plataforma y sirve a todas las escuelas, así que la pantalla solo
+  // informa —sin QR ni "Desvincular", que ahí no significan nada—.
+  const [canal, setCanal] = useState<WhatsAppCanal>('SIDECAR');
   const [numero, setNumero] = useState<string | null>(null);
   const [vinculadoEn, setVinculadoEn] = useState<string | null>(null);
   const [qr, setQr] = useState<string | null>(null);
@@ -77,6 +81,7 @@ export function WhatsAppVinculacion() {
       .whatsappEstado(controller.signal)
       .then((data) => {
         if (!active) return;
+        setCanal(data.canal);
         aplicarEstado(data);
       })
       .catch((err) => {
@@ -240,7 +245,30 @@ export function WhatsAppVinculacion() {
         <p className="whatsapp-vinc__loading">Cargando…</p>
       )}
 
-      {!loadError && !loading && (
+      {!loadError && !loading && canal === 'OFICIAL' && (
+        <div className="whatsapp-vinc__body">
+          <div className="whatsapp-vinc__estado">
+            <div className="whatsapp-vinc__estado-row">
+              <span className="whatsapp-vinc__dot whatsapp-vinc__dot--on" aria-hidden="true" />
+              <span className="whatsapp-vinc__estado-text">
+                Canal oficial de WhatsApp activo
+                {numero ? (
+                  <>
+                    {' — '}
+                    <strong className="whatsapp-vinc__numero">{numero}</strong>
+                  </>
+                ) : null}
+              </span>
+            </div>
+            <p className="whatsapp-vinc__meta">
+              La escuela envía por el número verificado de la plataforma. No hay que
+              vincular ningún teléfono ni escanear un QR, y la conexión no se cae.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {!loadError && !loading && canal !== 'OFICIAL' && (
         <div className="whatsapp-vinc__body">
           {estado === 'DESVINCULADA' && (
             <div className="whatsapp-vinc__estado">

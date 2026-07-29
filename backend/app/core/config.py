@@ -82,6 +82,11 @@ class Settings(BaseSettings):
     whatsapp_verify_token: str | None = None
     whatsapp_app_secret: str | None = None
     whatsapp_graph_version: str = "v21.0"
+    # Número de la plataforma en formato legible (p. ej. "+591 77385298"), solo para
+    # MOSTRARLO en Ajustes → WhatsApp. Es dato de presentación: los envíos usan
+    # `whatsapp_phone_number_id`. Se configura a mano para no pegarle a la Graph API
+    # en cada carga de la pantalla de estado.
+    whatsapp_display_number: str | None = None
     # Días antes del vencimiento en que el recordatorio adjunta el QR de cobro.
     recordatorio_qr_dias_antes: int = 3
 

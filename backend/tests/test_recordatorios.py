@@ -29,6 +29,7 @@ from decimal import Decimal
 
 import pytest
 from app.adapters.whatsapp.mock import MockWhatsAppAdapter
+from app.domain.ports.whatsapp import WhatsAppSendResult
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
@@ -549,6 +550,81 @@ def test_c7_sin_qr_degrada_a_texto(app_engine: Engine, recordatorio_proximo: dic
     assert res.enviado is True and res.motivo == "ok"
     assert len(mock.sent_text) == 1, "sin QR ⇒ degrada a texto"
     assert len(mock.sent_image) == 0
+
+
+# --------------------------------------------------------------------------- #
+# 5-ter) Un envío FALLIDO se REINTENTA en el mismo ciclo
+#
+# La dedup vale para lo entregado. Cuando el canal se cayó (julio 2026) quedaron
+# 41 filas FALLIDO que, tratadas como "ya enviado", no se habrían reintentado
+# hasta el mes siguiente: los tutores se quedaban sin aviso un mes entero.
+# --------------------------------------------------------------------------- #
+class _PortCaido(MockWhatsAppAdapter):
+    """Canal caído: registra el intento pero siempre falla (como Baileys deslogueado)."""
+
+    def send_text(self, msg):  # type: ignore[no-untyped-def]
+        super().send_text(msg)
+        return WhatsAppSendResult(ok=False, provider_message_id=None, error="canal caído")
+
+    def send_image(self, msg):  # type: ignore[no-untyped-def]
+        super().send_image(msg)
+        return WhatsAppSendResult(ok=False, provider_message_id=None, error="canal caído")
+
+
+@pytest.mark.db
+def test_fallido_se_reintenta_en_el_mismo_ciclo(
+    app_engine: Engine, recordatorio_morosidad: dict
+) -> None:
+    """Tras un fallo, el siguiente intento del MISMO mes reintenta y puede entregar."""
+    from app.services.recordatorios import enviar_recordatorio_cuota
+
+    org = recordatorio_morosidad["org"]
+    cuota_id = recordatorio_morosidad["cuota"]
+    hoy = date(2026, 6, 5)
+
+    # Día 1: el canal está caído ⇒ queda FALLIDO.
+    caido = _PortCaido()
+    with Session(app_engine, expire_on_commit=False) as db:
+        _set_org(db, org)
+        r1 = enviar_recordatorio_cuota(
+            db, cuota=_get_cuota(db, cuota_id), tipo="MOROSIDAD", hoy=hoy, port=caido
+        )
+        db.commit()
+    assert r1.enviado is False and r1.motivo == "error_envio"
+
+    # Día 2 (mismo mes, canal repuesto): DEBE reintentar, no decir "ya_enviado".
+    sano = MockWhatsAppAdapter()
+    with Session(app_engine, expire_on_commit=False) as db:
+        _set_org(db, org)
+        r2 = enviar_recordatorio_cuota(
+            db, cuota=_get_cuota(db, cuota_id), tipo="MOROSIDAD", hoy=hoy, port=sano
+        )
+        db.commit()
+    assert r2.enviado is True and r2.motivo == "ok", "un FALLIDO debe reintentarse"
+    assert len(sano.sent_text) == 1
+
+    # Y una vez entregado, la dedup vuelve a congelarlo (no hay spam al tutor).
+    otro = MockWhatsAppAdapter()
+    with Session(app_engine, expire_on_commit=False) as db:
+        _set_org(db, org)
+        r3 = enviar_recordatorio_cuota(
+            db, cuota=_get_cuota(db, cuota_id), tipo="MOROSIDAD", hoy=hoy, port=otro
+        )
+        db.commit()
+    assert r3.enviado is False and r3.motivo == "ya_enviado"
+    assert otro.sent_text == []
+
+    # Sigue habiendo UNA sola fila del ciclo (se reusa, no se duplica).
+    with app_engine.begin() as conn:
+        _set_org(conn, org)
+        n = conn.execute(
+            text(
+                "SELECT count(*) FROM recordatorio_pago WHERE cuota_id = :c "
+                "AND tipo = 'MOROSIDAD' AND ciclo = '2026-06'"
+            ),
+            {"c": str(cuota_id)},
+        ).scalar_one()
+    assert n == 1
 
 
 # --------------------------------------------------------------------------- #

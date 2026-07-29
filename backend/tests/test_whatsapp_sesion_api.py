@@ -144,6 +144,63 @@ def test_estado_conectado_reconcilia_fila(
     assert (row.estado, row.numero) == ("CONECTADA", "59177")
 
 
+def test_estado_canal_oficial_conectada_sin_tocar_el_sidecar(
+    monkeypatch: pytest.MonkeyPatch, org_admin: dict
+) -> None:
+    """Con el canal OFICIAL activo: CONECTADA, canal=OFICIAL y NO se llama al sidecar.
+
+    El frontend habilita los botones de envío con este estado. Si siguiera atado al
+    pairing de Baileys, tras migrar a Meta quedarían deshabilitados para siempre con
+    el canal oficial funcionando — que es justo lo que pasaba con la sesión caída.
+    """
+    from app.api.v1 import whatsapp_sesion as mod
+
+    def _responder(method: str, url: str) -> Any:
+        raise AssertionError("no debe consultarse el sidecar en el canal oficial")
+
+    calls = _install_sidecar(monkeypatch, _responder)
+    monkeypatch.setattr(mod.settings, "whatsapp_provider", "meta", raising=False)
+    monkeypatch.setattr(mod.settings, "whatsapp_phone_number_id", "1200794483123786")
+    monkeypatch.setattr(mod.settings, "whatsapp_access_token", "token-de-prueba")
+    monkeypatch.setattr(mod.settings, "whatsapp_display_number", "+591 77385298")
+
+    client = _client_or_skip()
+    resp = client.get(
+        "/api/v1/mi-escuela/whatsapp/estado",
+        headers={"Authorization": f"Bearer {org_admin['token']}"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["estado"] == "CONECTADA"
+    assert body["canal"] == "OFICIAL"
+    assert body["numero"] == "+591 77385298"
+    assert calls == [], "el canal oficial no tiene sesión que consultar"
+
+
+def test_estado_sin_credenciales_no_finge_canal_oficial(
+    monkeypatch: pytest.MonkeyPatch, org_admin: dict
+) -> None:
+    """`provider=meta` pero SIN token ⇒ sigue el camino del sidecar (no miente)."""
+    from app.api.v1 import whatsapp_sesion as mod
+
+    def _responder(method: str, url: str) -> Any:
+        return _FakeResponse({"org_id": str(org_admin["org"]), "connected": False})
+
+    calls = _install_sidecar(monkeypatch, _responder)
+    monkeypatch.setattr(mod.settings, "whatsapp_provider", "meta", raising=False)
+    monkeypatch.setattr(mod.settings, "whatsapp_phone_number_id", "1200794483123786")
+    monkeypatch.setattr(mod.settings, "whatsapp_access_token", None)
+
+    client = _client_or_skip()
+    resp = client.get(
+        "/api/v1/mi-escuela/whatsapp/estado",
+        headers={"Authorization": f"Bearer {org_admin['token']}"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["canal"] == "SIDECAR"
+    assert calls, "sin credenciales debe consultarse el sidecar"
+
+
 def test_estado_sidecar_caido_devuelve_ultimo_estado_bd(
     monkeypatch: pytest.MonkeyPatch, org_admin: dict, owner_engine: Engine
 ) -> None:
@@ -264,7 +321,12 @@ def test_desvincular_marca_desvinculada(
 
     resp = client.request("DELETE", "/api/v1/mi-escuela/whatsapp", headers=headers)
     assert resp.status_code == 200, resp.text
-    assert resp.json() == {"estado": "DESVINCULADA", "numero": None, "vinculado_en": None}
+    assert resp.json() == {
+        "estado": "DESVINCULADA",
+        "numero": None,
+        "vinculado_en": None,
+        "canal": "SIDECAR",
+    }
     assert calls and calls[0]["method"] == "DELETE"
     assert calls[0]["url"] == f"http://gw:3000/sessions/{org_admin['org']}"
 
