@@ -18,6 +18,11 @@ dist/
 .env
 .env.local
 *.local
+# Copias de seguridad del .env (se crean antes de tocar credenciales). Llevan
+# TODOS los secretos dentro (password de la BD, JWT, tokens de WhatsApp), asi
+# que nunca deben entrar al repo. `.env.example` sigue trackeado: no matchea.
+.env.bak*
+.env.*.bak
 
 # --- Sistema / IDE ---
 .DS_Store
