@@ -32,6 +32,11 @@ function HistorialPagos({ deportistaId }: { deportistaId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [reciboEnVuelo, setReciboEnVuelo] = useState<string | null>(null);
   const [kardexEnVuelo, setKardexEnVuelo] = useState(false);
+  // Reenvío del comprobante por WhatsApp desde el historial (mismo endpoint que
+  // usa la pantalla de Pagos): sirve cuando el envío del momento del cobro falló
+  // o el tutor lo borró.
+  const [waEnVuelo, setWaEnVuelo] = useState<string | null>(null);
+  const toast = useToast();
 
   useEffect(() => {
     const controller = new AbortController();
@@ -53,6 +58,30 @@ function HistorialPagos({ deportistaId }: { deportistaId: string }) {
   }, [deportistaId]);
 
   // Descarga el recibo (blob autenticado) y lo abre en otra pestaña para ver/imprimir.
+  async function enviarWhatsapp(pagoId: string) {
+    setWaEnVuelo(pagoId);
+    try {
+      const res = await api.enviarComprobanteWhatsapp(pagoId);
+      if (res.enviado) {
+        toast.success('Recibo enviado por WhatsApp');
+      } else if (res.motivo === 'sin_telefono') {
+        toast.error('El tutor no tiene un teléfono registrado.');
+      } else if (res.motivo === 'sin_whatsapp') {
+        toast.error('El número del tutor no está en WhatsApp (o está mal escrito).');
+      } else {
+        toast.error(`No se pudo enviar${res.detalle ? ` (${res.detalle})` : ''}.`);
+      }
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError && err.isForbidden
+          ? 'No tenés permiso para enviar.'
+          : 'No se pudo enviar por WhatsApp.',
+      );
+    } finally {
+      setWaEnVuelo(null);
+    }
+  }
+
   async function verRecibo(pagoId: string) {
     setReciboEnVuelo(pagoId);
     setError(null);
@@ -169,7 +198,7 @@ function HistorialPagos({ deportistaId }: { deportistaId: string }) {
               <th>Fecha de pago</th>
               <th>Método</th>
               <th className="perfil-pagos__num">Monto</th>
-              <th aria-label="Recibo" />
+              <th aria-label="Acciones del recibo" />
             </tr>
           </thead>
           <tbody>
@@ -192,14 +221,24 @@ function HistorialPagos({ deportistaId }: { deportistaId: string }) {
                 <td className="perfil-pagos__num tabular">{formatMoney(f.monto)}</td>
                 <td className="perfil-pagos__num">
                   {f.mostrarRecibo && f.estado === 'CONFIRMADO' ? (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => verRecibo(f.pagoId)}
-                      disabled={reciboEnVuelo === f.pagoId}
-                    >
-                      {reciboEnVuelo === f.pagoId ? 'Abriendo…' : 'Ver recibo'}
-                    </Button>
+                    <div className="perfil-pagos__acciones">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => verRecibo(f.pagoId)}
+                        disabled={reciboEnVuelo === f.pagoId}
+                      >
+                        {reciboEnVuelo === f.pagoId ? 'Abriendo…' : 'Ver recibo'}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => enviarWhatsapp(f.pagoId)}
+                        disabled={waEnVuelo === f.pagoId}
+                      >
+                        {waEnVuelo === f.pagoId ? 'Enviando…' : 'Enviar WhatsApp'}
+                      </Button>
+                    </div>
                   ) : (
                     ''
                   )}

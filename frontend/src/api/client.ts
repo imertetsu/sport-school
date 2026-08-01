@@ -661,6 +661,11 @@ export const api = {
   createEgreso(body: EgresoCreate, signal?: AbortSignal): Promise<EgresoCreated> {
     return request<EgresoCreated>('/egresos', { method: 'POST', body, signal });
   },
+  // DELETE /egresos/{id} (ADMIN) -> borra un egreso mal cargado. No hay edición:
+  // si se eligió mal la sucursal, la salida es borrarlo y volver a registrarlo.
+  eliminarEgreso(egresoId: string, signal?: AbortSignal): Promise<void> {
+    return request<void>(`/egresos/${egresoId}`, { method: 'DELETE', signal });
+  },
   // GET /egresos/resumen?desde=&hasta= -> totales agrupados por categoría.
   resumenEgresos(
     params: { desde?: string; hasta?: string } = {},

@@ -7,6 +7,7 @@ import {
   DataTable,
   Field,
   SelectField,
+  useToast,
   type Column,
 } from '@/components/ui';
 import { useSucursales } from '@/components/shell/SucursalContext';
@@ -21,6 +22,7 @@ const PAGE_SIZE = 20;
 export function Egresos() {
   // Sucursales del usuario (su alcance); "" = todas las del alcance.
   const { sucursales } = useSucursales();
+  const toast = useToast();
 
   // --- Filtros ---
   const [sucursalId, setSucursalId] = useState('');
@@ -28,6 +30,8 @@ export function Egresos() {
   const [desde, setDesde] = useState('');
   const [hasta, setHasta] = useState('');
   const [page, setPage] = useState(1);
+  // Id del egreso que se está borrando (deshabilita solo ese botón).
+  const [borrando, setBorrando] = useState<string | null>(null);
 
   // --- Datos ---
   const [items, setItems] = useState<EgresoItem[]>([]);
@@ -84,6 +88,28 @@ export function Egresos() {
       controller.abort();
     };
   }, [sucursalId, categoria, desde, hasta, page, reloadKey]);
+
+  // Borrado de un egreso mal cargado (no hay edición: se borra y se vuelve a cargar).
+  async function eliminar(e: EgresoItem) {
+    const donde = e.sucursal ? e.sucursal.nombre : 'toda la organización';
+    const ok = window.confirm(
+      `¿Eliminar este egreso?\n\n${e.categoria_gasto} — ${formatMoney(e.monto)}\n` +
+        `${formatDate(e.fecha)} · ${donde}\n\nNo se puede deshacer.`,
+    );
+    if (!ok) return;
+    setBorrando(e.id);
+    try {
+      await api.eliminarEgreso(e.id);
+      toast.success('Egreso eliminado');
+      setReloadKey((k) => k + 1);
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError ? err.message : 'No se pudo eliminar el egreso.',
+      );
+    } finally {
+      setBorrando(null);
+    }
+  }
 
   const hasFiltros = Boolean(sucursalId || categoria.trim() || desde || hasta);
 
@@ -149,8 +175,24 @@ export function Egresos() {
         align: 'right',
         render: (e) => <span className="tabular">{formatMoney(e.monto)}</span>,
       },
+      {
+        key: 'acciones',
+        header: '',
+        align: 'right',
+        render: (e) => (
+          <button
+            type="button"
+            className="egreso-borrar"
+            disabled={borrando === e.id}
+            onClick={() => eliminar(e)}
+            title="Eliminar este egreso"
+          >
+            {borrando === e.id ? 'Eliminando…' : 'Eliminar'}
+          </button>
+        ),
+      },
     ],
-    [],
+    [borrando],
   );
 
   return (

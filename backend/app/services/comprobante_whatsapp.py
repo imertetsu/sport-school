@@ -1,9 +1,15 @@
 """Envío del comprobante de pago por WhatsApp (imagen del recibo + caption).
 
 Rasteriza la 1ª página del PDF del comprobante a JPG (pypdfium2 + Pillow) y la manda por
-el gateway de WhatsApp de la escuela (`send_image`) al **tutor responsable de pago** del
-deportista. El frontend gatea por el estado de la sesión (CONECTADA) antes de llamar; aquí
-solo se resuelve el destinatario, se renderiza y se envía. No lanza: reporta vía `motivo`.
+WhatsApp al **tutor responsable de pago** del deportista. El frontend gatea por el estado
+del canal antes de llamar; aquí solo se resuelve el destinatario, se renderiza y se envía.
+No lanza: reporta vía `motivo`.
+
+**Canal libre** (sidecar): imagen + caption (`send_image`).
+**Canal oficial** (Meta, `port.requiere_plantilla()`): plantilla aprobada con el recibo en
+la CABECERA. El comprobante lo inicia la escuela, y Meta solo acepta imagen libre dentro
+de la ventana de 24 h desde el último mensaje del tutor; fuera de ella responde 131047
+("Re-engagement") y el recibo no llega, aunque la API haya aceptado el envío.
 """
 
 from __future__ import annotations
@@ -18,7 +24,12 @@ from sqlalchemy.orm import Session
 
 from app.core.org_context import set_current_org_id
 from app.domain.ports.invoice import ComprobanteService
-from app.domain.ports.whatsapp import WhatsAppImageMessage, WhatsAppPort
+from app.domain.ports.whatsapp import (
+    WhatsAppImage,
+    WhatsAppImageMessage,
+    WhatsAppPort,
+    WhatsAppTemplateMessage,
+)
 from app.models.deportista import Deportista
 from app.models.deportista_tutor import DeportistaTutor
 from app.models.organizacion import Organizacion
@@ -73,6 +84,39 @@ def _tutor_responsable(db: Session, deportista_id: uuid.UUID) -> tuple[str, str]
     return None
 
 
+# Plantilla aprobada del comprobante (canal oficial). El recibo va en la CABECERA
+# como imagen; los 6 parámetros, en este orden EXACTO:
+#   {{1}} escuela · {{2}} recibo · {{3}} deportista · {{4}} cuotas · {{5}} monto · {{6}} método
+TEMPLATE_COMPROBANTE = "comprobante_pago"
+TEMPLATE_LANG = "es"
+
+
+def _cuotas_texto(cuotas) -> str:
+    """Las cuotas cubiertas en una línea ("MARZO 2026, ABRIL 2026").
+
+    La plantilla tiene un nº FIJO de variables, así que el detalle multilínea del
+    caption libre se colapsa a un solo parámetro.
+    """
+    partes = [
+        f"{pagos_svc._MESES_LARGO[c.vence_el.month].upper()} {c.vence_el.year}" for c in cuotas
+    ]
+    return ", ".join(partes) if partes else "—"
+
+
+def _template_params(
+    org: Organizacion, pago: Pago, deportista: Deportista | None, cuotas
+) -> list[str]:
+    """Los 6 parámetros de la plantilla, en el orden aprobado."""
+    return [
+        org.nombre,
+        pago.numero_recibo or "—",
+        pagos_svc._nombre_completo(deportista) if deportista else "—",
+        _cuotas_texto(cuotas),
+        f"{pago.monto}",
+        "Efectivo" if pago.metodo == "EFECTIVO" else "QR",
+    ]
+
+
 def _caption(org: Organizacion, pago: Pago, deportista: Deportista | None, cuotas) -> str:
     """Texto que acompaña la imagen del recibo (mismo formato que el 'copiar mensaje')."""
     lineas: list[str | None] = [
@@ -119,14 +163,31 @@ def enviar_comprobante_whatsapp(
     pdf_bytes = comprobante_svc.render_pdf(data)
     jpg_bytes = rasterizar_pdf_a_jpg(pdf_bytes)
 
-    result = port.send_image(
-        WhatsAppImageMessage(
-            to=telefono,
-            image_b64=base64.b64encode(jpg_bytes).decode("ascii"),
-            mime="image/jpeg",
-            caption=_caption(org, pago, deportista, cuotas),
+    imagen_b64 = base64.b64encode(jpg_bytes).decode("ascii")
+
+    if port.requiere_plantilla():
+        # Canal OFICIAL: el comprobante lo INICIA la escuela, así que la imagen
+        # libre no llega salvo que el tutor haya escrito en las últimas 24 h (Meta
+        # responde 131047 "Re-engagement"). Sale como plantilla aprobada con el
+        # recibo en la cabecera.
+        result = port.send_template(
+            WhatsAppTemplateMessage(
+                to=telefono,
+                template_name=TEMPLATE_COMPROBANTE,
+                lang_code=TEMPLATE_LANG,
+                body_params=_template_params(org, pago, deportista, cuotas),
+                header_image=WhatsAppImage(data_url=f"data:image/jpeg;base64,{imagen_b64}"),
+            )
         )
-    )
+    else:
+        result = port.send_image(
+            WhatsAppImageMessage(
+                to=telefono,
+                image_b64=imagen_b64,
+                mime="image/jpeg",
+                caption=_caption(org, pago, deportista, cuotas),
+            )
+        )
     if result.ok:
         return EnvioComprobanteResult(
             enviado=True, motivo="ok", provider_message_id=result.provider_message_id
@@ -134,5 +195,6 @@ def enviar_comprobante_whatsapp(
     # El gateway responde `ok:false` con un `error`. Distinguimos el caso más común
     # (destinatario sin WhatsApp) del resto para dar un mensaje útil en la UI.
     err = (result.error or "").lower()
-    motivo = "sin_whatsapp" if "registrado" in err or "no esta en whatsapp" in err else "error_envio"
+    sin_whatsapp = "registrado" in err or "no esta en whatsapp" in err
+    motivo = "sin_whatsapp" if sin_whatsapp else "error_envio"
     return EnvioComprobanteResult(enviado=False, motivo=motivo, detalle=result.error)

@@ -37,6 +37,76 @@ from sqlalchemy.orm import Session
 
 
 # --------------------------------------------------------------------------- #
+# Plantilla del comprobante para el canal OFICIAL (sin BD)
+#
+# Por el canal oficial el recibo viaja como plantilla: el envío lo inicia la
+# escuela y Meta rechaza la imagen libre fuera de la ventana de 24 h (131047
+# "Re-engagement"), que fue justo lo que pasó en producción. El orden de los 6
+# parámetros tiene que coincidir con la plantilla aprobada o el tutor recibe los
+# datos cruzados (el recibo en el lugar del monto, etc.).
+# --------------------------------------------------------------------------- #
+class _CuotaFalsa:
+    def __init__(self, vence_el: date) -> None:
+        self.vence_el = vence_el
+
+
+def _objetos_comprobante():
+    from app.models.deportista import Deportista
+    from app.models.organizacion import Organizacion
+    from app.models.pago import Pago
+
+    org = Organizacion(nombre="Escuela Deportiva Águilas del Sur")
+    pago = Pago(metodo="EFECTIVO", monto=Decimal("120.00"), numero_recibo="REC-000177")
+    dep = Deportista(ap_paterno="COAGUILA", ap_materno="VILLCA", nombres="ALEXIA KEYRA")
+    cuotas = [_CuotaFalsa(date(2026, 3, 12)), _CuotaFalsa(date(2026, 4, 12))]
+    return org, pago, dep, cuotas
+
+
+def test_comprobante_template_params_en_el_orden_aprobado() -> None:
+    """Los 6 parámetros salen en el orden EXACTO de la plantilla aprobada."""
+    from app.services.comprobante_whatsapp import _template_params
+
+    org, pago, dep, cuotas = _objetos_comprobante()
+    p = _template_params(org, pago, dep, cuotas)
+
+    assert len(p) == 6
+    assert p[0] == "Escuela Deportiva Águilas del Sur"  # {{1}} escuela
+    assert p[1] == "REC-000177"  # {{2}} recibo
+    assert p[2] == "COAGUILA VILLCA ALEXIA KEYRA"  # {{3}} deportista
+    assert p[3] == "MARZO 2026, ABRIL 2026"  # {{4}} cuotas
+    assert p[4] == "120.00"  # {{5}} monto
+    assert p[5] == "Efectivo"  # {{6}} método
+
+
+def test_comprobante_template_params_qr_y_sin_recibo() -> None:
+    """Método QR y un pago sin nº de recibo no dejan parámetros vacíos.
+
+    Meta rechaza un parámetro vacío, así que los faltantes van como "—".
+    """
+    from app.services.comprobante_whatsapp import _template_params
+
+    org, pago, dep, cuotas = _objetos_comprobante()
+    pago.metodo = "QR"
+    pago.numero_recibo = None
+    p = _template_params(org, pago, dep, cuotas)
+
+    assert p[1] == "—"
+    assert p[5] == "QR"
+    assert all(x for x in p), "ningún parámetro puede ir vacío"
+
+
+def test_comprobante_template_params_sin_deportista_ni_cuotas() -> None:
+    """Sin deportista ni cuotas tampoco se manda un parámetro en blanco."""
+    from app.services.comprobante_whatsapp import _template_params
+
+    org, pago, _dep, _cuotas = _objetos_comprobante()
+    p = _template_params(org, pago, None, [])
+
+    assert p[2] == "—" and p[3] == "—"
+    assert all(x for x in p)
+
+
+# --------------------------------------------------------------------------- #
 # Helpers de siembra (con BD, como owner saltando RLS)
 # --------------------------------------------------------------------------- #
 def _set_org(conn, org: uuid.UUID) -> None:

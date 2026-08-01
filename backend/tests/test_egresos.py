@@ -347,6 +347,74 @@ def test_crear_setea_registrado_por_del_token(app_engine: Engine, egreso_fixture
 
 
 # --------------------------------------------------------------------------- #
+# Borrado: un egreso mal cargado se puede sacar (no hay edición)
+# --------------------------------------------------------------------------- #
+@pytest.mark.db
+def test_eliminar_egreso_lo_saca_del_listado_y_del_total(
+    app_engine: Engine, egreso_fixture: dict
+) -> None:
+    """Al borrar, la fila desaparece y deja de sumar en `total_monto`.
+
+    Caso real: se carga un gasto con la sucursal equivocada, se vuelve a cargar bien
+    y el erróneo queda inflando el total del mes y el desglose por sucursal del panel.
+    """
+    from app.api.v1.egresos import eliminar_egreso
+
+    org_a = egreso_fixture["org_a"]
+    with Session(app_engine) as db:
+        _set_org(db, org_a)
+        _items, total_antes, monto_antes = svc.listar(db)
+
+        # El de nivel org (320.00) es el "mal cargado": iba a una sucursal.
+        mal_cargado = next(i for i in _items if i.sucursal is None)
+        eliminar_egreso(  # type: ignore[call-arg]
+            egreso_id=mal_cargado.id, _user=None, db=db
+        )
+
+    with Session(app_engine) as db:
+        _set_org(db, org_a)
+        items, total, monto = svc.listar(db)
+
+    assert total == total_antes - 1
+    assert monto == monto_antes - Decimal("320.00"), "deja de sumar en el total"
+    assert all(i.id != mal_cargado.id for i in items)
+
+
+@pytest.mark.db
+def test_eliminar_egreso_inexistente_404(app_engine: Engine, egreso_fixture: dict) -> None:
+    """Un id que no existe (o de otra org, que RLS oculta) responde 404, no 500."""
+    from app.api.v1.egresos import eliminar_egreso
+
+    with Session(app_engine) as db:
+        _set_org(db, egreso_fixture["org_a"])
+        with pytest.raises(HTTPException) as exc:
+            eliminar_egreso(egreso_id=uuid.uuid4(), _user=None, db=db)  # type: ignore[call-arg]
+    assert exc.value.status_code == 404
+
+
+@pytest.mark.db
+def test_eliminar_egreso_de_otra_org_no_se_puede(app_engine: Engine, egreso_fixture: dict) -> None:
+    """RLS: con el contexto de A no se puede borrar un egreso de B (404, no borra)."""
+    from app.api.v1.egresos import eliminar_egreso
+
+    org_a, org_b = egreso_fixture["org_a"], egreso_fixture["org_b"]
+    with Session(app_engine) as db:
+        _set_org(db, org_b)
+        egreso_b = svc.listar(db)[0][0]
+
+    with Session(app_engine) as db:
+        _set_org(db, org_a)
+        with pytest.raises(HTTPException) as exc:
+            eliminar_egreso(egreso_id=egreso_b.id, _user=None, db=db)  # type: ignore[call-arg]
+    assert exc.value.status_code == 404
+
+    # Sigue existiendo en su org.
+    with Session(app_engine) as db:
+        _set_org(db, org_b)
+        assert any(i.id == egreso_b.id for i in svc.listar(db)[0])
+
+
+# --------------------------------------------------------------------------- #
 # Caso (f): egreso sin sucursal -> sucursal null + excluido del filtro por sucursal
 # --------------------------------------------------------------------------- #
 @pytest.mark.db

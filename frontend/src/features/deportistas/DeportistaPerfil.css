@@ -282,6 +282,14 @@
 .perfil-pagos__num {
   text-align: right;
 }
+/* Acciones del recibo (ver / enviar): en línea, sin romper la fila en pantallas
+   angostas — se apilan cuando no entran. */
+.perfil-pagos__acciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  justify-content: flex-end;
+}
 .perfil-pagos__anulado td {
   color: var(--color-text-muted);
   text-decoration: line-through;

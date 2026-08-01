@@ -79,6 +79,30 @@
   color: var(--color-text-subtle);
 }
 
+/* Eliminar un egreso mal cargado: acción destructiva, discreta hasta el hover. */
+.egreso-borrar {
+  padding: 2px var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: var(--fs-xs);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.egreso-borrar:hover:not(:disabled) {
+  color: var(--color-danger);
+  border-color: var(--color-danger-border);
+  background: var(--color-danger-bg);
+}
+
+.egreso-borrar:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 /* Método de pago del gasto — mismos colores que el desglose del panel. */
 .egreso-metodo {
   font-weight: 600;
