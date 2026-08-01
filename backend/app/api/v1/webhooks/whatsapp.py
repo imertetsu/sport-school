@@ -87,10 +87,23 @@ async def whatsapp_status(request: Request) -> Response | dict[str, str]:
         for change in entry.get("changes", []) or []:
             value = change.get("value", {}) or {}
             for estado in value.get("statuses", []) or []:
+                # `errors[]` trae el CÓDIGO y el motivo del fallo (p. ej. 131047
+                # "re-engagement": fuera de la ventana de 24 h sin plantilla). Sin
+                # esto un `status=failed` no dice nada y hay que adivinar por qué
+                # no llegó el mensaje.
+                errores = estado.get("errors") or []
+                detalle = ""
+                if errores:
+                    e = errores[0]
+                    titulo = e.get("title") or e.get("message") or ""
+                    extra = (e.get("error_data") or {}).get("details") or ""
+                    detalle = f" error={e.get('code')} {titulo}" + (f" ({extra})" if extra else "")
                 logger.info(
-                    "webhook whatsapp estado: message_id=%s status=%s",
+                    "webhook whatsapp estado: message_id=%s destino=%s status=%s%s",
                     estado.get("id"),
+                    estado.get("recipient_id"),
                     estado.get("status"),
+                    detalle,
                 )
             # Mensajes ENTRANTES (el tutor escribe). No se procesan aquí —de eso
             # se ocupa `/webhooks/whatsapp-inbound`—, pero dejar rastro de que
