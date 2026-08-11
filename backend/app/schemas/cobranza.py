@@ -105,15 +105,20 @@ class CuotaMontoOut(BaseModel):
 class EnviarComprobanteOut(BaseModel):
     """`POST /cobranza/pagos/{id}/enviar-whatsapp` -> resultado del envío.
 
-    `motivo` ∈ {ok, sin_deportista, sin_telefono, sin_whatsapp, error_envio}. El front gatea
-    antes por el estado de la sesión (CONECTADA); estos motivos cubren los fallos del envío
-    en sí. `detalle` trae el error crudo del gateway (diagnóstico).
+    `motivo` ∈ {ok, ya_enviado, sin_deportista, sin_telefono, sin_whatsapp, error_envio}.
+    El front gatea antes por el estado de la sesión (CONECTADA); estos motivos cubren los
+    fallos del envío en sí. `detalle` trae el error crudo del gateway (diagnóstico).
+
+    `ya_enviado` NO es un fallo: el comprobante ya salió (ver `enviado_en`) y se cortó
+    para no duplicarlo, porque WhatsApp no permite borrar un mensaje entregado. El front
+    lo ofrece como "ya se envió el …, ¿reenviar?" y repite con `forzar=true`.
     """
 
     enviado: bool
     motivo: str
     provider_message_id: str | None = None
     detalle: str | None = None
+    enviado_en: datetime | None = None
 
 
 # --------------------------------------------------------------------------- #

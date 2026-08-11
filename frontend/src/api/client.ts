@@ -498,12 +498,16 @@ export const api = {
   },
   // POST /cobranza/pagos/{id}/enviar-whatsapp (ADMIN) -> envía el recibo (imagen) +
   // mensaje al tutor responsable por el WhatsApp vinculado de la escuela.
+  // `forzar` reenvía aunque el comprobante ya haya salido. Sin él, el backend
+  // responde `ya_enviado` en vez de mandarle al tutor lo mismo dos veces.
   enviarComprobanteWhatsapp(
     pagoId: string,
+    forzar = false,
     signal?: AbortSignal,
   ): Promise<EnviarComprobanteOut> {
     return request<EnviarComprobanteOut>(`/cobranza/pagos/${pagoId}/enviar-whatsapp`, {
       method: 'POST',
+      query: forzar ? { forzar: 'true' } : undefined,
       signal,
     });
   },

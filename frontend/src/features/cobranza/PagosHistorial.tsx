@@ -22,6 +22,7 @@ import { useAuth } from '@/auth/useAuth';
 import { formatDate, formatMoney, mesLargo } from '@/lib/format';
 import './PanelCobranza.css';
 import './Pagos.css';
+import { enviarComprobanteConfirmando, MOTIVO_CANCELADO } from './enviarComprobante';
 
 const PAGE_SIZE = 20;
 
@@ -140,8 +141,10 @@ function PagoAcciones({
     }
     setEnviando(true);
     try {
-      const res = await api.enviarComprobanteWhatsapp(pago.id);
-      if (res.enviado) {
+      const res = await enviarComprobanteConfirmando(pago.id);
+      if (res.motivo === MOTIVO_CANCELADO) {
+        // Se ofreció reenviar y dijeron que no: ni éxito ni error.
+      } else if (res.enviado) {
         setEnviado(true);
         toast.success('Recibo enviado por WhatsApp');
       } else if (res.motivo === 'sin_telefono') {

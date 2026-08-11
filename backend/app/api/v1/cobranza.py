@@ -1064,6 +1064,10 @@ def comprobante_pdf(
 @router.post("/pagos/{pago_id}/enviar-whatsapp", response_model=EnviarComprobanteOut)
 def enviar_comprobante_whatsapp(
     pago_id: uuid.UUID,
+    forzar: bool = Query(
+        default=False,
+        description="Reenviar aunque el comprobante ya haya salido (el tutor dice que no le llegó)",
+    ),
     _user: CurrentUser = Depends(require_role("ADMIN")),
     db: Session = Depends(get_db),
 ) -> EnviarComprobanteOut:
@@ -1072,6 +1076,11 @@ def enviar_comprobante_whatsapp(
     Requiere que la escuela tenga su WhatsApp vinculado (el front lo gatea consultando
     `/mi-escuela/whatsapp/estado`; si el envío falla igual, se reporta en `motivo`). Solo
     pagos CONFIRMADO. RLS aísla por org. No lanza por fallos de envío: los reporta.
+
+    **No duplica**: si el comprobante ya salió (el envío automático al confirmar el pago,
+    o un clic anterior), responde `motivo="ya_enviado"` con la fecha en vez de mandar otro.
+    WhatsApp no permite borrar un mensaje entregado, así que un duplicado se queda en el
+    teléfono del tutor para siempre. `forzar=true` reenvía igual, como decisión explícita.
     """
     pago = db.execute(select(Pago).where(Pago.id == pago_id)).scalar_one_or_none()
     if pago is None:
@@ -1088,12 +1097,17 @@ def enviar_comprobante_whatsapp(
         org=org,
         port=get_whatsapp_port(),
         comprobante_svc=get_comprobante_service(),
+        forzar=forzar,
     )
+    # `get_db` commitea DESPUÉS de la respuesta; la marca de "ya enviado" tiene que
+    # quedar persistida aunque el cliente corte, o el candado no serviría de nada.
+    db.commit()
     return EnviarComprobanteOut(
         enviado=res.enviado,
         motivo=res.motivo,
         provider_message_id=res.provider_message_id,
         detalle=res.detalle,
+        enviado_en=res.enviado_en,
     )
 
 

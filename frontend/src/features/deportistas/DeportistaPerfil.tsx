@@ -15,6 +15,7 @@ import {
 } from '@/components/ui';
 import { formatDate, formatDateLarga, formatMoney, mesLargo, nivelLabel } from '@/lib/format';
 import './DeportistaPerfil.css';
+import { enviarComprobanteConfirmando, MOTIVO_CANCELADO } from '@/features/cobranza/enviarComprobante';
 
 function DataRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -61,8 +62,10 @@ function HistorialPagos({ deportistaId }: { deportistaId: string }) {
   async function enviarWhatsapp(pagoId: string) {
     setWaEnVuelo(pagoId);
     try {
-      const res = await api.enviarComprobanteWhatsapp(pagoId);
-      if (res.enviado) {
+      const res = await enviarComprobanteConfirmando(pagoId);
+      if (res.motivo === MOTIVO_CANCELADO) {
+        // Se ofreció reenviar y dijeron que no: ni éxito ni error.
+      } else if (res.enviado) {
         toast.success('Recibo enviado por WhatsApp');
       } else if (res.motivo === 'sin_telefono') {
         toast.error('El tutor no tiene un teléfono registrado.');

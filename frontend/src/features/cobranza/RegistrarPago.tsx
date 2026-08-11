@@ -12,6 +12,7 @@ import { useAuth } from '@/auth/useAuth';
 import { Badge, Button, Card, EstadoBadge, Field, useToast } from '@/components/ui';
 import { formatDate, formatMoney, mesLargo } from '@/lib/format';
 import './RegistrarPago.css';
+import { enviarComprobanteConfirmando, MOTIVO_CANCELADO } from './enviarComprobante';
 
 // Fecha de HOY en formato YYYY-MM-DD (local): default del campo "Fecha de pago".
 function hoyISO(): string {
@@ -755,8 +756,10 @@ function Comprobante({
     setEnviando(true);
     setEnvioError(null);
     try {
-      const res = await api.enviarComprobanteWhatsapp(pago.id);
-      if (res.enviado) {
+      const res = await enviarComprobanteConfirmando(pago.id);
+      if (res.motivo === MOTIVO_CANCELADO) {
+        // Se ofreció reenviar y dijeron que no: ni éxito ni error.
+      } else if (res.enviado) {
         setEnvioOk(true);
       } else if (res.motivo === 'sin_telefono') {
         setEnvioError('El tutor no tiene un teléfono registrado.');

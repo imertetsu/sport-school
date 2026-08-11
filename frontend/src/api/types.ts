@@ -476,9 +476,13 @@ export interface PagoOut {
 // --- POST /cobranza/pagos/{id}/enviar-whatsapp -> resultado del envío del recibo ---
 export interface EnviarComprobanteOut {
   enviado: boolean;
-  motivo: string; // ok | sin_deportista | sin_telefono | sin_whatsapp | error_envio
+  // ok | ya_enviado | sin_deportista | sin_telefono | sin_whatsapp | error_envio
+  motivo: string;
   provider_message_id: string | null;
   detalle: string | null; // error crudo del gateway (diagnóstico)
+  // Cuándo salió (en `ya_enviado`, la vez anterior). WhatsApp no deja borrar un
+  // mensaje entregado, así que el duplicado se corta antes y se ofrece reenviar.
+  enviado_en: string | null;
 }
 
 // --- POST /cobranza/pagos/qr -> QR a mostrar ---

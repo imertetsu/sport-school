@@ -18,6 +18,7 @@ import base64
 import io
 import uuid
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -42,7 +43,9 @@ from app.services import pagos as pagos_svc
 class EnvioComprobanteResult:
     """Resultado del envío.
 
-    `motivo` ∈ {ok, sin_deportista, sin_telefono, sin_whatsapp, error_envio}.
+    `motivo` ∈ {ok, ya_enviado, sin_deportista, sin_telefono, sin_whatsapp, error_envio}.
+    - `ya_enviado`: NO es un fallo. Este comprobante ya salió antes (ver `enviado_en`) y
+      se cortó para no duplicarlo. Reenviar es posible, pero con `forzar=True`.
     - `sin_whatsapp`: el número del tutor NO está registrado en WhatsApp (o mal cargado).
     - `error_envio`: otro fallo del gateway (sesión caída, timeout, etc.); ver `detalle`.
     """
@@ -51,6 +54,9 @@ class EnvioComprobanteResult:
     motivo: str
     provider_message_id: str | None = None
     detalle: str | None = None
+    # Cuándo salió la vez anterior (solo en `ya_enviado`), para poder decírselo a quien
+    # aprieta el botón en vez de un "no se pudo" sin explicación.
+    enviado_en: datetime | None = None
 
 
 def rasterizar_pdf_a_jpg(pdf_bytes: bytes, *, scale: float = 2.0) -> bytes:
@@ -140,8 +146,24 @@ def enviar_comprobante_whatsapp(
     org: Organizacion,
     port: WhatsAppPort,
     comprobante_svc: ComprobanteService,
+    forzar: bool = False,
 ) -> EnvioComprobanteResult:
-    """Envía el comprobante (imagen del recibo + caption) al tutor responsable de pago."""
+    """Envía el comprobante (imagen del recibo + caption) al tutor responsable de pago.
+
+    **No lo manda dos veces.** El comprobante sale por dos caminos —automático al
+    confirmar el pago y manual desde el botón— que antes no se conocían entre sí, y el
+    tutor terminaba recibiendo lo mismo dos veces. Meta no permite eliminar un mensaje ya
+    entregado, así que el duplicado se queda en su teléfono para siempre: la única
+    defensa es cortarlo antes de enviarlo.
+
+    Con `forzar=True` se reenvía igual — el caso legítimo de "el tutor dice que no le
+    llegó". La decisión es de quien aprieta el botón, no un accidente.
+    """
+    if pago.comprobante_enviado_en is not None and not forzar:
+        return EnvioComprobanteResult(
+            enviado=False, motivo="ya_enviado", enviado_en=pago.comprobante_enviado_en
+        )
+
     # El adaptador del gateway resuelve la org por ContextVar (`app.core.org_context`).
     # En un request sync, el ContextVar que fija `set_tenant_context` (dependencia) NO
     # llega al cuerpo del endpoint: FastAPI corre las dependencias y el endpoint sync en
@@ -212,8 +234,15 @@ def enviar_comprobante_whatsapp(
     )
 
     if result.ok:
+        # Se marca SOLO cuando el proveedor aceptó: si falló, el próximo intento debe
+        # poder salir sin tener que forzarlo.
+        pago.comprobante_enviado_en = datetime.now(UTC)
+        db.flush()
         return EnvioComprobanteResult(
-            enviado=True, motivo="ok", provider_message_id=result.provider_message_id
+            enviado=True,
+            motivo="ok",
+            provider_message_id=result.provider_message_id,
+            enviado_en=pago.comprobante_enviado_en,
         )
     # El gateway responde `ok:false` con un `error`. Distinguimos el caso más común
     # (destinatario sin WhatsApp) del resto para dar un mensaje útil en la UI.

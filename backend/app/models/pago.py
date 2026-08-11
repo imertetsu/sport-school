@@ -69,6 +69,13 @@ class Pago(UUIDPkMixin, OrgScoped, Base):
         PG_UUID(as_uuid=True), ForeignKey("usuario.id", ondelete="SET NULL"), nullable=True
     )
     anulado_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Instante del primer envío ACEPTADO del comprobante por WhatsApp. Es el candado
+    # contra el duplicado: el comprobante sale por dos caminos (automático al confirmar
+    # y manual desde el botón) y Meta NO deja borrar un mensaje ya entregado, así que la
+    # única defensa es no mandarlo dos veces. NULL = todavía no se envió.
+    comprobante_enviado_en: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     credito_generado: Mapped[Decimal] = mapped_column(
         Numeric(10, 2), nullable=False, server_default=text("'0'"), default=Decimal("0")
     )
