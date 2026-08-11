@@ -236,3 +236,132 @@ def test_un_fallo_no_bloquea_el_reintento(app_engine: Engine, pago_confirmado: d
     assert primero.enviado is False
     assert reintento.enviado is True, "un fallo no puede dejar el comprobante bloqueado"
     assert len(bueno.enviados) == 1
+
+
+# --------------------------------------------------------------------------- #
+# El escenario REAL que reportó la escuela, de punta a punta
+#
+# "Al registrar el pago apreté 'enviar recibo' y se envió dos veces." No es que el
+# boton mande dos: es que el comprobante YA habia salido solo al confirmar el pago,
+# y el boton mandaba el segundo sin que nadie lo supiera. Los tests de arriba
+# llaman al servicio dos veces a mano; este reproduce la secuencia completa.
+# --------------------------------------------------------------------------- #
+@pytest.fixture()
+def cuota_por_pagar(owner_engine: Engine) -> Iterator[dict]:
+    """Org con tutor, deportista y una cuota PENDIENTE lista para cobrar."""
+    org = uuid.uuid4()
+    suc, dep, tutor, insc, cuota, usuario = (uuid.uuid4() for _ in range(6))
+
+    with owner_engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO organizacion (id, nombre, pais, moneda, modo_cobro_default, "
+                "prorratea_primer_periodo, created_at, updated_at) "
+                "VALUES (:id,'Escuela E2E (test)','BO','BOB','ANIVERSARIO',true,now(),now())"
+            ),
+            {"id": str(org)},
+        )
+        conn.execute(
+            text(
+                "INSERT INTO usuario (id, org_id, email, password_hash, role, nombre, activo, "
+                "created_at, updated_at) "
+                "VALUES (:id,:org,:email,'x','ADMIN','Admin',true,now(),now())"
+            ),
+            {"id": str(usuario), "org": str(org), "email": f"e2e_{uuid.uuid4().hex}@test.bo"},
+        )
+        conn.execute(
+            text(
+                "INSERT INTO sucursal (id, org_id, nombre, created_at, updated_at) "
+                "VALUES (:id,:org,'Central',now(),now())"
+            ),
+            {"id": str(suc), "org": str(org)},
+        )
+        conn.execute(
+            text(
+                "INSERT INTO deportista (id, org_id, sucursal_id, ap_paterno, nombres, activo, "
+                "created_at, updated_at) "
+                "VALUES (:id,:org,:suc,'FLORES','BRAYAN',true,now(),now())"
+            ),
+            {"id": str(dep), "org": str(org), "suc": str(suc)},
+        )
+        conn.execute(
+            text(
+                "INSERT INTO tutor (id, org_id, nombres, telefono, created_at, updated_at) "
+                "VALUES (:id,:org,'Papá de Brayan','+591 76123457',now(),now())"
+            ),
+            {"id": str(tutor), "org": str(org)},
+        )
+        conn.execute(
+            text(
+                "INSERT INTO deportista_tutor (id, org_id, deportista_id, tutor_id, "
+                "parentesco, responsable_pago) VALUES (:id,:org,:dep,:tut,'PADRE',true)"
+            ),
+            {"id": str(uuid.uuid4()), "org": str(org), "dep": str(dep), "tut": str(tutor)},
+        )
+        conn.execute(
+            text(
+                "INSERT INTO inscripcion (id, org_id, deportista_id, estado, monto_mensual, "
+                "created_at, updated_at) VALUES (:id,:org,:dep,'ACTIVA',60.00,now(),now())"
+            ),
+            {"id": str(insc), "org": str(org), "dep": str(dep)},
+        )
+        conn.execute(
+            text(
+                "INSERT INTO cuota (id, org_id, inscripcion_id, periodo_inicio, periodo_fin, "
+                "vence_el, monto, estado, monto_pagado, generada_en) "
+                "VALUES (:id,:org,:ins,:v,:v,:v,60.00,'PENDIENTE',0,now())"
+            ),
+            {"id": str(cuota), "org": str(org), "ins": str(insc), "v": date(2026, 8, 20)},
+        )
+
+    yield {"org": org, "cuota": cuota, "usuario": usuario}
+
+    with owner_engine.begin() as conn:
+        for tabla in (
+            "mensaje_whatsapp",
+            "conversacion_whatsapp",
+            "pago_cuota",
+            "pago",
+            "cuota",
+            "inscripcion",
+            "deportista_tutor",
+            "deportista",
+            "tutor",
+            "sucursal",
+            "usuario",
+        ):
+            conn.execute(text(f"DELETE FROM {tabla} WHERE org_id = :o"), {"o": str(org)})
+        conn.execute(text("DELETE FROM organizacion WHERE id = :o"), {"o": str(org)})
+
+
+def test_registrar_pago_y_apretar_enviar_no_duplica(
+    app_engine: Engine, cuota_por_pagar: dict
+) -> None:
+    """Registrar el pago YA manda el comprobante; el botón después no puede mandar otro."""
+    from app.services import pagos as pagos_svc
+
+    with _sesion(app_engine, cuota_por_pagar["org"]) as db:
+        # 1) La secretaria registra el pago -> el comprobante sale SOLO.
+        pago = pagos_svc.registrar_pago_efectivo(
+            db,
+            org_id=cuota_por_pagar["org"],
+            cuota_ids=[cuota_por_pagar["cuota"]],
+            registrado_por=cuota_por_pagar["usuario"],
+            comprobante=PdfComprobanteService(),
+        )
+        db.commit()
+        marcado = pago.comprobante_enviado_en
+
+        # 2) Y después aprieta "Enviar por WhatsApp" sin saber que ya salió.
+        port = _PortFalso()
+        org = db.execute(
+            select(Organizacion).where(Organizacion.id == cuota_por_pagar["org"])
+        ).scalar_one()
+        boton = svc.enviar_comprobante_whatsapp(
+            db, pago=pago, org=org, port=port, comprobante_svc=PdfComprobanteService()
+        )
+
+    assert marcado is not None, "el envío automático al confirmar debe dejar la marca"
+    assert boton.enviado is False
+    assert boton.motivo == "ya_enviado"
+    assert port.enviados == [], "el tutor NO puede recibir el segundo comprobante"
