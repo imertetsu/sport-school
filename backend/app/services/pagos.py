@@ -17,6 +17,7 @@ mismo tras resolver, en su propia transacción.
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from datetime import UTC, date, datetime
 from decimal import Decimal
@@ -255,6 +256,8 @@ def construir_comprobante_data(db: Session, *, pago: Pago, org: Organizacion) ->
 # --------------------------------------------------------------------------- #
 # KARDEX de pagos (estado de cuenta consolidado del deportista)
 # --------------------------------------------------------------------------- #
+logger = logging.getLogger(__name__)
+
 _MESES_LARGO = (
     "",
     "enero",
@@ -367,21 +370,42 @@ def construir_kardex_data(
 
 
 def _enviar_recibo_por_whatsapp(db: Session, *, pago: Pago) -> None:
-    """Engancha (aditivo) el envío del recibo PDF por WhatsApp tras confirmar el pago.
+    """Manda el COMPROBANTE (imagen del recibo) al tutor tras confirmar el pago.
 
     Se llama UNA vez por confirmación (efectivo: flujo único; QR: la guarda
     `pago.estado == "CONFIRMADO"` de `_confirmar_y_aplicar` ya corta el reenvío en
-    webhooks duplicados). Selecciona el adaptador por configuración vía
-    `get_whatsapp_port()` (mock en dev/CI). NO altera la conciliación ni lanza: el
-    recibo no es crítico para confirmar el pago (sin teléfono/fallo ⇒ se ignora).
+    webhooks duplicados).
 
-    Import diferido de `deps`/`recibo_envio` para no acoplar el módulo de pagos al
-    wiring de adaptadores en import time.
+    **Manda la imagen y no el enlace al PDF** (que es lo que hacía `recibo_envio`):
+    aquel camino usaba la plantilla `recibo_pago`, que NUNCA se creó en Meta, así que
+    desde que el canal es oficial fallaba siempre con `132001 Template name does not
+    exist`. Crear esa plantilla habría significado dos mensajes por pago —un enlace y
+    una imagen—, cobrados por separado y redundantes para el tutor. La imagen es la
+    que el tutor puede ver sin abrir nada.
+
+    NO lanza: el recibo no es crítico para confirmar el pago. Un fallo al renderizar o
+    enviar no puede tumbar el registro del pago ni la conciliación del QR.
+
+    Imports diferidos para no acoplar el módulo de pagos al wiring de adaptadores.
     """
-    from app.services import recibo_envio
-    from app.services.deps import get_whatsapp_port
+    from app.services import comprobante_whatsapp
+    from app.services.deps import get_comprobante_service, get_whatsapp_port
 
-    recibo_envio.enviar_recibo_whatsapp(db, pago=pago, port=get_whatsapp_port())
+    try:
+        org = db.execute(
+            select(Organizacion).where(Organizacion.id == pago.org_id)
+        ).scalar_one_or_none()
+        if org is None:
+            return
+        comprobante_whatsapp.enviar_comprobante_whatsapp(
+            db,
+            pago=pago,
+            org=org,
+            port=get_whatsapp_port(),
+            comprobante_svc=get_comprobante_service(),
+        )
+    except Exception:  # noqa: BLE001 - el pago ya está confirmado; el recibo es extra
+        logger.exception("recibo por WhatsApp falló para el pago %s", pago.id)
 
 
 def _asignar_numero_recibo(db: Session, pago: Pago) -> None:
