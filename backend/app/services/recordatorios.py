@@ -230,6 +230,41 @@ def _insert_idempotente(
     return inserted
 
 
+def _registrar_en_chat(
+    db,
+    *,
+    org_id: uuid.UUID,
+    telefono: str,
+    cuerpo: str,
+    result,
+    por_plantilla: bool,
+    lleva_qr: bool,
+) -> None:
+    """Deja el recordatorio como burbuja en el chat de la escuela (epic chat-whatsapp).
+
+    El QR va como REFERENCIA (`media_ref`), no como copia: todos los recordatorios de una
+    escuela mandan exactamente la misma imagen, y el endpoint de media la resuelve al
+    vuelo desde `qr_cobro`.
+
+    Import LOCAL a propósito: `chat_whatsapp` importa modelos y servicios que a su vez
+    tocan este módulo, y a nivel de módulo el ciclo rompe el arranque.
+    """
+    from app.services import chat_whatsapp as chat_svc
+
+    chat_svc.registrar_automatico(
+        db,
+        org_id=org_id,
+        telefono=telefono,
+        tipo="PLANTILLA" if por_plantilla else "TEXTO",
+        texto=cuerpo,
+        estado="ENVIADO" if result.ok else "FALLIDO",
+        provider_message_id=result.provider_message_id,
+        error_detalle=None if result.ok else result.error,
+        autor=chat_svc.AUTOR_RECORDATORIO,
+        media_ref=chat_svc.MEDIA_REF_QR if lleva_qr else None,
+    )
+
+
 def enviar_recordatorio_cuota(
     db: Session,
     *,
@@ -394,6 +429,21 @@ def enviar_recordatorio_cuota(
         result = port.send_text(WhatsAppTextMessage(to=telefono, body=cuerpo))
 
     # 5) Resultado: ENVIADO solo si el proveedor aceptó.
+    #    En ambos casos la burbuja va al chat (epic chat-whatsapp): el tutor le responde
+    #    a ESTE mensaje, así que sin él la conversación empieza sin contexto. También se
+    #    registra el fallo: es el único rastro visible de que se intentó.
+    _registrar_en_chat(
+        db,
+        org_id=cuota.org_id,
+        telefono=telefono,
+        cuerpo=cuerpo,
+        result=result,
+        por_plantilla=port.requiere_plantilla() and qr_b64 is not None,
+        # El QR se REFERENCIA, no se copia: es el mismo en todos los recordatorios de la
+        # escuela, y duplicarlo por mensaje serían megabytes de copias idénticas.
+        lleva_qr=qr_b64 is not None,
+    )
+
     if result.ok:
         fila.estado = "ENVIADO"
         fila.provider_message_id = result.provider_message_id

@@ -1430,3 +1430,94 @@ export interface CategoriaUpdate {
   // según el contrato del backend (validar existencia/activa => 404/422).
   disciplina_id?: string | null;
 }
+
+// ============================================================
+// Chat de WhatsApp (epic chat-whatsapp)
+// ============================================================
+// Las MISMAS formas sirven a la consola de escuela y a la de plataforma: el hilo
+// se ve igual, lo que cambia es el alcance (la escuela solo ve a sus tutores; la
+// plataforma ve todo, incluidos los números que aún no se sabe de qué escuela son).
+
+// --- Fila de la bandeja (lista de chats) ---
+export interface ChatConversacion {
+  id: string;
+  telefono: string;
+  nombre_contacto: string | null;
+  // null = número aún sin clasificar. En la escuela nunca llega uno así; en la
+  // consola de plataforma es justo la cola de trabajo.
+  org_id: string | null;
+  org_nombre: string | null;
+  ultimo_mensaje_at: string;
+  ultimo_mensaje_texto: string | null;
+  no_leidos: number;
+  // ¿Se puede responder con texto libre? (24 h desde el último mensaje del contacto).
+  ventana_abierta: boolean;
+  // ¿Se puede escribir aunque la ventana esté cerrada? True cuando el hilo tiene
+  // escuela: el mensaje sale como plantilla de contacto en vez de texto libre.
+  puede_iniciar: boolean;
+}
+
+// --- GET .../conversaciones ---
+export interface ChatConversacionesPage {
+  items: ChatConversacion[];
+  // No es de la página: es todo lo pendiente que ve este usuario (badge del menú).
+  no_leidos_total: number;
+  // Cursor de la página siguiente. `hay_mas:false` ⇒ no queda nada por pedir.
+  hay_mas: boolean;
+  cursor_at: string | null;
+  cursor_id: string | null;
+}
+
+// --- Una burbuja del hilo ---
+export interface ChatMensaje {
+  id: string;
+  direccion: 'IN' | 'OUT';
+  tipo: 'TEXTO' | 'IMAGEN' | 'PLANTILLA' | 'OTRO';
+  texto: string | null;
+  // El binario se pide aparte (`.../mensajes/{id}/media`): meterlo en base64 aquí
+  // inflaría el JSON del hilo en cada refresco.
+  tiene_media: boolean;
+  media_mime: string | null;
+  estado: 'ENVIADO' | 'ENTREGADO' | 'LEIDO' | 'FALLIDO' | null;
+  error_detalle: string | null;
+  enviado_por_nombre: string | null;
+  ocurrido_en: string;
+}
+
+// --- GET .../conversaciones/{id} (abre el hilo y lo marca como leído) ---
+export interface ChatHilo {
+  conversacion: ChatConversacion;
+  mensajes: ChatMensaje[];
+}
+
+// --- POST .../conversaciones/{id}/mensajes ---
+// `enviado:false` con `motivo:"ventana_expirada"` NO es un error del sistema: es
+// que pasaron 24 h desde el último mensaje del contacto y Meta ya no admite texto
+// libre. La UI lo muestra como aviso.
+export interface ChatEnvioOut {
+  enviado: boolean;
+  motivo: string;
+  detalle: string | null;
+  mensaje: ChatMensaje | null;
+}
+
+// --- POST /plataforma/whatsapp/conversaciones/{id}/asignar ---
+// org_id null desasigna (devuelve el hilo a la cola de sin clasificar).
+export interface ChatAsignarIn {
+  org_id: string | null;
+}
+
+// --- GET /whatsapp/tutores (agenda de la escuela) ---
+// La bandeja solo muestra hilos YA abiertos, y un hilo solo nace cuando el tutor
+// escribe primero. Esta lista es la única forma de que la escuela INICIE el
+// contacto con las familias que nunca escribieron (la mayoría).
+export interface ChatTutor {
+  tutor_id: string;
+  nombres: string;
+  telefono: string;
+  // Deportistas a cargo: en la escuela no se busca "Roxana Villca", se busca
+  // "la mamá de Alexia".
+  deportistas: string[];
+  // Hilo ya abierto con ese número, si lo hay: se abre en vez de crear otro.
+  conversacion_id: string | null;
+}

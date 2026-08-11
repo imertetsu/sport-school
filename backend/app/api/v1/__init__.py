@@ -10,6 +10,7 @@ from app.api.v1 import (
     avisos,
     catalogo,
     categorias,
+    chat,
     cobranza,
     comprobantes,
     deportistas,
@@ -51,6 +52,11 @@ api_router.include_router(whatsapp_sesion.router)
 api_router.include_router(recibos.router)
 api_router.include_router(solicitudes.router)
 api_router.include_router(plataforma.router)
+# Chat de WhatsApp (epic chat-whatsapp): dos routers sobre el mismo servicio, uno
+# para la escuela (RLS por org) y otro para la consola de plataforma (ve todo,
+# incluidos los números aún sin clasificar).
+api_router.include_router(chat.router)
+api_router.include_router(chat.plataforma_router)
 api_router.include_router(openbcb_webhook.router)
 api_router.include_router(whatsapp_webhook.router)
 api_router.include_router(whatsapp_inbound_webhook.router)

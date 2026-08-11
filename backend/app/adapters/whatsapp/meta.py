@@ -20,6 +20,7 @@ from app.core.phone import normalize_bo_phone
 from app.domain.ports.whatsapp import (
     WhatsAppImage,
     WhatsAppImageMessage,
+    WhatsAppMedia,
     WhatsAppPort,
     WhatsAppSendResult,
     WhatsAppTemplateMessage,
@@ -28,6 +29,9 @@ from app.domain.ports.whatsapp import (
 
 _TIMEOUT_SECONDS = 15.0
 _MIME_POR_DEFECTO = "image/png"
+# Tope del adjunto ENTRANTE que se guarda en BD (el chat lo persiste como bytea).
+# Meta admite hasta 100 MB en vídeo; nada de eso tiene sentido dentro de una fila.
+_MAX_MEDIA_BYTES = 8 * 1024 * 1024
 
 
 def _partir_data_url(data_url: str) -> tuple[str, str]:
@@ -169,6 +173,33 @@ class MetaCloudWhatsAppAdapter(WhatsAppPort):
             "image": imagen,
         }
         return self._post(body)
+
+    def fetch_media(self, media_id: str) -> WhatsAppMedia | None:
+        """Descarga un adjunto entrante: dos saltos (metadatos → binario). No lanza.
+
+        `GET /{media_id}` devuelve una `url` firmada y de vida corta; esa url hay que
+        pedirla **con el mismo Bearer** (a diferencia de un link público). El adaptador
+        limita el tamaño para no meter en BD un vídeo de 100 MB: por encima del tope se
+        descarta el binario (el mensaje se registra igual, sin imagen).
+        """
+        headers = {"Authorization": f"Bearer {settings.whatsapp_access_token}"}
+        base = f"https://graph.facebook.com/{settings.whatsapp_graph_version}"
+        try:
+            meta_resp = httpx.get(f"{base}/{media_id}", headers=headers, timeout=_TIMEOUT_SECONDS)
+            meta_resp.raise_for_status()
+            datos = meta_resp.json() or {}
+            url = datos.get("url")
+            if not url:
+                return None
+            bin_resp = httpx.get(url, headers=headers, timeout=_TIMEOUT_SECONDS)
+            bin_resp.raise_for_status()
+            contenido = bin_resp.content
+            if len(contenido) > _MAX_MEDIA_BYTES:
+                return None
+            mime = datos.get("mime_type") or bin_resp.headers.get("content-type") or "image/jpeg"
+            return WhatsAppMedia(data=contenido, mime=str(mime).split(";")[0])
+        except Exception:  # noqa: BLE001 - sin adjunto se sigue: el hilo no se rompe
+            return None
 
     def send_text(self, msg: WhatsAppTextMessage) -> WhatsAppSendResult:
         """Envía un mensaje de texto libre vía Graph API (esqueleto; no en tests)."""

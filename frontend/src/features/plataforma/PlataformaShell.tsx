@@ -16,7 +16,7 @@ export function PlataformaGuard() {
 }
 
 // Layout mínimo de la consola: cabecera con marca + tabs Escuelas/Super Admins/
-// Disciplinas + botón salir. No usa el Sidebar de escuela (son apps separadas).
+// Disciplinas/Chat + botón salir. No usa el Sidebar de escuela (son apps separadas).
 export function PlataformaShell() {
   const { admin, logout } = usePlatformAuth();
 
@@ -64,6 +64,16 @@ export function PlataformaShell() {
           }
         >
           Disciplinas
+        </NavLink>
+        {/* Chat de WhatsApp: bandeja completa. Es el único sitio donde se ven
+            —y se categorizan— los números que aún no tienen escuela. */}
+        <NavLink
+          to="/plataforma/chat"
+          className={({ isActive }) =>
+            `plataforma__tab${isActive ? ' plataforma__tab--active' : ''}`
+          }
+        >
+          Chat
         </NavLink>
       </nav>
 

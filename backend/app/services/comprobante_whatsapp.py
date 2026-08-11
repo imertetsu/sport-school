@@ -188,6 +188,29 @@ def enviar_comprobante_whatsapp(
                 caption=_caption(org, pago, deportista, cuotas),
             )
         )
+    # El comprobante también es una burbuja del chat: el tutor suele responder al recibo
+    # ("no me llegó", "está mal el monto") y sin él la conversación arranca sin contexto.
+    # Import local: `chat_whatsapp` importa servicios que vuelven aquí (ciclo).
+    from app.services import chat_whatsapp as chat_svc
+
+    chat_svc.registrar_automatico(
+        db,
+        org_id=org.id,
+        telefono=telefono,
+        tipo="PLANTILLA" if port.requiere_plantilla() else "IMAGEN",
+        texto=_caption(org, pago, deportista, cuotas),
+        estado="ENVIADO" if result.ok else "FALLIDO",
+        provider_message_id=result.provider_message_id,
+        error_detalle=None if result.ok else result.error,
+        autor=chat_svc.AUTOR_COMPROBANTE,
+        # El recibo SÍ se guarda (a diferencia del QR, que se referencia): es único por
+        # pago y es un documento de dinero. Regenerarlo mostraría el estado ACTUAL —si
+        # el pago se anula después, la burbuja dejaría de reflejar lo que recibió el
+        # tutor ese día—, y eso en un comprobante importa más que los 100 kB.
+        media=jpg_bytes,
+        media_mime="image/jpeg",
+    )
+
     if result.ok:
         return EnvioComprobanteResult(
             enviado=True, motivo="ok", provider_message_id=result.provider_message_id

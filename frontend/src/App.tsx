@@ -15,6 +15,7 @@ import { PagosPorVerificar } from '@/features/cobranza/PagosPorVerificar';
 import { TomarAsistencia } from '@/features/asistencia/TomarAsistencia';
 import { Horarios } from '@/features/horarios/Horarios';
 import { Muro } from '@/features/avisos/Muro';
+import { Chat } from '@/features/chat/Chat';
 import { Egresos } from '@/features/egresos/Egresos';
 import { Entrenadores } from '@/features/entrenadores/Entrenadores';
 import { Reportes } from '@/features/reportes/Reportes';
@@ -29,6 +30,7 @@ import { PlataformaLogin } from '@/features/plataforma/PlataformaLogin';
 import { Escuelas } from '@/features/plataforma/Escuelas';
 import { SuperAdmins } from '@/features/plataforma/SuperAdmins';
 import { Disciplinas } from '@/features/plataforma/Disciplinas';
+import { ChatPlataforma } from '@/features/plataforma/ChatPlataforma';
 // Herramienta de DEV (spike OCR de cédula, STANDALONE): ruta suelta sin sesión
 // ni nav. No forma parte del producto; sirve para validar precisión del OCR.
 import { OcrSpike } from '@/features/dev/OcrSpike';
@@ -96,6 +98,17 @@ export default function App() {
                 El feed lo filtra el backend; las acciones de escritura solo
                 las muestra la UI a ADMIN y el backend las exige (require_role). */}
             <Route path="/avisos" element={<Muro />} />
+            {/* Chat de WhatsApp (epic chat-whatsapp): conversaciones con los
+                tutores de la escuela. Gate de rol ADMIN; el backend exige
+                require_role("ADMIN") y RLS limita los hilos a esta escuela. */}
+            <Route
+              path="/chat"
+              element={
+                <RoleRoute allow={['ADMIN']}>
+                  <Chat />
+                </RoleRoute>
+              }
+            />
             {/* Egresos (financiero) y Reportes (gerencial): gate de rol ADMIN. */}
             <Route
               path="/egresos"
@@ -165,6 +178,10 @@ export default function App() {
                 <Route path="escuelas" element={<Escuelas />} />
                 <Route path="admins" element={<SuperAdmins />} />
                 <Route path="disciplinas" element={<Disciplinas />} />
+                {/* Chat de WhatsApp: TODOS los hilos, incluidos los números que
+                    aún no se sabe de qué escuela son (los únicos que ninguna
+                    escuela ve). Acá se los categoriza. */}
+                <Route path="chat" element={<ChatPlataforma />} />
               </Route>
             </Route>
           </Route>

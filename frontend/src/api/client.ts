@@ -20,6 +20,11 @@ import type {
   CategoriaAsistencia,
   CategoriaCreate,
   CategoriaUpdate,
+  ChatConversacion,
+  ChatConversacionesPage,
+  ChatEnvioOut,
+  ChatHilo,
+  ChatTutor,
   ComprobanteCuotaElegible,
   ComprobantesPendientesPage,
   ConfirmarComprobanteBody,
@@ -1015,7 +1020,73 @@ export const api = {
       signal,
     });
   },
+
+  // ---- Chat de WhatsApp (epic chat-whatsapp). SOLO ADMIN. ----
+  // El backend scopea por RLS: la escuela solo ve los hilos de SUS tutores, y los
+  // números aún sin clasificar no le llegan (los ve la consola de plataforma).
+  // GET /whatsapp/conversaciones -> bandeja ordenada por actividad reciente.
+  chatConversaciones(
+    params: { buscar?: string; cursorAt?: string; cursorId?: string } = {},
+    signal?: AbortSignal,
+  ): Promise<ChatConversacionesPage> {
+    return request<ChatConversacionesPage>('/whatsapp/conversaciones', {
+      query: {
+        buscar: params.buscar,
+        cursor_at: params.cursorAt,
+        cursor_id: params.cursorId,
+      },
+      signal,
+    });
+  },
+  // GET /whatsapp/conversaciones/{id} -> hilo + lo marca como leído.
+  chatHilo(id: string, signal?: AbortSignal): Promise<ChatHilo> {
+    return request<ChatHilo>(`/whatsapp/conversaciones/${id}`, { signal });
+  },
+  // POST /whatsapp/conversaciones/{id}/mensajes -> responde con texto libre.
+  chatResponder(id: string, texto: string, signal?: AbortSignal): Promise<ChatEnvioOut> {
+    return request<ChatEnvioOut>(`/whatsapp/conversaciones/${id}/mensajes`, {
+      method: 'POST',
+      body: { texto },
+      signal,
+    });
+  },
+  // GET /whatsapp/mensajes/{id}/media -> object URL de la imagen (ver `fetchBlobUrl`).
+  chatMedia(id: string, signal?: AbortSignal): Promise<string> {
+    return fetchBlobUrl(`/whatsapp/mensajes/${id}/media`, getToken(), signal);
+  },
+  // GET /whatsapp/tutores -> agenda de tutores contactables de la escuela.
+  chatTutores(buscar?: string, signal?: AbortSignal): Promise<ChatTutor[]> {
+    return request<ChatTutor[]>('/whatsapp/tutores', { query: { buscar }, signal });
+  },
+  // POST /whatsapp/conversaciones/abrir -> abre (o crea) el hilo con un tutor.
+  // 403 si el número no es de un tutor de la escuela; 409 si ya es de otra escuela.
+  chatAbrir(telefono: string, signal?: AbortSignal): Promise<ChatHilo> {
+    return request<ChatHilo>('/whatsapp/conversaciones/abrir', {
+      method: 'POST',
+      body: { telefono },
+      signal,
+    });
+  },
 };
+
+// Descarga un binario protegido y devuelve un object URL usable en <img src>.
+// Un <img> normal no manda el header Authorization, así que la imagen del chat se
+// baja por fetch y se envuelve en un blob: URL. Quien lo use debe liberarlo con
+// URL.revokeObjectURL al desmontar, o la pestaña acumula memoria.
+async function fetchBlobUrl(
+  path: string,
+  token: string | null,
+  signal?: AbortSignal,
+): Promise<string> {
+  const res = await fetch(buildUrl(path), {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    signal,
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, `Error ${res.status}`, null, []);
+  }
+  return URL.createObjectURL(await res.blob());
+}
 
 // URL absoluta del comprobante PDF (descarga binaria; no pasa por request<T>()).
 // GET /cobranza/comprobantes/{pago_id}.pdf -> application/pdf.
@@ -1260,5 +1331,55 @@ export const platformApi = {
       body,
       signal,
     });
+  },
+
+  // ---- Chat de WhatsApp (epic chat-whatsapp). Ve TODOS los hilos. ----
+  // GET /plataforma/whatsapp/conversaciones -> bandeja completa.
+  // `sinAsignar` deja solo la cola de números por clasificar.
+  chatConversaciones(
+    params: {
+      sinAsignar?: boolean;
+      orgId?: string;
+      buscar?: string;
+      cursorAt?: string;
+      cursorId?: string;
+    } = {},
+    signal?: AbortSignal,
+  ): Promise<ChatConversacionesPage> {
+    return platformRequest<ChatConversacionesPage>('/whatsapp/conversaciones', {
+      query: {
+        sin_asignar: params.sinAsignar ? 'true' : undefined,
+        org_id: params.orgId,
+        buscar: params.buscar,
+        cursor_at: params.cursorAt,
+        cursor_id: params.cursorId,
+      },
+      signal,
+    });
+  },
+  // GET /plataforma/whatsapp/conversaciones/{id} -> hilo + lo marca como leído.
+  chatHilo(id: string, signal?: AbortSignal): Promise<ChatHilo> {
+    return platformRequest<ChatHilo>(`/whatsapp/conversaciones/${id}`, { signal });
+  },
+  // POST /plataforma/whatsapp/conversaciones/{id}/mensajes -> responde con texto libre.
+  chatResponder(id: string, texto: string, signal?: AbortSignal): Promise<ChatEnvioOut> {
+    return platformRequest<ChatEnvioOut>(`/whatsapp/conversaciones/${id}/mensajes`, {
+      method: 'POST',
+      body: { texto },
+      signal,
+    });
+  },
+  // POST /plataforma/whatsapp/conversaciones/{id}/asignar -> categoriza el hilo.
+  // A partir de aquí la escuela lo ve en SU chat con todo el historial.
+  chatAsignar(id: string, orgId: string | null, signal?: AbortSignal): Promise<ChatConversacion> {
+    return platformRequest<ChatConversacion>(`/whatsapp/conversaciones/${id}/asignar`, {
+      method: 'POST',
+      body: { org_id: orgId },
+      signal,
+    });
+  },
+  // GET /plataforma/whatsapp/mensajes/{id}/media -> object URL de la imagen.
+  chatMedia(id: string, signal?: AbortSignal): Promise<string> {
+    return fetchBlobUrl(`/plataforma/whatsapp/mensajes/${id}/media`, getPlatformToken(), signal);
   },
 };

@@ -85,6 +85,19 @@ class WhatsAppImageMessage:
 
 
 @dataclass(frozen=True)
+class WhatsAppMedia:
+    """Adjunto ENTRANTE ya descargado del proveedor.
+
+    Meta no manda el binario en el webhook: manda un `media_id` que hay que canjear
+    contra la Graph API. El dominio solo describe el resultado (bytes + mime); cómo
+    se canjea es cosa del adaptador.
+    """
+
+    data: bytes
+    mime: str
+
+
+@dataclass(frozen=True)
 class WhatsAppSendResult:
     """Resultado de un envío.
 
@@ -130,3 +143,15 @@ class WhatsAppPort(Protocol):
     def send_image(self, msg: WhatsAppImageMessage) -> WhatsAppSendResult:
         """Envía una imagen con caption (no lanza; reporta vía `ok`/`error`)."""
         ...
+
+    def fetch_media(self, media_id: str) -> WhatsAppMedia | None:
+        """Descarga un adjunto ENTRANTE por su id de proveedor (epic chat-whatsapp).
+
+        El webhook de un mensaje con imagen trae un id, no el binario. El chat
+        necesita los bytes para mostrar la burbuja, así que el puerto expone la
+        descarga; el adaptador decide cómo canjear el id.
+
+        Default `None` (canal sin descarga de adjuntos): el mensaje se registra igual
+        en el hilo, solo que sin imagen. No lanza.
+        """
+        return None

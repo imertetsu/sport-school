@@ -15,6 +15,7 @@ from app.models.categoria import Categoria
 from app.models.comprobante_pendiente import ComprobantePendiente
 from app.models.conciliacion_pendiente import ConciliacionPendiente
 from app.models.consentimiento import Consentimiento
+from app.models.conversacion_whatsapp import ConversacionWhatsApp
 from app.models.credito import Credito
 from app.models.cuota import Cuota
 from app.models.deportista import Deportista
@@ -26,6 +27,7 @@ from app.models.entrenador_disciplina import EntrenadorDisciplina
 from app.models.entrenador_sucursal import EntrenadorSucursal
 from app.models.horario_clase import HorarioClase
 from app.models.inscripcion import Inscripcion
+from app.models.mensaje_whatsapp import MensajeWhatsApp
 from app.models.organizacion import Organizacion
 from app.models.pago import Pago
 from app.models.pago_cuota import PagoCuota
@@ -77,4 +79,6 @@ __all__ = [
     "PlataformaAdmin",
     "PlataformaAuditoria",
     "WhatsAppSesion",
+    "ConversacionWhatsApp",
+    "MensajeWhatsApp",
 ]

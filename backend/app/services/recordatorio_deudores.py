@@ -259,8 +259,27 @@ def enviar_digest_sucursal(
         header_image=None,
     )
     res_plantilla = port.send_template(plantilla)
-    res_detalle = port.send_text(
-        WhatsAppTextMessage(to=telefono, body=_detalle_multilinea(deudores))
+    detalle = _detalle_multilinea(deudores)
+    res_detalle = port.send_text(WhatsAppTextMessage(to=telefono, body=detalle))
+
+    # Burbuja en el chat (epic chat-whatsapp). Va UNA sola con el resumen + el detalle,
+    # aunque por la red hayan salido dos mensajes: en la conversación lo que importa es
+    # qué se le comunicó al entrenador, no cómo se partió para pasar la ventana de 24 h.
+    # Import local (ciclo con `chat_whatsapp`).
+    from app.services import chat_whatsapp as chat_svc
+
+    chat_svc.registrar_automatico(
+        db,
+        org_id=entrenador.org_id,
+        telefono=telefono,
+        tipo="PLANTILLA",
+        texto=(
+            f"{sucursal_nombre}: {num_deudores} deudor(es) por Bs {monto_total:.2f}\n\n{detalle}"
+        ),
+        estado="ENVIADO" if res_plantilla.ok else "FALLIDO",
+        provider_message_id=res_plantilla.provider_message_id,
+        error_detalle=None if res_plantilla.ok else res_plantilla.error,
+        autor=chat_svc.AUTOR_DEUDORES,
     )
 
     fila = db.get(RecordatorioDeudores, inserted_id)

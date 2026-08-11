@@ -337,6 +337,22 @@ def enviar_aviso_whatsapp(
         )
         result = port.send_template(msg)
 
+        # Burbuja en el chat (epic chat-whatsapp): el aviso del muro es un mensaje más
+        # de la conversación, y el tutor suele responderlo. Import local (ciclo).
+        from app.services import chat_whatsapp as chat_svc
+
+        chat_svc.registrar_automatico(
+            db,
+            org_id=aviso.org_id,
+            telefono=destinatario.telefono,
+            tipo="PLANTILLA",
+            texto=f"{aviso.titulo}\n\n{cuerpo_corto}",
+            estado="ENVIADO" if result.ok else "FALLIDO",
+            provider_message_id=result.provider_message_id,
+            error_detalle=None if result.ok else result.error,
+            autor=chat_svc.AUTOR_AVISO,
+        )
+
         fila = db.get(AvisoNotificacion, inserted_id)
         if fila is not None:
             if result.ok:

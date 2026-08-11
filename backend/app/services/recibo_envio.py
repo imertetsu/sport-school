@@ -144,6 +144,25 @@ def enviar_recibo_whatsapp(
     )
     result = port.send_template(msg)
 
+    # Burbuja en el chat (epic chat-whatsapp). El texto reproduce lo que ve el tutor:
+    # la plantilla no se guarda en ningún lado, así que si no se arma aquí, en el chat
+    # aparecería un mensaje vacío. Import local: `chat_whatsapp` cierra ciclo con este.
+    from app.services import chat_whatsapp as chat_svc
+
+    chat_svc.registrar_automatico(
+        db,
+        org_id=pago.org_id,
+        telefono=telefono,
+        tipo="PLANTILLA",
+        texto=(
+            f"Recibo {numero_recibo} · {nombre_deportista} · Bs {monto:.2f}\n{url}"
+        ),
+        estado="ENVIADO" if result.ok else "FALLIDO",
+        provider_message_id=result.provider_message_id,
+        error_detalle=None if result.ok else result.error,
+        autor=chat_svc.AUTOR_RECIBO,
+    )
+
     if result.ok:
         return ReciboEnvioResult(
             enviado=True, provider_message_id=result.provider_message_id, motivo="ok"

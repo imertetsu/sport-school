@@ -53,6 +53,15 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    title: 'Comunicación',
+    items: [
+      // Chat de WhatsApp (epic chat-whatsapp): conversaciones con los tutores.
+      // SOLO ADMIN (el item no aparece para ENTRENADOR); el backend exige ADMIN
+      // y RLS limita los hilos a esta escuela.
+      { id: 'chat', label: 'Chat', icon: '✉', to: '/chat', enabled: true, roles: ['ADMIN'] },
+    ],
+  },
+  {
     title: 'Cobranza',
     items: [
       // Pagos: lista de los que pagaron (cuotas pagadas). Visible a ADMIN y ENTRENADOR.
