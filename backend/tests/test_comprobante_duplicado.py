@@ -365,3 +365,52 @@ def test_registrar_pago_y_apretar_enviar_no_duplica(
     assert boton.enviado is False
     assert boton.motivo == "ya_enviado"
     assert port.enviados == [], "el tutor NO puede recibir el segundo comprobante"
+
+
+def test_el_pago_informa_como_le_fue_al_recibo(
+    app_engine: Engine, cuota_por_pagar: dict
+) -> None:
+    """El resultado del envío viaja pegado al pago: sin eso la pantalla no puede avisar.
+
+    Era el envío MUDO lo que hacía que la secretaria apretara "Enviar por WhatsApp"
+    después de cobrar. El candado corta el duplicado; esto es para que no llegue a
+    intentarlo.
+    """
+    from app.services import pagos as pagos_svc
+
+    with _sesion(app_engine, cuota_por_pagar["org"]) as db:
+        pago = pagos_svc.registrar_pago_efectivo(
+            db,
+            org_id=cuota_por_pagar["org"],
+            cuota_ids=[cuota_por_pagar["cuota"]],
+            registrado_por=cuota_por_pagar["usuario"],
+            comprobante=PdfComprobanteService(),
+        )
+        db.commit()
+        envio = getattr(pago, "envio_recibo", None)
+
+    assert envio is not None, "el pago tiene que decir si el recibo salió"
+    assert envio.enviado is True
+    assert envio.motivo == "ok"
+
+
+def test_sin_telefono_el_pago_lo_informa(app_engine: Engine, cuota_por_pagar: dict) -> None:
+    """Si el tutor no tiene teléfono, la pantalla debe poder decir POR QUÉ no salió."""
+    from app.services import pagos as pagos_svc
+
+    with _sesion(app_engine, cuota_por_pagar["org"]) as db:
+        db.execute(text("UPDATE tutor SET telefono = NULL"))
+        db.flush()
+        pago = pagos_svc.registrar_pago_efectivo(
+            db,
+            org_id=cuota_por_pagar["org"],
+            cuota_ids=[cuota_por_pagar["cuota"]],
+            registrado_por=cuota_por_pagar["usuario"],
+            comprobante=PdfComprobanteService(),
+        )
+        db.commit()
+        envio = getattr(pago, "envio_recibo", None)
+
+    assert envio is not None
+    assert envio.enviado is False
+    assert envio.motivo == "sin_telefono", "el motivo tiene que ser accionable, no genérico"

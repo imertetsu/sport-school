@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import logging
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
@@ -258,6 +259,23 @@ def construir_comprobante_data(db: Session, *, pago: Pago, org: Organizacion) ->
 # --------------------------------------------------------------------------- #
 logger = logging.getLogger(__name__)
 
+
+@dataclass(frozen=True)
+class EnvioReciboInfo:
+    """Cómo le fue al envío AUTOMÁTICO del recibo tras confirmar el pago.
+
+    Viaja pegada al `Pago` devuelto (atributo NO mapeado: no toca el esquema) para que
+    el endpoint la sirva sin cambiarle la firma a `registrar_pago_efectivo`, que tiene
+    veintitantos call-sites entre app y tests.
+
+    Existe porque este envío era MUDO: la secretaria cobraba, no veía nada sobre
+    WhatsApp, y apretaba "Enviar por WhatsApp" sin saber que el recibo ya había salido.
+    """
+
+    enviado: bool
+    motivo: str
+    detalle: str | None = None
+
 _MESES_LARGO = (
     "",
     "enero",
@@ -369,7 +387,7 @@ def construir_kardex_data(
     )
 
 
-def _enviar_recibo_por_whatsapp(db: Session, *, pago: Pago) -> None:
+def _enviar_recibo_por_whatsapp(db: Session, *, pago: Pago) -> tuple[bool, str, str | None]:
     """Manda el COMPROBANTE (imagen del recibo) al tutor tras confirmar el pago.
 
     Se llama UNA vez por confirmación (efectivo: flujo único; QR: la guarda
@@ -386,6 +404,12 @@ def _enviar_recibo_por_whatsapp(db: Session, *, pago: Pago) -> None:
     NO lanza: el recibo no es crítico para confirmar el pago. Un fallo al renderizar o
     enviar no puede tumbar el registro del pago ni la conciliación del QR.
 
+    **Devuelve `(enviado, motivo, detalle)`** para que la pantalla lo muestre. Que este
+    envío fuera MUDO es lo que hacía que la secretaria apretara "Enviar por WhatsApp"
+    después de cobrar —sin saber que el recibo ya había salido— y el tutor recibiera
+    todo dos veces. El candado corta el duplicado; esto es para que no llegue a
+    intentarlo.
+
     Imports diferidos para no acoplar el módulo de pagos al wiring de adaptadores.
     """
     from app.services import comprobante_whatsapp
@@ -396,16 +420,18 @@ def _enviar_recibo_por_whatsapp(db: Session, *, pago: Pago) -> None:
             select(Organizacion).where(Organizacion.id == pago.org_id)
         ).scalar_one_or_none()
         if org is None:
-            return
-        comprobante_whatsapp.enviar_comprobante_whatsapp(
+            return False, "sin_org", None
+        res = comprobante_whatsapp.enviar_comprobante_whatsapp(
             db,
             pago=pago,
             org=org,
             port=get_whatsapp_port(),
             comprobante_svc=get_comprobante_service(),
         )
-    except Exception:  # noqa: BLE001 - el pago ya está confirmado; el recibo es extra
+        return res.enviado, res.motivo, res.detalle
+    except Exception as exc:  # noqa: BLE001 - el pago ya está confirmado; el recibo es extra
         logger.exception("recibo por WhatsApp falló para el pago %s", pago.id)
+        return False, "error_envio", str(exc)
 
 
 def _asignar_numero_recibo(db: Session, pago: Pago) -> None:
@@ -485,10 +511,11 @@ def _confirmar_y_aplicar(
             variables={"pago_id": str(pago.id), "monto": str(pago.monto)},
         )
 
-    # Recibo PDF al tutor por WhatsApp (epic Sucursales/Recibo). Aditivo: una sola
-    # vez por confirmación (la guarda `estado == "CONFIRMADO"` de arriba garantiza
-    # que un webhook duplicado no reentra aquí, así que no se reenvía).
-    _enviar_recibo_por_whatsapp(db, pago=pago)
+    # Recibo al tutor por WhatsApp. Aditivo: una sola vez por confirmación (la guarda
+    # `estado == "CONFIRMADO"` de arriba garantiza que un webhook duplicado no reentra
+    # aquí). El resultado viaja pegado al pago para que la pantalla lo muestre.
+    enviado, motivo, detalle = _enviar_recibo_por_whatsapp(db, pago=pago)
+    pago.envio_recibo = EnvioReciboInfo(enviado=enviado, motivo=motivo, detalle=detalle)
 
 
 def _sincronizar_puentes(
@@ -645,9 +672,11 @@ def registrar_pago_efectivo(
             variables={"pago_id": str(pago.id), "monto": str(pago.monto)},
         )
 
-    # Recibo PDF al tutor por WhatsApp (epic Sucursales/Recibo). Aditivo: el efectivo
-    # se confirma una sola vez en este flujo, así que el recibo se envía una vez.
-    _enviar_recibo_por_whatsapp(db, pago=pago)
+    # Recibo al tutor por WhatsApp: el efectivo se confirma una sola vez en este flujo.
+    # El resultado viaja pegado al pago para que la pantalla lo muestre y la secretaria
+    # no vuelva a apretar "Enviar" sin saber que ya salió.
+    enviado, motivo, detalle = _enviar_recibo_por_whatsapp(db, pago=pago)
+    pago.envio_recibo = EnvioReciboInfo(enviado=enviado, motivo=motivo, detalle=detalle)
     return pago
 
 

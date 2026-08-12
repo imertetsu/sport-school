@@ -48,6 +48,7 @@ from app.schemas.cobranza import (
     CuotaMontoOut,
     CuotaRevertida,
     EnviarComprobanteOut,
+    EnvioReciboOut,
     CuotasAgg,
     CuotasPage,
     DeportistaRef,
@@ -525,6 +526,16 @@ def _pago_out_enriquecido(db: Session, pago: Pago) -> PagoOut:
         credito_aplicado=pago.credito_aplicado,
         credito_generado=credito_generado,
         cuotas_aplicadas=cuotas_aplicadas,
+        # Cómo le fue al recibo que sale SOLO al confirmar. El servicio lo deja pegado
+        # al pago (atributo no mapeado); en el polling del QR no existe, y ahí queda
+        # `None` — nadie está mirando la pantalla cuando llega ese webhook.
+        envio_recibo=(
+            EnvioReciboOut(
+                enviado=envio.enviado, motivo=envio.motivo, detalle=envio.detalle
+            )
+            if (envio := getattr(pago, "envio_recibo", None)) is not None
+            else None
+        ),
     )
 
 

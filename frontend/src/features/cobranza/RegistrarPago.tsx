@@ -4,6 +4,7 @@ import { api, ApiError } from '@/api/client';
 import type {
   CuotaListItem,
   DeportistaListItem,
+  EnvioReciboOut,
   PagoOut,
   RegistrarPagoEfectivoBody,
   WhatsAppEstado,
@@ -609,6 +610,23 @@ function PagoManual({
 }
 
 // --- Comprobante: descarga PDF (autenticada) + copiar mensaje para WhatsApp ---
+// Traduce el resultado del envío AUTOMÁTICO del recibo a algo accionable. Devuelve
+// `null` cuando salió bien (o cuando no hubo envío que reportar): solo se muestra
+// cuando hay algo que la secretaria pueda arreglar.
+function motivoLegible(envio: EnvioReciboOut | null): string | null {
+  if (!envio || envio.enviado) return null;
+  switch (envio.motivo) {
+    case 'sin_telefono':
+      return 'El recibo NO se envió: el tutor no tiene un teléfono registrado. Cargalo en su ficha y volvé a enviarlo desde acá.';
+    case 'sin_whatsapp':
+      return 'El recibo NO se envió: el número del tutor no está en WhatsApp (o está mal escrito). Revisá el teléfono del tutor responsable.';
+    case 'sin_deportista':
+      return 'El recibo NO se envió: no se pudo determinar el deportista de este pago.';
+    default:
+      return `El recibo NO se envió automáticamente${envio.detalle ? ` (${envio.detalle})` : ''}. Podés reintentarlo con el botón.`;
+  }
+}
+
 function Comprobante({
   pago,
   cuotas,
@@ -638,8 +656,13 @@ function Comprobante({
   // Estado del WhatsApp de la escuela: decide si se puede ENVIAR o hay que VINCULAR.
   const [waEstado, setWaEstado] = useState<WhatsAppEstado | null>(null);
   const [enviando, setEnviando] = useState(false);
-  const [envioOk, setEnvioOk] = useState(false);
-  const [envioError, setEnvioError] = useState<string | null>(null);
+  // El recibo YA sale solo al confirmar el pago, así que estos dos arrancan con lo que
+  // respondió el servidor y no en blanco. Mostrarlo es lo que evita que la secretaria
+  // apriete "Enviar por WhatsApp" sin saber que el tutor ya lo recibió.
+  const [envioOk, setEnvioOk] = useState(pago.envio_recibo?.enviado === true);
+  const [envioError, setEnvioError] = useState<string | null>(
+    motivoLegible(pago.envio_recibo ?? null),
+  );
   const aplicaciones = pago.cuotas_aplicadas ?? [];
 
   // Nombre del tutor responsable (para mostrar a quién se enviará el recibo).
@@ -859,7 +882,7 @@ function Comprobante({
               onClick={enviarWhatsapp}
               disabled={enviando || envioOk}
             >
-              {envioOk ? '✓ Enviado' : enviando ? 'Enviando…' : 'Enviar WhatsApp'}
+              {envioOk ? '✓ Recibo enviado' : enviando ? 'Enviando…' : 'Enviar WhatsApp'}
             </Button>
           ) : (
             <Button variant="primary" onClick={() => navigate('/ajustes')}>
@@ -874,6 +897,13 @@ function Comprobante({
           </Button>
         </div>
 
+        {envioOk && (
+          <p className="rp-comprobante__enviado">
+            ✓ El recibo ya se le envió por WhatsApp
+            {tutorNombre ? ' a ' : ''}
+            {tutorNombre && <strong>{tutorNombre}</strong>}. No hace falta enviarlo de nuevo.
+          </p>
+        )}
         {waEstado === 'CONECTADA' && tutorNombre && !envioOk && (
           <p className="rp-comprobante__text">
             Se enviará el recibo a <strong>{tutorNombre}</strong> (tutor responsable).

@@ -641,8 +641,11 @@ def test_webhook_qr_duplicado_recibo_una_vez(
 
     mock = MockWhatsAppAdapter()
 
-    def _enviar_con_mock(db: Session, *, pago) -> None:  # type: ignore[no-untyped-def]
-        recibo_envio.enviar_recibo_whatsapp(db, pago=pago, port=mock)
+    def _enviar_con_mock(db: Session, *, pago):  # type: ignore[no-untyped-def]
+        # Devuelve `(enviado, motivo, detalle)` como el real: el pago informa a la
+        # pantalla cómo le fue al recibo, y un stub que devuelve None rompe el flujo.
+        res = recibo_envio.enviar_recibo_whatsapp(db, pago=pago, port=mock)
+        return res.enviado, res.motivo, None
 
     monkeypatch.setattr("app.services.pagos._enviar_recibo_por_whatsapp", _enviar_con_mock)
 

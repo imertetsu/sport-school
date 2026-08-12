@@ -239,6 +239,21 @@ class CuotaAplicada(BaseModel):
     estado: str
 
 
+class EnvioReciboOut(BaseModel):
+    """Resultado del envío AUTOMÁTICO del recibo al confirmar el pago.
+
+    Se devuelve con el pago para que la pantalla lo muestre. Antes este envío era mudo:
+    la secretaria cobraba, no veía nada sobre WhatsApp y apretaba "Enviar por WhatsApp"
+    sin saber que el recibo ya había salido — y el tutor recibía todo dos veces.
+
+    `motivo` ∈ {ok, sin_telefono, sin_whatsapp, sin_deportista, error_envio, sin_org}.
+    """
+
+    enviado: bool
+    motivo: str
+    detalle: str | None = None
+
+
 class PagoOut(BaseModel):
     """Polling `GET /cobranza/pagos/{id}` (C3) + respuesta de pago efectivo (abonos).
 
@@ -258,6 +273,9 @@ class PagoOut(BaseModel):
     credito_aplicado: Decimal = Decimal("0")
     credito_generado: Decimal = Decimal("0")
     cuotas_aplicadas: list[CuotaAplicada] = Field(default_factory=list)
+    # Cómo le fue al recibo que sale SOLO al confirmar. `None` en el polling del QR
+    # (ahí el envío ocurre en el webhook, sin nadie mirando la pantalla).
+    envio_recibo: EnvioReciboOut | None = None
 
 
 class QrOut(BaseModel):

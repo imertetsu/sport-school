@@ -471,6 +471,18 @@ export interface PagoOut {
   // Recibo (epic Recibo): N° correlativo por org REC-NNNNNN, asignado al
   // confirmar. null hasta confirmar / pagos históricos sin backfill.
   numero_recibo?: string | null;
+  // Cómo le fue al recibo que sale SOLO al confirmar el pago. La pantalla lo
+  // muestra para que nadie apriete "Enviar por WhatsApp" sin saber que ya salió.
+  // null en el polling del QR (ese envío ocurre en el webhook).
+  envio_recibo?: EnvioReciboOut | null;
+}
+
+// Resultado del envío automático del recibo, embebido en el pago.
+// `motivo` ∈ ok | sin_telefono | sin_whatsapp | sin_deportista | error_envio | sin_org
+export interface EnvioReciboOut {
+  enviado: boolean;
+  motivo: string;
+  detalle: string | null;
 }
 
 // --- POST /cobranza/pagos/{id}/enviar-whatsapp -> resultado del envío del recibo ---

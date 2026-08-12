@@ -434,3 +434,16 @@
   color: var(--accent);
   background: var(--color-surface-hover);
 }
+
+/* Confirmación de que el recibo YA salió por WhatsApp. Va en verde y afirmativo
+   ("ya se envió", no "se enviará") porque el problema que resuelve es que la
+   secretaria apretaba "Enviar" sin saber que el tutor ya lo había recibido. */
+.rp-comprobante__enviado {
+  margin: var(--space-3) 0 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--state-paid-border);
+  border-radius: var(--radius-sm);
+  background: var(--state-paid-bg);
+  color: var(--state-paid-text);
+  font-size: var(--fs-sm);
+}
