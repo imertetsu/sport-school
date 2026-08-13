@@ -1487,9 +1487,12 @@ export interface ChatConversacionesPage {
 // --- Una burbuja del hilo ---
 export interface ChatMensaje {
   id: string;
+  tipo: 'TEXTO' | 'IMAGEN' | 'DOCUMENTO' | 'AUDIO' | 'PLANTILLA' | 'OTRO';
   direccion: 'IN' | 'OUT';
-  tipo: 'TEXTO' | 'IMAGEN' | 'PLANTILLA' | 'OTRO';
   texto: string | null;
+  // Nombre original del archivo adjunto (`comprobante-agosto.pdf`). Es lo que se
+  // muestra en la burbuja de un documento.
+  media_nombre?: string | null;
   // El binario se pide aparte (`.../mensajes/{id}/media`): meterlo en base64 aquí
   // inflaría el JSON del hilo en cada refresco.
   tiene_media: boolean;

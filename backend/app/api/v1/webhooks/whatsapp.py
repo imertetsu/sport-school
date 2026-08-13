@@ -58,7 +58,15 @@ router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 # burbuja con una etiqueta para que la conversación no tenga huecos, aunque el
 # contenido no se guarde.
 _TIPO_TEXTO = ("text",)
-_TIPO_IMAGEN = ("image",)
+# Tipos de Meta que traen un binario descargable → nuestro `tipo` de burbuja. El campo
+# del payload se llama igual que el tipo (`mensaje["image"]`, `mensaje["document"]`…),
+# que es lo que permite tratarlos con el mismo código.
+_ADJUNTOS: dict[str, str] = {
+    "image": "IMAGEN",
+    "document": "DOCUMENTO",
+    "audio": "AUDIO",
+    "voice": "AUDIO",
+}
 
 
 @router.get("/whatsapp")
@@ -114,23 +122,34 @@ def _contenido(mensaje: dict[str, Any], port: WhatsAppPort) -> dict[str, Any]:
 
     La descarga del adjunto ocurre AQUÍ, fuera de la transacción: el binario viaja por
     dos llamadas HTTP a la Graph API y no tiene sentido tener la tx abierta mientras.
-    Si la descarga falla, el mensaje se registra igual (sin imagen).
+    Si la descarga falla, el mensaje se registra igual (sin el adjunto).
+
+    Los PDF importan tanto como las imágenes: los bancos bolivianos generan el
+    comprobante de pago en los dos formatos, y mientras solo se descargaban imágenes la
+    mitad de las pruebas de pago llegaban al chat como un `[document]` que no se podía
+    abrir — peor que no mostrarlas, porque parece un fallo.
     """
     tipo_meta = mensaje.get("type")
     if tipo_meta in _TIPO_TEXTO:
         return {"tipo": "TEXTO", "texto": (mensaje.get("text") or {}).get("body")}
 
-    if tipo_meta in _TIPO_IMAGEN:
-        imagen = mensaje.get("image") or {}
-        media_id = imagen.get("id")
+    adjunto = _ADJUNTOS.get(str(tipo_meta))
+    if adjunto is not None:
+        datos = mensaje.get(str(tipo_meta)) or {}
+        media_id = datos.get("id")
         descarga = port.fetch_media(str(media_id)) if media_id else None
         return {
-            "tipo": "IMAGEN",
-            "texto": imagen.get("caption"),
+            "tipo": adjunto,
+            "texto": datos.get("caption"),
             "media": descarga.data if descarga else None,
-            "media_mime": descarga.mime if descarga else None,
+            # El mime real lo manda Meta en el mensaje; el de la descarga es el
+            # respaldo. Sin él, el navegador no sabe si abrir el PDF o bajarlo.
+            "media_mime": datos.get("mime_type") or (descarga.mime if descarga else None),
+            "media_nombre": datos.get("filename"),
         }
 
+    # `unsupported`, stickers, ubicaciones, contactos: no hay binario que traer. Se
+    # deja la burbuja para que el hilo no tenga huecos, pero sin prometer un adjunto.
     return {"tipo": "OTRO", "texto": f"[{tipo_meta or 'mensaje'}]"}
 
 

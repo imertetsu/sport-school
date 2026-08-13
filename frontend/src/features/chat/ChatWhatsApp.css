@@ -569,3 +569,47 @@
   color: var(--color-text-subtle);
   cursor: default;
 }
+
+/* Documento adjunto (PDF del comprobante del banco, típicamente). Se muestra como
+   una tarjeta abrible y no como una imagen: el navegador lo abre en su visor. */
+.chat__doc {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: inherit;
+  text-decoration: none;
+}
+
+.chat__doc:hover {
+  background: var(--color-surface-hover);
+}
+
+.chat__doc-icono {
+  font-size: var(--fs-lg);
+}
+
+.chat__doc-nombre {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.chat__doc-accion {
+  flex: 0 0 auto;
+  color: var(--accent-text);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+}
+
+/* Nota de voz: reproductor nativo, que ya trae play/pausa y barra de progreso. */
+.chat__audio {
+  display: block;
+  width: 100%;
+  max-width: 17rem;
+}

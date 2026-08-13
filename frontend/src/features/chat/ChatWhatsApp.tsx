@@ -129,10 +129,16 @@ function Acuse({ estado }: { estado: ChatMensaje['estado'] }) {
 }
 
 // --------------------------------------------------------------------------- #
-// Burbuja con imagen: el binario está protegido por Bearer, así que un <img src>
-// directo daría 401. Se baja por fetch a un blob: URL y se libera al desmontar.
+// Adjunto de una burbuja. El binario está protegido por Bearer, así que un <img
+// src> o un <a href> directos darían 401: se baja por fetch a un blob: URL y se
+// libera al desmontar.
+//
+// Se resuelve según el tipo porque un PDF y una foto no se consumen igual: la foto
+// se mira en el hilo, el PDF se abre en el visor del navegador y la nota de voz se
+// escucha. Antes todo lo que no fuera imagen aparecía como un "[document]" muerto —
+// y los bancos bolivianos mandan el comprobante en PDF tanto como en captura.
 // --------------------------------------------------------------------------- #
-function BurbujaImagen({ mensaje, chatApi }: { mensaje: ChatMensaje; chatApi: ChatApi }) {
+function BurbujaAdjunto({ mensaje, chatApi }: { mensaje: ChatMensaje; chatApi: ChatApi }) {
   const [url, setUrl] = useState<string | null>(null);
   const [fallo, setFallo] = useState(false);
 
@@ -154,8 +160,25 @@ function BurbujaImagen({ mensaje, chatApi }: { mensaje: ChatMensaje; chatApi: Ch
     };
   }, [mensaje.id, chatApi]);
 
-  if (fallo) return <p className="chat__media-fallo">No se pudo cargar la imagen</p>;
-  if (!url) return <p className="chat__media-fallo">Cargando imagen…</p>;
+  if (fallo) return <p className="chat__media-fallo">No se pudo cargar el adjunto</p>;
+  if (!url) return <p className="chat__media-fallo">Cargando…</p>;
+
+  if (mensaje.tipo === 'AUDIO') {
+    return <audio className="chat__audio" controls src={url} />;
+  }
+
+  if (mensaje.tipo === 'DOCUMENTO') {
+    return (
+      <a className="chat__doc" href={url} target="_blank" rel="noreferrer">
+        <span className="chat__doc-icono" aria-hidden="true">
+          📄
+        </span>
+        <span className="chat__doc-nombre">{mensaje.media_nombre || 'Documento'}</span>
+        <span className="chat__doc-accion">Abrir</span>
+      </a>
+    );
+  }
+
   return <img className="chat__media" src={url} alt={mensaje.texto ?? 'Imagen recibida'} />;
 }
 
@@ -651,7 +674,7 @@ export function ChatWhatsApp({ chatApi, escuelas, agenda, titulo, vacio }: ChatW
                   {/* Se pinta por `tiene_media`, NO por el tipo: el recordatorio sale
                       como PLANTILLA y lleva el QR en la cabecera, así que atarlo a
                       tipo === 'IMAGEN' dejaba esas burbujas sin su imagen. */}
-                  {m.tiene_media && <BurbujaImagen mensaje={m} chatApi={chatApi} />}
+                  {m.tiene_media && <BurbujaAdjunto mensaje={m} chatApi={chatApi} />}
                   {m.texto && <p className="chat__texto">{m.texto}</p>}
                   <p className="chat__pie">
                     {m.direccion === 'OUT' && m.enviado_por_nombre && (

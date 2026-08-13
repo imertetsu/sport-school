@@ -465,6 +465,7 @@ def registrar_entrante(
     texto: str | None = None,
     media: bytes | None = None,
     media_mime: str | None = None,
+    media_nombre: str | None = None,
     nombre_perfil: str | None = None,
     ocurrido_en: datetime | None = None,
 ) -> MensajeWhatsApp | None:
@@ -501,20 +502,38 @@ def registrar_entrante(
         texto=texto,
         media=media,
         media_mime=media_mime,
+        media_nombre=media_nombre,
         provider_message_id=provider_message_id,
         ocurrido_en=momento,
     )
     db.add(msg)
-    _actualizar_cabecera(conv, ocurrido_en=momento, preview=_preview(tipo, texto), entrante=True)
+    _actualizar_cabecera(
+        conv, ocurrido_en=momento, preview=_preview(tipo, texto, media_nombre), entrante=True
+    )
     db.flush()
     return msg
 
 
-def _preview(tipo: str, texto: str | None) -> str:
-    """Texto corto para la bandeja; los adjuntos no tienen cuerpo que mostrar."""
+# Lo que se muestra en la bandeja cuando el mensaje no trae texto propio.
+_PREVIEW_POR_TIPO = {
+    "IMAGEN": "📷 Imagen",
+    "DOCUMENTO": "📄 Documento",
+    "AUDIO": "🎤 Nota de voz",
+    "PLANTILLA": "Plantilla",
+}
+
+
+def _preview(tipo: str, texto: str | None, nombre: str | None = None) -> str:
+    """Texto corto para la bandeja; los adjuntos no tienen cuerpo que mostrar.
+
+    En un documento el NOMBRE del archivo es lo más informativo que hay
+    (`comprobante-agosto.pdf` dice mucho más que "Documento").
+    """
     if texto:
         return texto
-    return {"IMAGEN": "📷 Imagen", "PLANTILLA": "Plantilla"}.get(tipo, "Adjunto")
+    if tipo == "DOCUMENTO" and nombre:
+        return f"📄 {nombre}"
+    return _PREVIEW_POR_TIPO.get(tipo, "Adjunto")
 
 
 def registrar_saliente(

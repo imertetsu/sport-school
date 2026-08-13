@@ -67,12 +67,15 @@ class MensajeItem(BaseModel):
 
     id: uuid.UUID
     direccion: str  # IN (el tutor) | OUT (nosotros)
-    tipo: str  # TEXTO | IMAGEN | PLANTILLA | OTRO
+    tipo: str  # TEXTO | IMAGEN | DOCUMENTO | AUDIO | PLANTILLA | OTRO
     texto: str | None
-    # True si la burbuja lleva imagen: el binario se pide aparte
+    # True si la burbuja lleva adjunto: el binario se pide aparte
     # (`GET .../mensajes/{id}/media`) para no inflar el JSON del hilo con base64.
     tiene_media: bool
     media_mime: str | None
+    # Nombre original del archivo (`comprobante-agosto.pdf`). Es lo que se muestra en
+    # la burbuja de un documento: "Documento" a secas no distingue uno de otro.
+    media_nombre: str | None = None
     estado: str | None  # solo OUT: ENVIADO | ENTREGADO | LEIDO | FALLIDO
     error_detalle: str | None
     enviado_por_nombre: str | None

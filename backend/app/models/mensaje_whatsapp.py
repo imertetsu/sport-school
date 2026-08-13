@@ -59,8 +59,10 @@ class MensajeWhatsApp(UUIDPkMixin, Base):
 
     # IN = lo escribió el tutor · OUT = lo mandó la escuela/consola. CHECK en la migración.
     direccion: Mapped[str] = mapped_column(String, nullable=False)
-    # TEXTO | IMAGEN | PLANTILLA | OTRO (audio/video/sticker/ubicación: se registra
-    # la burbuja sin el contenido, para que el hilo no tenga huecos).
+    # TEXTO | IMAGEN | DOCUMENTO | AUDIO | PLANTILLA | OTRO. Los cuatro primeros traen
+    # contenido; OTRO queda para lo que Meta ni siquiera deja descargar (`unsupported`,
+    # stickers, ubicaciones): se registra la burbuja con una etiqueta para que el hilo
+    # no tenga huecos, aunque no haya nada que abrir.
     tipo: Mapped[str] = mapped_column(String, nullable=False)
 
     texto: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -69,6 +71,9 @@ class MensajeWhatsApp(UUIDPkMixin, Base):
     # (único por pago: ahí la fidelidad vale más que el espacio). NULL en los de texto.
     media: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     media_mime: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Nombre original del archivo adjunto (`comprobante-agosto.pdf`). Solo en los
+    # documentos: es lo único que los distingue en un hilo con varios adjuntos.
+    media_nombre: Mapped[str | None] = mapped_column(String, nullable=True)
     # Imagen que vive en OTRA tabla y no se copia aquí. Hoy solo `'qr'`: el QR de cobro
     # de la escuela, el mismo en todos sus recordatorios — duplicarlo por mensaje serían
     # megabytes de copias idénticas (ver migración 0030).

@@ -1055,3 +1055,63 @@ def test_el_comprobante_si_guarda_su_recibo(app_engine: Engine, escuelas: dict) 
     assert bytes(guardado) == recibo
     assert mime == "image/jpeg"
     assert ref is None, "el recibo lleva sus propios bytes, no una referencia"
+
+
+# --------------------------------------------------------------------------- #
+# 12) Adjuntos que NO son imagen (migración 0032)
+#
+# Una tutora mandó el comprobante de su banco en PDF y en el chat apareció
+# `[document]`, sin nada que abrir. No es un caso raro: los bancos bolivianos
+# generan el comprobante en PDF tanto como en captura, así que la mitad de las
+# pruebas de pago llegaban muertas.
+# --------------------------------------------------------------------------- #
+def test_un_pdf_entrante_se_guarda_y_se_puede_abrir(app_engine: Engine, escuelas: dict) -> None:
+    """El documento guarda sus bytes, su mime y su NOMBRE (lo único que lo identifica)."""
+    pdf = b"%PDF-1.4 comprobante"
+    with _bandeja(app_engine) as db:
+        msg = svc.registrar_entrante(
+            db, telefono=TEL_TUTOR_A_E164, provider_message_id="wamid.pdf1", tipo="DOCUMENTO",
+            texto=None, media=pdf, media_mime="application/pdf",
+            media_nombre="comprobante-agosto.pdf",
+        )
+        assert msg is not None
+        _commit(db)
+        conv = svc.listar_conversaciones(db, buscar=TEL_TUTOR_A_E164).items[0].conversacion
+        mensajes = svc.listar_mensajes(db, conversacion_id=conv.id)
+
+    guardado = mensajes[0]
+    assert bytes(guardado.media) == pdf
+    assert guardado.media_mime == "application/pdf"
+    assert guardado.media_nombre == "comprobante-agosto.pdf"
+    assert conv.ultimo_mensaje_texto == "📄 comprobante-agosto.pdf", (
+        "en la bandeja el nombre del archivo dice mucho más que 'Documento'"
+    )
+
+
+def test_una_nota_de_voz_entrante_se_guarda(app_engine: Engine, escuelas: dict) -> None:
+    """El audio también se descarga; la bandeja lo anuncia como nota de voz."""
+    with _bandeja(app_engine) as db:
+        svc.registrar_entrante(
+            db, telefono=TEL_TUTOR_A_E164, provider_message_id="wamid.aud1", tipo="AUDIO",
+            texto=None, media=b"OggS-audio", media_mime="audio/ogg",
+        )
+        _commit(db)
+        conv = svc.listar_conversaciones(db, buscar=TEL_TUTOR_A_E164).items[0].conversacion
+
+    assert conv.ultimo_mensaje_texto == "🎤 Nota de voz"
+
+
+def test_lo_que_no_se_puede_descargar_queda_como_otro(
+    app_engine: Engine, escuelas: dict
+) -> None:
+    """`unsupported`, stickers, ubicaciones: burbuja sin adjunto, para no prometer nada."""
+    with _bandeja(app_engine) as db:
+        msg = svc.registrar_entrante(
+            db, telefono=TEL_TUTOR_A_E164, provider_message_id="wamid.otro1", tipo="OTRO",
+            texto="[unsupported]",
+        )
+        assert msg is not None
+        _commit(db)
+        sin_media = msg.media is None and msg.media_nombre is None
+
+    assert sin_media

@@ -106,6 +106,7 @@ def _mensaje(msg: MensajeWhatsApp) -> MensajeItem:
         # UI la burbuja tiene imagen y la pide al mismo endpoint.
         tiene_media=msg.media is not None or msg.media_ref is not None,
         media_mime=msg.media_mime,
+        media_nombre=msg.media_nombre,
         estado=msg.estado,
         error_detalle=msg.error_detalle,
         enviado_por_nombre=msg.enviado_por_nombre,
@@ -200,11 +201,15 @@ def _media(db: Session, mensaje_id: uuid.UUID) -> Response:
             )
         contenido, mime = resuelto
 
-    return Response(
-        content=contenido,
-        media_type=mime,
-        headers={"Cache-Control": "private, max-age=86400"},
-    )
+    cabeceras = {"Cache-Control": "private, max-age=86400"}
+    if msg.media_nombre:
+        # `inline` para que el navegador ABRA el PDF en su visor en vez de bajarlo a
+        # ciegas; el nombre original se conserva para cuando el usuario sí lo guarde.
+        # Las comillas se quitan: romperían la cabecera.
+        limpio = msg.media_nombre.replace('"', "").replace("\\", "")
+        cabeceras["Content-Disposition"] = f'inline; filename="{limpio}"'
+
+    return Response(content=contenido, media_type=mime, headers=cabeceras)
 
 
 def _responder(
