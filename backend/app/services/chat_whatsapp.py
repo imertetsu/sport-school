@@ -134,19 +134,47 @@ def nombre_tutor_por_telefono(db: Session, telefono_norm: str) -> str | None:
 def _obtener_o_crear_conversacion(
     db: Session, *, telefono_norm: str, ocurrido_en: datetime
 ) -> ConversacionWhatsApp:
-    """Hilo de ese número; lo crea (resolviendo la escuela) si es la primera vez.
+    """Hilo al que pertenece un mensaje ENTRANTE de ese número; lo crea si no existe.
 
-    El INSERT va con `ON CONFLICT DO NOTHING` sobre el UNIQUE del teléfono y relee: dos
-    mensajes del mismo número entrando a la vez no pueden crear dos hilos.
+    A qué hilo va lo decide de quién es el número: si es tutor de UNA sola escuela, al
+    hilo de esa escuela; si es desconocido —o de VARIAS, que es igual de ambiguo— al
+    hilo sin clasificar, que solo ve el superadmin.
+
+    Es deliberado no repartir un entrante ambiguo entre las dos escuelas: cada una
+    leería lo que la familia le escribió a la otra.
+
+    El INSERT lleva `ON CONFLICT DO NOTHING` contra el índice parcial que corresponda y
+    relee: dos mensajes del mismo número entrando a la vez no pueden crear dos hilos.
     """
-    conv = db.execute(
-        select(ConversacionWhatsApp).where(ConversacionWhatsApp.telefono == telefono_norm)
-    ).scalar_one_or_none()
+    org_id = resolver_org_por_telefono(db, telefono_norm)
+
+    def _buscar() -> ConversacionWhatsApp | None:
+        stmt = select(ConversacionWhatsApp).where(
+            ConversacionWhatsApp.telefono == telefono_norm
+        )
+        stmt = stmt.where(
+            ConversacionWhatsApp.org_id == org_id
+            if org_id is not None
+            else ConversacionWhatsApp.org_id.is_(None)
+        )
+        return db.execute(stmt).scalar_one_or_none()
+
+    conv = _buscar()
     if conv is not None:
         return conv
 
-    org_id = resolver_org_por_telefono(db, telefono_norm)
     nombre = nombre_tutor_por_telefono(db, telefono_norm) if org_id else None
+    # El índice parcial que protege cada caso es distinto (ver migración 0033).
+    if org_id is not None:
+        conflicto = {
+            "index_elements": ["telefono", "org_id"],
+            "index_where": text("org_id IS NOT NULL"),
+        }
+    else:
+        conflicto = {
+            "index_elements": ["telefono"],
+            "index_where": text("org_id IS NULL"),
+        }
     db.execute(
         pg_insert(ConversacionWhatsApp)
         .values(
@@ -157,11 +185,11 @@ def _obtener_o_crear_conversacion(
             ultimo_mensaje_at=ocurrido_en,
             no_leidos=0,
         )
-        .on_conflict_do_nothing(index_elements=["telefono"])
+        .on_conflict_do_nothing(**conflicto)
     )
-    conv = db.execute(
-        select(ConversacionWhatsApp).where(ConversacionWhatsApp.telefono == telefono_norm)
-    ).scalar_one()
+    conv = _buscar()
+    if conv is None:  # pragma: no cover - solo si el INSERT no entró ni hubo conflicto
+        raise RuntimeError(f"no se pudo abrir el hilo de {telefono_norm}")
     logger.info(
         "chat whatsapp: hilo nuevo %s org=%s", telefono_norm, org_id or "SIN ASIGNAR"
     )
@@ -286,12 +314,17 @@ def es_tutor_de_la_escuela(db: Session, telefono_norm: str) -> bool:
 def abrir_conversacion(
     db: Session, *, telefono: str, org_id: uuid.UUID
 ) -> ConversacionWhatsApp | None:
-    """Hilo de ese teléfono para esa escuela, creándolo o adoptándolo. `None` si es de otra.
+    """Hilo de ese teléfono para esa escuela, creándolo o adoptándolo. `None` si el
+    teléfono no es utilizable.
 
-    Delega en `whatsapp_abrir_conversacion` (SECURITY DEFINER, migración 0029) porque la
-    escuela NO ve los hilos sin clasificar ni los ajenos: sin ese salto controlado de RLS,
-    "busca y si no está, inserta" chocaría con el UNIQUE del teléfono. El llamador debe
+    Delega en `whatsapp_abrir_conversacion` (SECURITY DEFINER, migraciones 0029/0034)
+    porque la escuela NO ve los hilos sin clasificar: sin ese salto controlado de RLS,
+    "busca y si no está, inserta" chocaría con el único del teléfono. El llamador debe
     haber verificado ANTES —bajo RLS— que el número es de un tutor suyo.
+
+    Que otra escuela ya tenga SU hilo con el mismo número es normal y no estorba: una
+    madre con hijas en dos escuelas recibe mensajes de ambas, y cada escuela ve solo
+    los suyos (migración 0033).
     """
     telefono_norm = normalize_bo_phone(telefono)
     if telefono_norm is None:
@@ -428,6 +461,47 @@ def asignar_org(
     conv = obtener_conversacion(db, conversacion_id)
     if conv is None:
         return None
+
+    # ¿La escuela destino YA tiene un hilo con este número? Pasa cuando ella misma le
+    # escribió antes (o le mandó un recordatorio) y el número, además, escribió sin que
+    # se pudiera clasificar. Los dos hilos son la misma conversación partida en dos: se
+    # fusionan en el que ya era de la escuela, en vez de reventar contra el único
+    # parcial de (telefono, org_id).
+    if org_id is not None:
+        existente = db.execute(
+            select(ConversacionWhatsApp).where(
+                ConversacionWhatsApp.telefono == conv.telefono,
+                ConversacionWhatsApp.org_id == org_id,
+                ConversacionWhatsApp.id != conv.id,
+            )
+        ).scalar_one_or_none()
+        if existente is not None:
+            db.execute(
+                update(MensajeWhatsApp)
+                .where(MensajeWhatsApp.conversacion_id == conv.id)
+                .values(conversacion_id=existente.id, org_id=org_id)
+            )
+            # La cabecera del superviviente se queda con lo más reciente de los dos.
+            if conv.ultimo_mensaje_at > existente.ultimo_mensaje_at:
+                existente.ultimo_mensaje_at = conv.ultimo_mensaje_at
+                existente.ultimo_mensaje_texto = conv.ultimo_mensaje_texto
+            if conv.ultimo_entrante_at is not None and (
+                existente.ultimo_entrante_at is None
+                or conv.ultimo_entrante_at > existente.ultimo_entrante_at
+            ):
+                existente.ultimo_entrante_at = conv.ultimo_entrante_at
+            existente.no_leidos = (existente.no_leidos or 0) + (conv.no_leidos or 0)
+            if not existente.nombre_contacto and conv.nombre_contacto:
+                existente.nombre_contacto = conv.nombre_contacto
+            db.delete(conv)
+            db.flush()
+            logger.info(
+                "chat whatsapp: hilo %s fusionado en el que ya tenía la escuela %s",
+                conv.telefono,
+                org_id,
+            )
+            return existente
+
     conv.org_id = org_id
     db.execute(
         update(MensajeWhatsApp)

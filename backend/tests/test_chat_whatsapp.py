@@ -630,17 +630,100 @@ def test_abrir_adopta_un_hilo_sin_clasificar(app_engine: Engine, escuelas: dict)
     )
 
 
-def test_no_se_puede_abrir_el_hilo_de_otra_escuela(app_engine: Engine, escuelas: dict) -> None:
-    """El número compartido por dos escuelas: la segunda NO puede colarse en el hilo."""
+def test_las_dos_escuelas_pueden_escribirle_al_mismo_numero(
+    app_engine: Engine, escuelas: dict
+) -> None:
+    """Una madre con hijas en DOS escuelas: cada una abre su hilo y las dos le escriben.
+
+    Es el caso real que rompió el modelo original ("un número, un hilo"): la primera
+    escuela que le escribía se quedaba con la conversación y la segunda no podía ni
+    abrir el chat, aunque sus recordatorios sí le llegaban a la madre.
+    """
     with _escuela(app_engine, escuelas["org_a"]) as db:
-        conv = svc.abrir_conversacion(db, telefono=TEL_AMBIGUO, org_id=escuelas["org_a"])
-        assert conv is not None
+        de_a = svc.abrir_conversacion(db, telefono=TEL_AMBIGUO, org_id=escuelas["org_a"])
+        assert de_a is not None
         _commit(db, escuelas["org_a"])
+        id_a = de_a.id
 
     with _escuela(app_engine, escuelas["org_b"]) as db:
-        intruso = svc.abrir_conversacion(db, telefono=TEL_AMBIGUO, org_id=escuelas["org_b"])
+        de_b = svc.abrir_conversacion(db, telefono=TEL_AMBIGUO, org_id=escuelas["org_b"])
+        assert de_b is not None, "la segunda escuela también tiene que poder escribirle"
+        _commit(db, escuelas["org_b"])
+        id_b = de_b.id
 
-    assert intruso is None, "el hilo es de A; B debe recibir None (la API lo traduce a 409)"
+    assert id_a != id_b, "cada escuela tiene su propio hilo con el mismo número"
+
+
+def test_cada_escuela_solo_ve_sus_mensajes_del_numero_compartido(
+    app_engine: Engine, escuelas: dict
+) -> None:
+    """Lo que la escuela A le escribe a esa madre NO puede leerlo la escuela B.
+
+    Es la contracara del test anterior: separar los hilos no es solo para desbloquear
+    el envío, es para que ninguna escuela lea la conversación de la otra con la familia.
+    """
+    port = _PortFalso(oficial=False)
+    for org, texto in (("org_a", "mensaje de A"), ("org_b", "mensaje de B")):
+        with _escuela(app_engine, escuelas[org]) as db:
+            conv = svc.abrir_conversacion(db, telefono=TEL_AMBIGUO, org_id=escuelas[org])
+            assert conv is not None
+            svc.enviar_texto(db, conv=conv, texto=texto, port=port, escuela="X")
+            _commit(db, escuelas[org])
+
+    with _escuela(app_engine, escuelas["org_a"]) as db:
+        conv_a = svc.listar_conversaciones(db, buscar=TEL_AMBIGUO).items[0].conversacion
+        textos_a = [m.texto for m in svc.listar_mensajes(db, conversacion_id=conv_a.id)]
+
+    assert textos_a == ["mensaje de A"], "A no puede ver lo que B le escribió a la familia"
+
+
+def test_asignar_fusiona_si_la_escuela_ya_tenia_hilo(
+    app_engine: Engine, escuelas: dict
+) -> None:
+    """Un hilo sin clasificar asignado a una escuela que ya tenía el suyo: se fusionan.
+
+    Sin esto la asignación reventaría contra el único de (teléfono, escuela), y con dos
+    hilos sueltos la conversación quedaría partida en dos.
+    """
+    # 1) La escuela A ya le escribió a ese número.
+    with _escuela(app_engine, escuelas["org_a"]) as db:
+        propio = svc.abrir_conversacion(db, telefono=TEL_AMBIGUO, org_id=escuelas["org_a"])
+        assert propio is not None
+        _commit(db, escuelas["org_a"])
+        id_propio = propio.id
+
+    # 2) Y el número escribió sin poder clasificarse (está en dos escuelas).
+    with _bandeja(app_engine) as db:
+        svc.registrar_entrante(
+            db, telefono=TEL_AMBIGUO, provider_message_id="wamid.fus1", tipo="TEXTO",
+            texto="hola, consulta",
+        )
+        _commit(db)
+        sin_asignar = [
+            f.conversacion
+            for f in svc.listar_conversaciones(db, solo_sin_asignar=True).items
+            if f.conversacion.telefono == TEL_AMBIGUO
+        ][0]
+        # 3) El superadmin lo asigna a A, que YA tenía hilo.
+        fusionado = svc.asignar_org(
+            db, conversacion_id=sin_asignar.id, org_id=escuelas["org_a"]
+        )
+        assert fusionado is not None
+        # El id se lee DENTRO de la sesión: `_commit` expira los atributos.
+        id_fusionado = fusionado.id
+        _commit(db)
+
+    assert id_fusionado == id_propio, "debe sobrevivir el hilo que la escuela ya tenía"
+
+    with _escuela(app_engine, escuelas["org_a"]) as db:
+        hilos = [
+            f.conversacion
+            for f in svc.listar_conversaciones(db, buscar=TEL_AMBIGUO).items
+        ]
+        mensajes = svc.listar_mensajes(db, conversacion_id=id_propio)
+
+    assert len(hilos) == 1, "no pueden quedar dos hilos de la escuela con el mismo número"
+    assert "hola, consulta" in [m.texto for m in mensajes], "el mensaje no se puede perder"
 
 
 def test_solo_los_tutores_propios_son_contactables(app_engine: Engine, escuelas: dict) -> None:
@@ -862,28 +945,36 @@ def test_un_telefono_ilegible_no_rompe_el_envio(app_engine: Engine, escuelas: di
     assert msg is None, "devuelve None en vez de lanzar"
 
 
-def test_el_automatico_no_invade_el_hilo_de_otra_escuela(
-    app_engine: Engine, escuelas: dict
-) -> None:
-    """Con el número compartido, el recordatorio de B no puede colarse en el hilo de A."""
+def test_el_automatico_va_al_hilo_de_su_escuela(app_engine: Engine, escuelas: dict) -> None:
+    """El recordatorio de B llega a la familia y queda en el hilo de B, no en el de A.
+
+    Con el número compartido por dos escuelas, el recordatorio de B SÍ tiene que salir
+    (la familia le debe una cuota a B) y SÍ tiene que dejar rastro — pero en su propio
+    hilo. Que antes no lo dejara es lo que hacía creer a la escuela que no había
+    enviado nada.
+    """
     with _escuela(app_engine, escuelas["org_a"]) as db:
         conv = svc.abrir_conversacion(db, telefono=TEL_AMBIGUO, org_id=escuelas["org_a"])
         assert conv is not None
         _commit(db, escuelas["org_a"])
 
     with _escuela(app_engine, escuelas["org_b"]) as db:
-        intruso = svc.registrar_automatico(
+        de_b = svc.registrar_automatico(
             db, org_id=escuelas["org_b"], telefono=TEL_AMBIGUO, tipo="PLANTILLA",
             texto="recordatorio de B", estado="ENVIADO", autor=svc.AUTOR_RECORDATORIO,
         )
-
-    assert intruso is None
+        assert de_b is not None, "el recordatorio de B tiene que dejar su burbuja"
+        _commit(db, escuelas["org_b"])
+        textos_b = [
+            m.texto for m in svc.listar_mensajes(db, conversacion_id=de_b.conversacion_id)
+        ]
 
     with _escuela(app_engine, escuelas["org_a"]) as db:
         conv_a = svc.listar_conversaciones(db, buscar=TEL_AMBIGUO).items[0].conversacion
-        mensajes = svc.listar_mensajes(db, conversacion_id=conv_a.id)
+        textos_a = [m.texto for m in svc.listar_mensajes(db, conversacion_id=conv_a.id)]
 
-    assert mensajes == [], "el hilo de A no puede recibir el recordatorio de B"
+    assert textos_b == ["recordatorio de B"]
+    assert textos_a == [], "el hilo de A no puede recibir el recordatorio de B"
 
 
 # --------------------------------------------------------------------------- #

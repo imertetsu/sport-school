@@ -328,11 +328,12 @@ def abrir_conversacion_escuela(
 ) -> HiloOut:
     """Abre (o crea) el hilo con un tutor de la escuela y lo devuelve listo para escribir.
 
-    403 si el número NO es de un tutor de esta escuela: es el límite que pediste — una
-    escuela solo puede escribirle a sus propios contactos, nunca a un número suelto.
-    409 si ese número ya está en conversación con OTRA escuela (pasa con un tutor dado
-    de alta en dos), porque WhatsApp tiene un único hilo por número y no se puede
-    partir en dos sin mezclar mensajes ajenos.
+    403 si el número NO es de un tutor de esta escuela: una escuela solo puede
+    escribirle a sus propios contactos, nunca a un número suelto.
+
+    Que el número ya tenga hilo con OTRA escuela NO es un impedimento: una madre puede
+    tener hijas en dos escuelas y cada una necesita poder escribirle. Cada escuela abre
+    el suyo y ve solo sus mensajes (migración 0033).
     """
     telefono = normalize_bo_phone(body.telefono)
     if telefono is None:
@@ -349,8 +350,8 @@ def abrir_conversacion_escuela(
     conv = svc.abrir_conversacion(db, telefono=telefono, org_id=uuid.UUID(user.org_id))
     if conv is None:
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Ese número ya tiene una conversación asignada a otra escuela",
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="No se pudo abrir la conversación con ese número",
         )
     db.commit()  # `get_db` commitea tras la respuesta; el hilo ya debe existir
     return _hilo(db, conv.id)

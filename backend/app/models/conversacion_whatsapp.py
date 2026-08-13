@@ -1,9 +1,11 @@
 """Modelo `conversacion_whatsapp` (epic chat-whatsapp) — un hilo por número.
 
-Bandeja de entrada del número oficial de la escuela: **una fila por teléfono**, igual
-que en la app de WhatsApp (un número = un chat). El `UNIQUE(telefono)` es GLOBAL a
-propósito: el WABA tiene un único hilo con cada número, así que dos escuelas no pueden
-tener conversaciones distintas con el mismo tutor.
+Bandeja de entrada del número oficial: una fila por **(teléfono, escuela)**.
+
+Hay **un hilo por (teléfono, escuela)**, no uno por teléfono. El tutor ve UNA sola
+conversación en su celular —el número oficial es uno solo—, pero cada escuela ve la
+suya: una madre con hijas en dos escuelas recibe mensajes de las dos, y ninguna lee lo
+que la familia le escribió a la otra (migración 0033).
 
 `org_id` es **NULLABLE** — la excepción a la regla del repo (`OrgScoped` es NOT NULL) y
 la razón de ser de este epic: cuando escribe un número desconocido todavía NO se sabe a
@@ -17,8 +19,8 @@ RLS (migración 0028) con DOS vías, ambas fail-closed:
 El GUC de la consola abre SOLO estas dos tablas (`conversacion_whatsapp`,
 `mensaje_whatsapp`); el resto del esquema tenant sigue cerrado para el superadmin.
 
-Constraints que pone db-dev A MANO en la migración (patrón del repo): ninguno de enum
-aquí; el `UNIQUE(telefono)` sí va declarativo (unique simple).
+Constraints A MANO en la migración (patrón del repo): los dos únicos son PARCIALES
+(uno por escuela, otro para el hilo sin clasificar), y esos no van declarativos.
 """
 
 from __future__ import annotations
@@ -26,7 +28,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, text
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -66,4 +68,7 @@ class ConversacionWhatsApp(UUIDPkMixin, TimestampMixin, Base):
         Integer, nullable=False, server_default=text("0"), default=0
     )
 
-    __table_args__ = (UniqueConstraint("telefono", name="uq_conversacion_whatsapp_telefono"),)
+    # La unicidad es por (telefono, escuela) y NO por telefono a secas: una madre puede
+    # tener hijas en dos escuelas, y cada una necesita su propio hilo con ella (ver
+    # migración 0033). Son dos índices PARCIALES, así que viven solo en la migración.
+    __table_args__ = ()
